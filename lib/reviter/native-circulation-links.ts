@@ -3,6 +3,7 @@ import {add,sub,mul,div} from "./vendor/native-rational-overlay-arithmetic.mjs";
 import { nativeRationalOverlay, nativeRationalScalarToIEEE, rational, NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION, type NativeRationalPoint, type NativeRationalParts } from "./native-rational-overlay.ts";
 import { nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare, nativeRationalPointInParts, nativeRationalPathSupported, nativeRationalFootprintSupported,freezeNativeRationalParts } from "./native-exact-planar-topology.ts";
 import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
+import { createCheckedNativeDoorBridgeProof, type NativeDoorBridgeRequest } from "./native-door-bridge-proof.ts";
 import { nativeWalkingFloorsWithSlabJoins } from "./native-slab-join-closures.ts";
 import { nativeAccessZonesAt, nativeAccessZoneSplit } from "./native-access-zones.ts";
 import { nativeExactGeosOverlay } from "./native-exact-geos-overlay.ts";
@@ -236,6 +237,10 @@ export type NativeWalkingRegion = {
   /** Whole source-defined free faces and their majority metadata identities. */
   identityFaces?: { face: Polygon; exactParts?: NativeRationalParts; roomKeys: string[] }[];
   nativeFloorIds: number[];
+  /** Ordinary-door recovery only. Retains the existing public-walking ankle,
+   * positive material, low-slab and source-tread guards. This supplies no
+   * continuous general body-clearance or accessibility certificate. */
+  checkNativeAssemblyDoorBridge?: (request: NativeDoorBridgeRequest) => boolean;
 };
 /** Complete exact native floor/enclosure intersection for one immutable source
  * phase. Portal state and metadata are deliberately absent from this cache:
@@ -407,6 +412,7 @@ export function nativeWalkingRegion(
   const subtractAperture = (parts: Polygon[], opening: Polygon): Polygon[] => strictNative
     ? proposalParts(nativeRationalOverlay("difference", exactParts(parts), [opening]))
     : pc.difference(parts, opening) as Polygon[];
+  const originalPhysicalDoorLeaves = new Map<Polygon, { nativeElementId: number; hostNativeElementId: number | undefined }>();
   const barriers: Polygon[] = [],
     wallBarriers: Polygon[] = [];
   const addWalls = (parts: Polygon[]) => {
@@ -506,7 +512,12 @@ export function nativeWalkingRegion(
         .map((w) => [w.polygon]),
       ...g.doors
         .filter((d) => !aperture || d.elementId !== portal?.nativeElementId)
-        .map((w) => [w.polygon]),
+        .map((w) => {
+          const part: Polygon = [w.polygon];
+          originalPhysicalDoorLeaves.set(part, { nativeElementId: w.elementId,
+            hostNativeElementId: model.nativeHostRelations?.find(h => h.elementId === w.elementId)?.hostId });
+          return part;
+        }),
     );
   }
   // Physical solids cover associated-level omissions without projecting another storey down.
@@ -549,6 +560,18 @@ export function nativeWalkingRegion(
     if (z > elevationFeet + 0.05 && z < elevationFeet + 6)
       barriers.push([tread.map((p) => [p[0], p[1]] as RoomPoint)]);
   }
+  // Some native cache runs survive only in the source-flight inventory. The
+  // visitor independently checks those original projections for headroom; the
+  // compiler must retain the same veto before proposing openings or cells.
+  // An authored run supplies its qualified roles instead of this fallback.
+  // These are obstacles only: they never admit a stair or a walking surface.
+  if (strictNative && dataset.stairDisplay?.sourceModelSha256 === dataset.source.modelSha256)
+    for (const flight of dataset.stairDisplay.sourceFlights ?? [])
+      for (const tread of flight.treads)
+        if (!exactAuthoredTreads.has(tread.runElementId) &&
+            tread.elevationFeet > elevationFeet + 0.05 &&
+            tread.elevationFeet < elevationFeet + 6)
+          barriers.push([tread.ringFeet]);
   // A low native slab/tabletop is an obstruction, not another walking floor.
   // Use its exact separate shells and holes, never its bounds rectangle.
   barriers.push(
@@ -733,6 +756,43 @@ export function nativeWalkingRegion(
     circulation = same
       .filter((r) => r.circulation && r.walkable && r.access !== "staff")
       .map((r) => r.ringsFeet);
+  const ordinaryDoorProofs = new Map<number, ReturnType<typeof createCheckedNativeDoorBridgeProof>>();
+  const checkNativeAssemblyDoorBridge = strictNative && exact && !portalNode ? (request: NativeDoorBridgeRequest) => {
+    let proof = ordinaryDoorProofs.get(request.nativeDoorElementId);
+    if (!proof) {
+      const door = dataset.doors?.find(d => d.nativeElementId === request.nativeDoorElementId && d.levelId === request.levelId);
+      const relation = model.nativeHostRelations?.find(h => h.elementId === request.nativeDoorElementId);
+      if (!door?.footprintFeet || !door.normalFeet || !relation || relation.evidence !== "persisted" ||
+        !levels.includes(door.levelId) || request.elevationFeet !== elevationFeet) return false;
+      const binding = { sourceModelSha256: dataset.source.modelSha256, levelId: door.levelId, elevationFeet };
+      const rows = dataset.nativeMaterialSections!.levels.filter(l => l.levelId === door.levelId &&
+        l.elevationFeet === elevationFeet && l.cutElevationFeet === elevationFeet + 0.1);
+      proof = createCheckedNativeDoorBridgeProof({ ...binding,
+        originalDoor: { ...binding, nativeElementId: door.nativeElementId, hostNativeElementId: relation.hostId,
+          footprintFeet: door.footprintFeet, normalFeet: door.normalFeet,
+          hostRelation: { elementId: relation.elementId, hostId: relation.hostId, evidence: relation.evidence },
+          // The ownership producer independently refuses explicit reviews before
+          // this physical helper is reachable. This is not an authoring override.
+          hasExplicitOwnershipReview: false },
+        originalExactFloorParts: exact!.floors,
+        originalObstacles: [...barriers, ...masks, ...indoorExclusionParts(dataset, elevationFeet)].map(p => {
+          const leaf = originalPhysicalDoorLeaves.get(p);
+          return { sourceModelSha256: binding.sourceModelSha256, parts: exactParts([p]),
+            kind: leaf ? "native-door-leaf" as const : "other" as const, ...leaf };
+        }),
+        completeOriginalOwners: rows.flatMap(l => l.sections.map(owner => ({ ...binding,
+          nativeElementId: owner.nativeElementId, sourceCategoryId: owner.categoryId,
+          cutElevationFeet: l.cutElevationFeet, sourceNativeHostRelationsVerified: owner.sourceNativeHostRelationsVerified,
+          originalPhysicalChildIds: [...new Set([...(owner.sourceAssemblyChildIds ?? []), ...(owner.originalPhysicalDoorChildIds ?? [])])] }))),
+        originalCheckedSourceElementIds: material.known,
+        physicalScope: { ...binding, materialCutElevationFeet: elevationFeet + 0.1, sourceTreadHeadroomVetoFeet: 6,
+          includesAllOriginalWalkingOperands: true, includesPositiveMaterialParts: true, includesLowSlabs: true,
+          includesRestrictedMasks: true, unclassifiedSourceElementIds: diagnostics.length ? [request.nativeDoorElementId] : [] },
+      });
+      ordinaryDoorProofs.set(request.nativeDoorElementId, proof);
+    }
+    return proof(request);
+  } : undefined;
   return {
     elevationFeet,
     ...(exact ? {exact} : {}),
@@ -742,6 +802,7 @@ export function nativeWalkingRegion(
     masks,
     wallBarriers,
     nativeFloorIds: nativeFloors.map((r) => r.elementId),
+    ...(checkNativeAssemblyDoorBridge ? { checkNativeAssemblyDoorBridge } : {}),
     ...(circulation ? { circulation } : {}),
     ...(identityFaces ? { identityFaces } : {}),
   };

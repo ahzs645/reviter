@@ -1,0 +1,98 @@
+{
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "cases": [
+    {
+      "nativeInstanceId": 1514624,
+      "nativeDefinitionId": 307725,
+      "nativeHostId": 1514621,
+      "files": {
+        "instanceNative": {
+          "name": "native-simple-panel-1514624-2031.bin",
+          "sha256": "163fa1ce4827177d20426ba563edca7f06ee141cdc8f40ade02bcc1a13d52f80"
+        },
+        "symbolNative": {
+          "name": "native-simple-panel-307725-4318.bin",
+          "sha256": "1bb6a31d4a61646c7378d8dfa582537779a2bb220dd02f0e9544fd458e39a5f7"
+        },
+        "hostNative": {
+          "name": "native-simple-panel-1514621-3899.bin",
+          "sha256": "4980f232f3a9d235ac38b995b16bb91909c68d71a4ae00cc7aef914b1e671f37"
+        },
+        "instanceGElement": {
+          "name": "native-simple-panel-1514624-2246.bin",
+          "sha256": "9ffd1bdb1467b839115f57a8d85d1e1619b44ec38c2844a4152959e4863693e1"
+        },
+        "symbolGElement": {
+          "name": "native-simple-panel-307725-2246.bin",
+          "sha256": "645d939e2f7e148e8d1efd1130a12981f23e2b46a35d6086c139a299a8c88a40"
+        },
+        "hostGElement": {
+          "name": "native-simple-panel-1514621-2246.bin",
+          "sha256": "cf11067e02810ea114ac81bfa5e98b4aa7b245e066103ee70dd6fd6cec3e0a33"
+        }
+      }
+    },
+    {
+      "nativeInstanceId": 2320983,
+      "nativeDefinitionId": 307725,
+      "nativeHostId": 2320976,
+      "files": {
+        "instanceNative": {
+          "name": "native-simple-panel-2320983-2031.bin",
+          "sha256": "b876f288761c85bb342648ae27dc8b7a554c2ba8948bdf63e1a9c10b5f027c5d"
+        },
+        "symbolNative": {
+          "name": "native-simple-panel-307725-4318.bin",
+          "sha256": "1bb6a31d4a61646c7378d8dfa582537779a2bb220dd02f0e9544fd458e39a5f7"
+        },
+        "hostNative": {
+          "name": "native-simple-panel-2320976-3899.bin",
+          "sha256": "8e232db8f70ac018e971f92245be0ba98653ac5e73e610b43a933c3ed2bcc239"
+        },
+        "instanceGElement": {
+          "name": "native-simple-panel-2320983-2246.bin",
+          "sha256": "92e49b46518370f041c6c94be28fe676cb35ec6c3d1b64225f61390c7833cd3f"
+        },
+        "symbolGElement": {
+          "name": "native-simple-panel-307725-2246.bin",
+          "sha256": "645d939e2f7e148e8d1efd1130a12981f23e2b46a35d6086c139a299a8c88a40"
+        },
+        "hostGElement": {
+          "name": "native-simple-panel-2320976-2246.bin",
+          "sha256": "a36906e2007b077d2c000bbcc5dbf08b7e77ef243a69e2277df70dbc7ae893be"
+        }
+      }
+    },
+    {
+      "nativeInstanceId": 1514626,
+      "nativeDefinitionId": 2447721,
+      "nativeHostId": 1514621,
+      "files": {
+        "instanceNative": {
+          "name": "native-simple-panel-1514626-2031.bin",
+          "sha256": "ac6f0651eede0665541db7a071dc3b17ec10fd7a0bcf5715b898b54a90a7aaff"
+        },
+        "symbolNative": {
+          "name": "native-simple-panel-2447721-4318.bin",
+          "sha256": "585bedf53bd417e87a18abc01286bfde1ec6ec3149689b5b5dbdab4e235fc876"
+        },
+        "hostNative": {
+          "name": "native-simple-panel-1514621-3899.bin",
+          "sha256": "4980f232f3a9d235ac38b995b16bb91909c68d71a4ae00cc7aef914b1e671f37"
+        },
+        "instanceGElement": {
+          "name": "native-simple-panel-1514626-2246.bin",
+          "sha256": "03f7086ba02f8c949cc37eb08a9bf3078138a5009fe363c23c384de767408939"
+        },
+        "symbolGElement": {
+          "name": "native-simple-panel-2447721-2246.bin",
+          "sha256": "47a6b9f20120ff42a56ce2d6d0200bcf4d389c7f3b6012833eae040c91c67bd7"
+        },
+        "hostGElement": {
+          "name": "native-simple-panel-1514621-2246.bin",
+          "sha256": "cf11067e02810ea114ac81bfa5e98b4aa7b245e066103ee70dd6fd6cec3e0a33"
+        }
+      }
+    }
+  ]
+}

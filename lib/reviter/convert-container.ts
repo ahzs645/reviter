@@ -135,6 +135,8 @@ export type OpenedRevitContainer = {
   transmissionData: RevitTransmissionData | undefined;
   coverage: CoverageSummary;
   schema: SchemaSummary | undefined;
+  /** Original strictly parsed schema bytes, retained only for source fact collectors. */
+  nativeSourceSchemaBytes?: Uint8Array;
   /** How this file's class indices map onto the 2027 numbering. */
   classTagTranslation: ClassTagTranslation;
   partitionNames: PartitionName[];
@@ -259,10 +261,12 @@ export function openRevitContainer(
   // Each class's field names go to the class translation only: decoders
   // ask it for a class's field order, and the summary stays the size it was.
   let fieldNamesByClass: Map<string, string[]> | undefined;
+  let nativeSourceSchemaBytes: Uint8Array | undefined;
   let elementIdBytes: ElementIdBytes | null = null;
   const schema = readStreamSummary(cfb, /\/Formats\/Latest$/i, (data) => {
     const strict = readSchema(data);
     if (!strict.ok) return summariseSchema(data);
+    nativeSourceSchemaBytes = Uint8Array.from(data);
     elementIdBytes = elementIdBytesFromSchema(strict.schema.classes);
     fieldNamesByClass = new Map(strict.schema.classes.map((entry) => [
       entry.name,
@@ -345,6 +349,7 @@ export function openRevitContainer(
     transmissionData,
     coverage,
     schema,
+    nativeSourceSchemaBytes,
     classTagTranslation,
     partitionNames,
     contentDocuments,

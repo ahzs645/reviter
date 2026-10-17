@@ -5,7 +5,7 @@ import {
 import { narrowElementIds } from "./element-id-width.ts";
 import { MAX_SCANNED_OBJECT_BYTES } from "./element-objects.ts";
 import { readsElementRecordLayout } from "./revit-class-tags.ts";
-import { createSplitFrameStream } from "./split-frame-stream.ts";
+import { createSplitFrameStream, type StreamedFrame } from "./split-frame-stream.ts";
 
 const MIN_FRAME_BYTES = 40;
 const DEFAULT_MAX_FRAME_BYTES = 320 * 1024 * 1024;
@@ -81,17 +81,29 @@ const MAX_SPLIT_GELEMENT_BYTES = 8 * 1024 * 1024;
 
 export type Revit2027SplitGElementCollector = {
   pushPage(page: Uint8Array): readonly Uint8Array[];
+  pushPageFrames(page: Uint8Array): readonly StreamedFrame[];
   finishPartition(): void;
+  readonly largeWholeFrameDiagnostics: Readonly<{
+    admitted: number; rejectedChecksum: number; skippedChecksumBudget: number; checksumBytes: number; checksumLimitPerPartition: number;
+  }>;
 };
 
-/** Reassemble the `GElement` frames that cross a page boundary. */
+/** Reassemble crossing GElements and checksum-verified complete large frames. */
 export function createRevit2027SplitGElementCollector(
   release: number | null | undefined,
+  maxWholeChecksumBytesPerPartition = 128 * 1024 * 1024,
 ): Revit2027SplitGElementCollector {
+  const checksumLimitPerPartition = Number.isSafeInteger(maxWholeChecksumBytesPerPartition) && maxWholeChecksumBytesPerPartition >= 0
+    ? Math.min(maxWholeChecksumBytesPerPartition, 128 * 1024 * 1024) : 128 * 1024 * 1024;
+  const diagnostics = { admitted: 0, rejectedChecksum: 0, skippedChecksumBudget: 0, checksumBytes: 0, checksumLimitPerPartition };
+  let partitionChecksumBytes = 0;
   const stream = createSplitFrameStream({
     markers: [GELEMENT_CLASS],
     minObjectLength: MIN_FRAME_BYTES,
     maxFrameBytes: MAX_SPLIT_GELEMENT_BYTES,
+    // The wide restated owner ends after byte 29; class + type ends after
+    // byte 21. Preserve that extra tail until the next page can supply it.
+    minimumHeaderBytes: header => header === 12 ? 18 : 30,
     // The frame restates its element id at +26, as every GElement does: its
     // `GInfo.m_tag`. Where ids are 32-bit the tag leads a 16-byte `GInfo`
     // right after the class, at +14.
@@ -102,13 +114,39 @@ export function createRevit2027SplitGElementCollector(
         view.getUint32(restated, true) === view.getUint32(offset, true)
       );
     },
-    crossingOnly: true,
-  });
-  return {
-    pushPage(page: Uint8Array): readonly Uint8Array[] {
-      if (!readsElementRecordLayout(release)) return [];
-      return stream.push(page).map((frame) => frame.data);
+    // The broad page scan deliberately stops at 65,535 bytes. A larger frame
+    // can still fit on a 128-KiB inflated page and must not fall between the
+    // ordinary scanner and a crossing-only reassembler.
+    minWholeObjectLength: MAX_SCANNED_OBJECT_BYTES + 1,
+    acceptWholeFrame: frame => {
+      const header = narrowElementIds() ? 12 : 16;
+      if (partitionChecksumBytes + frame.objectLength > checksumLimitPerPartition) {
+        diagnostics.skippedChecksumBudget++;
+        return false;
+      }
+      partitionChecksumBytes += frame.objectLength;
+      diagnostics.checksumBytes += frame.objectLength;
+      // Check a borrowed page view before copying the candidate. The frame's
+      // discriminator is Adler-32 over class+payload, ending before the echoed
+      // length. Block reduction keeps the integer sums exact and work linear.
+      let a = 1, b = 0;
+      const end = header + frame.objectLength;
+      for (let start = header; start < end; start += 5552) {
+        const blockEnd = Math.min(end, start + 5552);
+        for (let cursor = start; cursor < blockEnd; cursor++) { a += frame.data[cursor]!; b += a; }
+        a %= 65521; b %= 65521;
+      }
+      const expected = new DataView(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength).getUint32(header - 8, true);
+      if (((b * 65536 + a) >>> 0) !== expected) { diagnostics.rejectedChecksum++; return false; }
+      diagnostics.admitted++;
+      return true;
     },
-    finishPartition: () => stream.reset(),
+  });
+  const pushPageFrames = (page: Uint8Array): readonly StreamedFrame[] => readsElementRecordLayout(release) ? stream.push(page) : [];
+  return {
+    get largeWholeFrameDiagnostics() { return diagnostics; },
+    pushPageFrames,
+    pushPage: page => pushPageFrames(page).map(frame => frame.data),
+    finishPartition: () => { stream.reset(); partitionChecksumBytes = 0; },
   };
 }

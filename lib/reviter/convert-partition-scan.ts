@@ -31,6 +31,7 @@
  * it for a snapshot once it knows which shapes were placed — so it is returned
  * rather than snapshotted here.
  */
+import { createNativeDrawingReferenceSourceCollector, type NativeDrawingReferenceSourceCollector } from "./native-drawing-reference-source.ts";
 import { detectDuplicatedBoundsRecords } from "./bounds-records.ts";
 import { persistedCadFileNames as finalisePersistedCadFileNames, scanPersistedDwgFileNames } from "./cad-files.ts";
 import {
@@ -187,12 +188,16 @@ export type PartitionScanInput = {
   /** Feet per stored unit, which differs for a family file. */
   segmentScale: SegmentScale;
   maxNativeMeshBytes: number | undefined;
+  nativeSourceSchemaBytes?: Uint8Array;
   onProgress?: (update: ProgressUpdate) => void;
   /** The loaded families' documents, from `Global/ContentDocuments`. */
   contentDocuments?: ReadonlyMap<string, ContentDocument>;
 };
 
 export type PartitionScan = {
+  largeWholeGElementFrames: ReturnType<typeof createRevit2027SplitGElementCollector>["largeWholeFrameDiagnostics"] & {
+    nativeCompilation: ReturnType<typeof createRevit2027NativeMeshCollector>["deferredWholeFrameDiagnostics"];
+  };
   /** Diagnostic coordinate segments, collected only when no record decoder ran. */
   candidates: Segment[];
   categoryTokens: CategoryToken[];
@@ -201,6 +206,8 @@ export type PartitionScan = {
    * owning view, stated by the element's own record (see `element-headers.ts`).
    */
   elementHeaders: Map<number, ElementHeader>;
+  /** All exact original occurrences, so material review can reject conflicts. */
+  originalElementHeaders: ElementHeader[];
   /** Each `Level` element's own name and elevation, keyed by level id. */
   levelDefinitions: Map<number, LevelDefinition>;
   /** Graphics styles in the "Light Source" subcategory, which Revit hides in model views. */
@@ -259,6 +266,7 @@ export type PartitionScan = {
   wallThicknessByType: Map<number, number>;
   /** Kept live: the display scene asks it for a snapshot once placements are known. */
   nativeMeshCollector: Revit2027NativeMeshCollector;
+  nativeDrawingReferenceSourceCollector: NativeDrawingReferenceSourceCollector;
 };
 
 export function scanPartitions(input: PartitionScanInput): PartitionScan {
@@ -269,9 +277,11 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     maxSegments,
     segmentScale,
     maxNativeMeshBytes,
+    nativeSourceSchemaBytes,
     onProgress,
     contentDocuments,
   } = input;
+  const nativeDrawingReferenceSourceCollector = createNativeDrawingReferenceSourceCollector(decoderPlan.revitVersion, nativeSourceSchemaBytes);
   const contentLookup = contentDocumentLookup(contentDocuments ?? new Map());
   const nativeMeshCollector = createRevit2027NativeMeshCollector(
     decoderPlan.revitVersion,
@@ -308,20 +318,12 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       },
       finishPartition: () => splitAlternateFrameCollector.finishPartition(),
     },
-    {
-      // Geometry frames the page scan saw only in part.
-      pushPage: (page) => {
-        for (const frame of splitGElementCollector.pushPage(page)) {
-          nativeMeshCollector.scanSplitGElementFrame(frame);
-        }
-      },
-      finishPartition: () => splitGElementCollector.finishPartition(),
-    },
     stairsRunCollector,
   ];
   const candidates: Segment[] = [];
   const categoryTokens: CategoryToken[] = [];
   const elementHeaders = new Map<number, ElementHeader>();
+  const originalElementHeaders: ElementHeader[] = [];
   const levelDefinitions = new Map<number, LevelDefinition>();
   const lightSourceStyleIds = new Set<number>();
   const familyDocuments = new Map<number, ContentDocument>();
@@ -423,6 +425,14 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       const pageFrames = decoderPlan.elementBoundsDecoder
         ? indexPageFrames(inflated)
         : null;
+      // Complete geometry omitted by the broad page scanner: crossing frames
+      // and checksum-verified same-page frames above its 64-KiB size ceiling.
+      // Original semantic/drawing collectors retain their independent inputs.
+      for (const frame of splitGElementCollector.pushPageFrames(inflated)) {
+        if (frame.crossedPage) nativeMeshCollector.scanSplitGElementFrame(frame.data);
+        else nativeMeshCollector.deferWholeGElementFrame(frame.data);
+      }
+      nativeDrawingReferenceSourceCollector.scanPage(inflated, pageFrames?.frames ?? []);
       if (
         pageFrames &&
         (pageFrames.hasMarker(REVIT_2027_FAMILY_INSTANCE_CLASS) ||
@@ -630,6 +640,7 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
       if (readsElementRecordLayout(decoderPlan.revitVersion)) {
         for (const header of scanElementHeaders(inflated)) {
+          originalElementHeaders.push(header);
           if (!elementHeaders.has(header.elementId)) elementHeaders.set(header.elementId, header);
         }
         for (const entry of scanNameEntries(inflated)) rawNameEntries.push(entry);
@@ -754,7 +765,10 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
       }
     }
     for (const consumer of pageConsumers) consumer.finishPartition();
+    splitGElementCollector.finishPartition();
+    nativeDrawingReferenceSourceCollector.finishPartition();
   }
+  nativeMeshCollector.finishDeferredWholeGElementFrames();
   const stairsRuns = stairsRunCollector.snapshot();
   const stairsAggregates = stairsRunCollector.stairsSnapshot();
   const persistedCadFileNames = finalisePersistedCadFileNames(
@@ -772,9 +786,12 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     ]),
   );
   return {
+    largeWholeGElementFrames: { ...splitGElementCollector.largeWholeFrameDiagnostics,
+      nativeCompilation: { ...nativeMeshCollector.deferredWholeFrameDiagnostics } },
     candidates,
     categoryTokens,
     elementHeaders,
+    originalElementHeaders,
     levelDefinitions,
     lightSourceStyleIds,
     familyDocuments,
@@ -819,5 +836,6 @@ export function scanPartitions(input: PartitionScanInput): PartitionScan {
     nativeCompoundStructureDefinitions,
     wallThicknessByType,
     nativeMeshCollector,
+    nativeDrawingReferenceSourceCollector,
   };
 }

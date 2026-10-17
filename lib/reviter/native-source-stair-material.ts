@@ -171,7 +171,8 @@ export function validateNativeSourceStairMaterials(
       fail();
   }
 }
-export function nativeSourceStairPlacementHash(value: unknown, derivedFrameReturns?: unknown, provisionalCornerSeals?: unknown): string {
+export function nativeSourceStairPlacementHash(value?: unknown, derivedFrameReturns?: unknown, provisionalCornerSeals?: unknown, drawingReferences?: unknown): string {
+  if (drawingReferences !== undefined) return bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(["reviewed-drawing-references-v1", nativeSourceStairPlacementHash(value, derivedFrameReturns, provisionalCornerSeals), drawingReferences]))));
   const oldBinding=derivedFrameReturns===undefined ? (nativeWallPositionMaterialBinding(value as NativeWallPositionRepairs | undefined)??null) : ["native-derived-frame-returns-v1",nativeWallPositionMaterialBinding(value as NativeWallPositionRepairs | undefined)??null,derivedFrameReturns];
   if(provisionalCornerSeals!==undefined)return bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(["native-provisional-corner-seals-v1",oldBinding,provisionalCornerSeals]))));
   return bytesToHex(
@@ -223,6 +224,7 @@ export function validNativeSourceStairMaterial(
   derivedFrameReturns?: unknown,
   provisionalCornerSeals?: unknown,
   exactNative = false,
+  drawingReferences?: unknown,
 ): boolean {
   try {
     if (
@@ -233,7 +235,7 @@ export function validNativeSourceStairMaterial(
       value.widthFeet !== 2 ||
       !/^[a-f0-9]{64}$/.test(value.evidenceSha256) ||
       value.sourceWallPositionRepairsSha256 !==
-        nativeSourceStairPlacementHash(wallPositionRepairs, derivedFrameReturns, provisionalCornerSeals) ||
+        nativeSourceStairPlacementHash(wallPositionRepairs, derivedFrameReturns, provisionalCornerSeals, drawingReferences) ||
       value.geometrySha256 !== nativeSourceStairMaterialHash(value) ||
       JSON.stringify(value.pointsFeet) !== JSON.stringify(points) ||
       !Array.isArray(value.sourceElementIds) ||

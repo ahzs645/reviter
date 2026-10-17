@@ -1,3 +1,4 @@
+import { reviewedDrawingReferenceElementIds } from "./reviewed-drawing-reference-source.ts";
 import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -9,16 +10,65 @@ import { validNativeSourceStairBinding } from "./native-source-stair.ts";
 import type { ReportedBuildingTransition } from "./building-transitions.ts";
 import type { IndoorDataset, IndoorEdge, IndoorNode } from "./indoor-contract.ts";
 import type { ConvertResult } from "./types.ts";
+import { NON_MODEL_CATEGORY_IDS } from "./model-elements.ts";
+import { nativeStairLandings } from "./indoor-stair-landings.ts";
+import { nativeSourceInstantiatedElementIds, nativeSourceNonPhysicalElementIds, nativeSourcePlanarComponentEnvelopes, nativeStairMaterialContainerCoverage } from "./native-material-source.ts";
 
 type P2 = [number, number];
 type P3 = [number, number, number];
-/** Elements that never carry a physical body in a walking band: sketch/boundary,
- * centre-line and rail-path helper lines. Everything else is physical. */
-const HELPER_CATEGORIES = new Set([-2000067, -2000530, -2000954]);
 const values = (a: unknown): number[] =>
   Array.isArray(a) ? a : ArrayBuffer.isView(a) ? Array.from(a as unknown as ArrayLike<number>) : a && typeof a === "object" ? Object.values(a as Record<string, number>) : [];
 const hash = (v: unknown) => bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(v))));
 const ringArea = (r: P2[]) => Math.abs(r.reduce((s, p, i) => { const q = r[(i + 1) % r.length]!; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+
+/** A native finish can belong to the walking body only through its original
+ * ownership declaration and a compatible original run/landing extent. A nearby
+ * finish or matching bounds alone cannot establish ownership. */
+export function nativeStairOwnedBodyElementIds(
+  model: ConvertResult,
+  receipt: { nativeStairId: number; nativeRunIds: number[]; landings?: NativeSourceStairBody["landings"] },
+  own: readonly number[],
+): number[] {
+  const elements = new Map(model.elementBounds.map((r) => [r.elementId, r]));
+  const declarations = new Map<number, Set<number | null>>();
+  for (const r of model.elementOwnership?.records ?? []) {
+    const previous = declarations.get(r.elementId) ?? new Set<number | null>();
+    previous.add(r.owningElementId);
+    declarations.set(r.elementId, previous);
+  }
+  const original = own.filter((id) => elements.get(id)?.categoryId !== -2000921);
+  if (receipt.landings?.length) {
+    const native = nativeStairLandings(model).get(receipt.nativeStairId) ?? [];
+    const sameRing = (a: P2[], b: P2[]) => {
+      const open = (r: P2[]) => r.length > 1 && r[0]![0] === r.at(-1)![0] && r[0]![1] === r.at(-1)![1] ? r.slice(0, -1) : r;
+      a = open(a); b = open(b);
+      return a.length === b.length && a.length > 0 && b.some((_, start) => [1, -1].some((direction) =>
+        a.every((point, i) => { const q = b[(start + direction * i + b.length) % b.length]!; return point[0] === q[0] && point[1] === q[1]; }),
+      ));
+    };
+    for (const landing of receipt.landings) {
+      const declared = declarations.get(landing.nativeElementId);
+      if (!declared || declared.size !== 1 || !declared.has(receipt.nativeStairId)) continue;
+      if (native.some((n) => n.nativeElementId === landing.nativeElementId && n.elevationFeet === landing.elevationFeet &&
+        (landing.thicknessFeet === undefined || n.thicknessFeet === landing.thicknessFeet) &&
+        n.ringsFeet.length === landing.ringsFeet.length && n.ringsFeet.every((ring, i) => sameRing(ring, landing.ringsFeet[i]!)))) original.push(landing.nativeElementId);
+    }
+  }
+  const owners = new Set([receipt.nativeStairId, ...receipt.nativeRunIds, ...original]);
+  const physicalBodies = [...new Set([...receipt.nativeRunIds, ...original])]
+    .map((id) => elements.get(id))
+    .filter((r) => r?.categoryId === -2000919 || r?.categoryId === -2000920);
+  const finishes = model.elementBounds.filter((r) => {
+    if (r.categoryId !== -2000921) return false;
+    const declared = declarations.get(r.elementId);
+    if (!declared || declared.size !== 1 || !owners.has([...declared][0]!)) return false;
+    return physicalBodies.some((body) => (["x", "y", "z"] as const).every((axis) =>
+      r.boundsFeet.min[axis] >= body!.boundsFeet.min[axis] &&
+      r.boundsFeet.max[axis] <= body!.boundsFeet.max[axis],
+    ));
+  });
+  return [...new Set([...original, ...finishes.map((r) => r.elementId)])];
+}
 
 /** Original native mesh triangles of the given elements, in model feet. */
 function elementTriangles(model: ConvertResult, ids: ReadonlySet<number>): Map<number, P3[][]> {
@@ -52,24 +102,58 @@ function elementTriangles(model: ConvertResult, ids: ReadonlySet<number>): Map<n
 export function prepareNativeLocalStairMaterial(
   model: ConvertResult,
   data: IndoorDataset,
-  receipt: { nativeStairId: number; nativeRunIds: number[]; nativeFloorElementIds: [number, number]; pointsFeet: P3[] },
+  receipt: { nativeStairId: number; nativeRunIds: number[]; nativeFloorElementIds: [number, number]; pointsFeet: P3[]; landings?: NativeSourceStairBody["landings"] },
   own: readonly number[],
 ): NativeSourceStairMaterial {
   const points = receipt.pointsFeet;
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]), zs = points.map((p) => p[2]);
   const box = [Math.min(...xs) - 1.5, Math.min(...ys) - 1.5, Math.max(...xs) + 1.5, Math.max(...ys) + 1.5];
   const low = Math.min(...zs), high = Math.max(...zs) + 0.1;
-  const exclude = new Set([receipt.nativeStairId, ...receipt.nativeRunIds, ...receipt.nativeFloorElementIds, ...own]);
-  const census = model.elementBounds.filter((r) =>
-    !exclude.has(r.elementId) && r.elementId > 0 && !HELPER_CATEGORIES.has(r.categoryId ?? 0) &&
-    r.boundsFeet.max.x >= box[0]! && r.boundsFeet.min.x <= box[2]! && r.boundsFeet.max.y >= box[1]! && r.boundsFeet.min.y <= box[3]! &&
-    r.boundsFeet.max.z > low + 0.01 && r.boundsFeet.min.z < high);
+  const exclude = new Set([receipt.nativeStairId, ...receipt.nativeRunIds, ...receipt.nativeFloorElementIds, ...nativeStairOwnedBodyElementIds(model, receipt, own)]);
+  const sourceNonPhysical = nativeSourceNonPhysicalElementIds(model, data.source.modelSha256);
+  const reviewedReferences = reviewedDrawingReferenceElementIds(model, data.reviewedDrawingReferences, data.source.modelSha256);
+  for (const id of reviewedReferences) sourceNonPhysical.add(id);
+  const sourceInstantiated = nativeSourceInstantiatedElementIds(model, data.source.modelSha256);
+  const componentEnvelopes = nativeSourcePlanarComponentEnvelopes(model, data.source.modelSha256);
+  const broadBounds = (r: ConvertResult["elementBounds"][number]) => {
+    const components = componentEnvelopes.get(r.elementId);
+    if (!components) return r.boundsFeet;
+    const boxes = [r.boundsFeet, ...components];
+    return { min: { x: Math.min(...boxes.map((b) => b.min.x)), y: Math.min(...boxes.map((b) => b.min.y)), z: Math.min(...boxes.map((b) => b.min.z)) },
+      max: { x: Math.max(...boxes.map((b) => b.max.x)), y: Math.max(...boxes.map((b) => b.max.y)), z: Math.max(...boxes.map((b) => b.max.z)) } };
+  };
+  const spatialCensus = model.elementBounds.filter((r) =>
+    !exclude.has(r.elementId) && r.elementId > 0 && (!NON_MODEL_CATEGORY_IDS.has(r.categoryId ?? 0) || sourceInstantiated.has(r.elementId)) &&
+    broadBounds(r).max.x >= box[0]! && broadBounds(r).min.x <= box[2]! && broadBounds(r).max.y >= box[1]! && broadBounds(r).min.y <= box[3]! &&
+    broadBounds(r).max.z > low + 0.01 && broadBounds(r).min.z < high);
+  const decomposedContainers = new Map<number, number[]>();
+  const requiredCarrierBounds = new Map<number, { definitionElementId: number; boundsFeet: ConvertResult["elementBounds"][number]["boundsFeet"]; sourceFrameSha256: string }>();
+  for (const record of spatialCensus) {
+    if (record.categoryId !== -2000120 || sourceNonPhysical.has(record.elementId)) continue;
+    const coverage = nativeStairMaterialContainerCoverage(model, record.elementId, data.source.modelSha256);
+    // The helper proves a complete original identity-instance container and
+    // usable bounds for every physical child. Each child remains independently
+    // subject to this global spatial census; none inherits the parent's omit.
+    if (!coverage) continue;
+    // A missing definition is represented by its actual complete original
+    // instance box. An excluded/filtered carrier reaching this path cannot
+    // disappear through the parent's delegation.
+    const disjoint = (b: ConvertResult["elementBounds"][number]["boundsFeet"]) =>
+      b.max.x < box[0]! || b.min.x > box[2]! || b.max.y < box[1]! || b.min.y > box[3]! || b.max.z <= low + 0.01 || b.min.z >= high;
+    if (coverage.requiredCarrierBounds.some((p) => !disjoint(p.boundsFeet) && !spatialCensus.some((r) => r.elementId === p.carrierElementId))) continue;
+    decomposedContainers.set(record.elementId, coverage.childElementIds);
+    for (const p of coverage.requiredCarrierBounds) requiredCarrierBounds.set(p.carrierElementId, p);
+  }
+  // A retained envelope carrier can never itself be delegated away by a
+  // different wrapper decision in the same census.
+  for (const carrier of requiredCarrierBounds.keys()) decomposedContainers.delete(carrier);
+  const census = spatialCensus.filter((r) => !sourceNonPhysical.has(r.elementId) && !decomposedContainers.has(r.elementId));
   const triangles = elementTriangles(model, new Set(census.map((r) => r.elementId)));
   const footprint = new Map<number, P2[][][]>();
   for (const r of census) {
     const tris = triangles.get(r.elementId);
     let parts: P2[][][] = [];
-    if (tris?.length) {
+    if (tris?.length && !requiredCarrierBounds.has(r.elementId)) {
       const polys = tris.map((t) => t.map((q) => [q[0], q[1]] as P2)).filter((t) => ringArea(t) > 1e-9).map((t) => [[...t, t[0]!]] as pc.Polygon);
       parts = polys.length ? (pc.union(polys[0]!, ...polys.slice(1)) as P2[][][]) : [];
     }
@@ -82,16 +166,32 @@ export function prepareNativeLocalStairMaterial(
   const sourceElementIds = census.map((r) => r.elementId).sort((a, b) => a - b);
   const bands = points.slice(1).map((b, i) => {
     const a = points[i]!, lo = Math.min(a[2], b[2]), hi = Math.max(a[2], b[2]) + 0.1;
-    const sections = census
-      .filter((r) => r.boundsFeet.max.z > lo + 0.01 && r.boundsFeet.min.z < hi && footprint.has(r.elementId))
-      .map((r) => ({ nativeElementId: r.elementId, partsFeet: footprint.get(r.elementId)! }))
+    const active = census.filter((r) => broadBounds(r).max.z > lo + 0.01 && broadBounds(r).min.z < hi);
+    const partsAtBand = (id: number): P2[][][] | undefined => {
+      // Keep whole source boxes on the original required carrier path. A
+      // definition component never certifies its placed wrapper's branches.
+      const components = !requiredCarrierBounds.has(id) && componentEnvelopes.get(id);
+      if (!components) return footprint.get(id);
+      // Closed-band contact is retained. These are enclosing solid component
+      // boxes, not face-only clipping that would omit a column's interior.
+      return components.filter((b) => b.max.z >= lo && b.min.z <= hi).map((b) =>
+        [[[b.min.x, b.min.y], [b.max.x, b.min.y], [b.max.x, b.max.y], [b.min.x, b.max.y]]] as P2[][]);
+    };
+    const sections = active
+      .map((r) => ({ nativeElementId: r.elementId, partsFeet: partsAtBand(r.elementId) }))
+      .filter((section): section is { nativeElementId: number; partsFeet: P2[][][] } => !!section.partsFeet?.length)
       .sort((x, y) => x.nativeElementId - y.nativeElementId);
-    return { segmentIndex: i, minimumElevationFeet: lo, maximumElevationFeet: hi, unclassifiedSourceElementIds: [] as number[], sections };
+    return { segmentIndex: i, minimumElevationFeet: lo, maximumElevationFeet: hi, unclassifiedSourceElementIds: active.filter((r) => partsAtBand(r.elementId) === undefined).map((r) => r.elementId), sections };
   });
   const value: Omit<NativeSourceStairMaterial, "geometrySha256"> = {
     version: 1, sourceModelSha256: data.source.modelSha256,
-    evidenceSha256: hash(["native-local-stair-material-census-v1", sourceElementIds, [...exclude].sort((a, b) => a - b), box, low, high]),
-    sourceWallPositionRepairsSha256: nativeSourceStairPlacementHash(data.nativeWallPositionRepairs, data.nativeDerivedFrameReturns, data.nativeProvisionalCornerSeals),
+    evidenceSha256: hash(["native-local-stair-material-census-v1", ...(data.reviewedDrawingReferences ? [["reviewed-drawing-references-v1", data.reviewedDrawingReferences.geometrySha256]] : []), sourceElementIds, [...exclude].sort((a, b) => a - b), box, low, high,
+      ...(spatialCensus.some((r) => sourceNonPhysical.has(r.elementId)) || decomposedContainers.size
+        ? [model.nativeMaterialSource?.geometrySha256 ?? null, [...decomposedContainers].sort(([a], [b]) => a - b)] : []),
+      ...(requiredCarrierBounds.size ? [["original-foreign-instance-envelopes-v1", [...requiredCarrierBounds].sort(([a], [b]) => a - b)]] : []),
+      ...(census.some((r) => componentEnvelopes.has(r.elementId)) ? [["original-planar-component-envelopes-v1", model.nativeMaterialSource?.geometrySha256]] : []),
+    ]),
+    sourceWallPositionRepairsSha256: nativeSourceStairPlacementHash(data.nativeWallPositionRepairs, data.nativeDerivedFrameReturns, data.nativeProvisionalCornerSeals, data.reviewedDrawingReferences),
     nativeStairId: receipt.nativeStairId, widthFeet: 2, pointsFeet: structuredClone(points), sourceElementIds, bands,
   };
   return { ...value, geometrySha256: nativeSourceStairMaterialHash(value) };
@@ -141,13 +241,7 @@ export function qualifyNativeLocalTransitions(
     if (!receipt) { fail(prepared.diagnostics.map((d) => d.reason).join("; ") || "no receipt"); continue; }
     if ([...receipt.nativeFloorElementIds].sort((a, b) => a - b).join() !== [...transition.floorElementIds].sort((a, b) => a - b).join()) { fail(`receipt lands on slabs ${receipt.nativeFloorElementIds.join("/")} but the recipe names ${transition.floorElementIds.join("/")}`); continue; }
     const assembly = model.nativeStairAssemblies?.find((a) => a.stairElementId === transition.nativeStairId);
-    const own = assembly ? [...assembly.runAndLandingIds] : [];
-    // A run's Treads/Risers finish element is part of its walking body: hosted on
-    // the run, or occupying exactly the run's own bounds.
-    const runs = own.map((id) => elements.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
-    const within = (r: (typeof runs)[number], b: (typeof runs)[number]) => (["x", "y", "z"] as const).every((k) => r.boundsFeet.min[k] >= b.boundsFeet.min[k] - 0.05 && r.boundsFeet.max[k] <= b.boundsFeet.max[k] + 0.05);
-    for (const r of model.elementBounds)
-      if (r.categoryId === -2000921 && ((model.nativeHostRelations ?? []).some((h) => h.elementId === r.elementId && own.includes(h.hostId)) || runs.some((run) => within(r, run)))) own.push(r.elementId);
+    const own = nativeStairOwnedBodyElementIds(model, receipt, assembly?.runAndLandingIds ?? []);
     const foreignMaterial = prepareNativeLocalStairMaterial(model, dataset, receipt, own);
     const collisions = foreignMaterial.bands.flatMap((band) => band.sections.filter((section) => {
       const a = receipt.pointsFeet[band.segmentIndex]!, b = receipt.pointsFeet[band.segmentIndex + 1]!, d = DMath.hypot(b[0] - a[0], b[1] - a[1]);

@@ -1,3 +1,4 @@
+import type { NativeDrawingReferenceSource } from "./native-drawing-reference-source.ts";
 import type { ElementParameter } from "./element-parameters.ts";
 import type { LimitCensusEntry } from "./limit-census.ts";
 import type { SchemaSummary } from "./schema.ts";
@@ -26,6 +27,7 @@ import type {
 import type { NativeHostRelation } from "./host-relations.ts";
 import type { NativeAssociatedLevelRelation } from "./level-relations.ts";
 import type { PersistedCadFileName } from "./cad-files.ts";
+import type { NativeMaterialSource } from "./native-material-source.ts";
 
 export type { SchemaClass, SchemaReference, SchemaSummary } from "./schema.ts";
 export type { ElementParameter, ElementParameterTable } from "./element-parameters.ts";
@@ -451,6 +453,10 @@ export type LevelBand = {
 };
 
 export type ConvertStats = {
+  /** Newly admitted >64-KiB whole-page GElement frames; final mesh admission
+   * remains subject to complete FIFO, face coverage, storage and bounds gates. */
+  largeWholeGElementFrames?: { admitted: number; rejectedChecksum: number; skippedChecksumBudget: number; checksumBytes: number; checksumLimitPerPartition: number;
+    nativeCompilation: { queued: number; replayed: number; existingOwnerPreserved: number; supersededWholeFrames: number; skippedBufferBudget: number; skippedDefinitionBudget: number; peakBufferedBytes: number; bufferLimitBytes: number } };
   streamCount: number;
   partitionStreams: number;
   gzipChunks: number;
@@ -786,6 +792,11 @@ export type ConvertResult = {
   elementIndex?: RvtElementIndex;
   /** Persisted, browser-safe element ownership decoded from `Global/ElemTable`. */
   elementOwnership?: ElementOwnershipDecode;
+  /** Original semantic headers and complete identity-instance GRep wrappers,
+   * bound to the original model bytes; missing source evidence stays unknown. */
+  nativeMaterialSource?: NativeMaterialSource;
+  /** Original import identity/name facts; drawing-reference semantics require review. */
+  nativeDrawingReferenceSource?: NativeDrawingReferenceSource;
   /** Native Revit element identities decoded from document and element history. */
   nativeIdentity?: NativeIdentityDecode;
   /** Persisted material identities/names and optional packed render colour. */

@@ -1,3 +1,5 @@
+import { validateNativeDoorBoundarySourceReviewEvidence, type NativeDoorBoundarySourceReviewEvidence } from "./native-door-boundary-source-review-evidence.ts";
+import { validateReviewedDrawingReferences, type ReviewedDrawingReferences } from "./reviewed-drawing-references.ts";
 import * as DMath from "./deterministic-math.ts";
 import {validateNativeProvisionalCornerSeals,type NativeProvisionalCornerSeals} from "./native-provisional-corner-seals.ts";
 import {validateNativeDerivedFrameReturns,verifyNativeDerivedFrameReturns,type NativeDerivedFrameReturns} from "./native-derived-frame-returns.ts";
@@ -60,6 +62,7 @@ export type DirectoryRoom = {
   [key: string]: unknown;
 };
 export type RoomDirectoryData = {
+  reviewedDrawingReferences?: ReviewedDrawingReferences;
   format: "reviter-room-annotations";
   version: 1;
   coordinateSystem: "revit-model-feet";
@@ -76,6 +79,7 @@ export type RoomDirectoryData = {
   visitorMetadata?: VisitorMetadata;
   reviewedDoorApertures?: ReviewedDoorApertures;
   nativeDoorBoundaryClosures?: NativeDoorBoundaryClosures;
+  nativeDoorBoundaryClosureReviewHistory?: NativeDoorBoundarySourceReviewEvidence[];
   nativeSelectionContactRepairs?: NativeSelectionContactRepairs;
   nativeWallPositionRepairs?: NativeWallPositionRepairs;
   selectionDoorThresholds?: SelectionDoorThresholds;
@@ -218,9 +222,11 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
   validateNativeProvisionalCornerSeals(data.nativeProvisionalCornerSeals);
   validateNativeDerivedFrameReturns(data.nativeDerivedFrameReturns);
   validateNativeSourceStairMaterials(data.nativeSourceStairMaterials);
+  validateReviewedDrawingReferences(data.reviewedDrawingReferences);
   validateNativeIndoorEnvelopes(data.nativeIndoorEnvelopes);
   validateIndoorExclusions(data.indoorExclusions);
   validateNativeDoorBoundaryClosures(data.nativeDoorBoundaryClosures);
+  validateNativeDoorBoundarySourceReviewEvidence(data.nativeDoorBoundaryClosureReviewHistory, data.nativeDoorBoundaryClosures?.sourceModelSha256);
   validateNativeSelectionContactRepairs(data.nativeSelectionContactRepairs);
   if(data.nativeWallPositionRepairs)validateNativeWallPositionRepairs(data.nativeWallPositionRepairs);
   validateSelectionDoorThresholds(data.selectionDoorThresholds);

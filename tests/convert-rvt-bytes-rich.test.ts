@@ -124,6 +124,7 @@ test("the enriched counters are what the fixture's populations say they are", ()
   const counters: Record<string, unknown> = { ...result.stats };
   delete counters.durationMs;
   assert.deepEqual(counters, {
+    largeWholeGElementFrames: { admitted: 0, rejectedChecksum: 0, skippedChecksumBudget: 0, checksumBytes: 0, checksumLimitPerPartition: 128 * 1024 * 1024, nativeCompilation: { queued: 0, replayed: 0, existingOwnerPreserved: 0, supersededWholeFrames: 0, skippedBufferBudget: 0, skippedDefinitionBudget: 0, peakBufferedBytes: 0, bufferLimitBytes: 64 * 1024 * 1024 } },
     // 8, not 9: the CFB root storage reports the size of the mini-stream it
     // holds, but it is a storage rather than a stream and is no longer counted.
     streamCount: 8,

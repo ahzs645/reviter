@@ -30,6 +30,7 @@ function recoverRegisteredOpenConnections(
   rooms: readonly DirectoryRoom[], candidateKeys: ReadonlySet<string>,
   reference: BoundaryReference | undefined, geometry: ArchitecturalPlanGeometry,
   circulationPair?:readonly [string,string],
+  physicalOpening?: (passage: OpenPassage) => boolean,
 ): RecoveredOpenFront[] {
   if (!reference || !geometry.floors.length) return [];
   const result: RecoveredOpenFront[] = [], roomBounds = new Map(rooms.map(r => [r.key, bounds(r.polygonFeet)]));
@@ -85,6 +86,11 @@ function recoverRegisteredOpenConnections(
           if (!uncovered.length) break;
         }
         if (area(uncovered) > 1e-8) continue;
+        // Native headroom/material checks can reject this placement while a
+        // different measured point on the same original seam is still clear.
+        // Keep searching source candidates rather than retaining an invalid
+        // first seed or moving its graph terminal after compilation.
+        if (physicalOpening && !physicalOpening(passage)) continue;
         result.push({ ...passage, proof: { widthFeet: 2, boundaryGapFeet: candidate.gap, floorCoveredSquareFeet: area(footprint), registrationErrorFeet: section.registrationErrorFeet } });
         break;
       } catch {
@@ -106,7 +112,7 @@ export function recoverRegisteredOpenFronts(rooms:readonly DirectoryRoom[],candi
  * two-foot floor coverage and saved registration proofs are unchanged. This
  * cannot bridge different storeys, stair flights, buildings or drawing sections.
  */
-export function recoverRegisteredCirculationSeams(rooms:readonly DirectoryRoom[],reference:BoundaryReference|undefined,geometry:ArchitecturalPlanGeometry,floorSupport:ReadonlyMap<string,{elevationFeet:number;floors:ArchitecturalPlanGeometry["floors"]}>):RecoveredOpenFront[]{
+export function recoverRegisteredCirculationSeams(rooms:readonly DirectoryRoom[],reference:BoundaryReference|undefined,geometry:ArchitecturalPlanGeometry,floorSupport:ReadonlyMap<string,{elevationFeet:number;floors:ArchitecturalPlanGeometry["floors"]}>,physicalOpening?: (passage: OpenPassage) => boolean):RecoveredOpenFront[]{
  if(!reference)return [];
  const halls=rooms.filter(r=>isWalkable(r)&&isPubliclyAccessible(r)&&isPlanarCirculation(r));
  const result:RecoveredOpenFront[]=[];
@@ -116,7 +122,7 @@ export function recoverRegisteredCirculationSeams(rooms:readonly DirectoryRoom[]
   if(!af||!bf||!Number.isFinite(af.elevationFeet)||!Number.isFinite(bf.elevationFeet)||Math.abs(af.elevationFeet-bf.elevationFeet)>.05||!af.floors.length||!bf.floors.length||!intersects(bounds(a.polygonFeet),bounds(b.polygonFeet),.75))continue;
   // Each side must independently support the complete bridge. Associated slab
   // unions and the other room's different-height floor cannot fill its holes.
-  const forward=recoverRegisteredOpenConnections(rooms,new Set([a.key]),reference,{...geometry,floors:af.floors},[a.key,b.key]);
+  const forward=recoverRegisteredOpenConnections(rooms,new Set([a.key]),reference,{...geometry,floors:af.floors},[a.key,b.key],physicalOpening);
   for(const front of forward){
    try{let uncovered:pc.MultiPolygon=[[front.footprint!]];for(const floor of bf.floors){uncovered=pc.difference(uncovered,floor);if(!uncovered.length)break;}if(area(uncovered)>1e-8)continue;}catch{continue;}
    result.push({...front,openingId:front.openingId.replace('recovered-front:','recovered-circulation-seam:')});

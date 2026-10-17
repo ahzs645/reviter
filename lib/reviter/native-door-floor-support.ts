@@ -1,5 +1,6 @@
 import * as DMath from "./deterministic-math.ts";
 import { nativeDoorClearOpening } from "./native-door-clear-opening";
+import { routingDoorApertures } from "./routing-apertures";
 import pc from "polygon-clipping";
 import { exactNativeDoorFloorDifference } from "./native-door-exact-overlay";
 import type { IndoorDataset } from "./indoor-contract";
@@ -105,7 +106,7 @@ function analyticalOuterContact(
 export function nativeDoorFloorBlockers(data: IndoorDataset): Set<string> {
   const blocked = new Set<string>();
   if (!data.nativeIndoorEnvelopes) return blocked;
-  const doors = new Map((data.doors ?? []).map((d) => [d.id, d]));
+  const doors = new Map(routingDoorApertures(data).map((d) => [d.id, d]));
   const support = data.walkingSupport;
   const floors = (
     support?.version === 1 &&
@@ -115,6 +116,7 @@ export function nativeDoorFloorBlockers(data: IndoorDataset): Set<string> {
   ).flatMap((f) =>
     (f.partsFeet ?? [f.ringsFeet]).map((rings) => ({
       z: f.elevationFeet,
+      nativeElementId: f.nativeElementId,
       rings,
       box: bounds(rings),
     })),
@@ -125,7 +127,9 @@ export function nativeDoorFloorBlockers(data: IndoorDataset): Set<string> {
       first = edge.pointsFeet[0],
       last = edge.pointsFeet.at(-1),
       ring = door
-        ? (nativeDoorClearOpening(data, door, first?.[2] ?? NaN) ??
+        ? ((door.nativeElementId === undefined
+            ? undefined
+            : nativeDoorClearOpening(data, door as NonNullable<IndoorDataset["doors"]>[number], first?.[2] ?? NaN)) ??
           door.footprintFeet)
         : undefined;
     if (
@@ -140,9 +144,32 @@ export function nativeDoorFloorBlockers(data: IndoorDataset): Set<string> {
       blocked.add(edge.id);
       continue;
     }
+    const subjects = [ring];
+    const sourceFloorIds = door.nativeElementId === undefined
+      ? new Set(edge.sourceDoorProof!.nativeFloorElementIds) : undefined;
+    if (sourceFloorIds) {
+      // The drawing compiler certifies a complete two-foot swept approach,
+      // not only the narrow threshold. Recheck that same original bridge so a
+      // real hole between either fixed terminal and its aperture stays a veto.
+      const width = edge.sourceDoorProof!.walkingStripWidthFeet;
+      for (let i = 1; i < edge.pointsFeet.length; i++) {
+        const a = edge.pointsFeet[i - 1]!, b = edge.pointsFeet[i]!;
+        const dx = b[0] - a[0], dy = b[1] - a[1], length = DMath.hypot(dx, dy);
+        if (!length || ![...a, ...b].every(Number.isFinite) ||
+            Math.abs(a[2] - first[2]) > 0.05 || Math.abs(b[2] - first[2]) > 0.05) {
+          blocked.add(edge.id); break;
+        }
+        const nx = -dy / length * width / 2, ny = dx / length * width / 2;
+        subjects.push([[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny],
+          [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]]);
+      }
+    }
+    for (const subject of subjects) {
+    const ring = subject;
     const box = bounds([ring]);
     const relevant = floors.filter(
-      (f) => Math.abs(f.z - first[2]) < 0.05 && overlaps(box, f.box),
+      (f) => Math.abs(f.z - first[2]) < 0.05 && overlaps(box, f.box) &&
+        (!sourceFloorIds || sourceFloorIds.has(f.nativeElementId)),
     );
     if (!relevant.length) {
       blocked.add(edge.id);
@@ -180,6 +207,7 @@ export function nativeDoorFloorBlockers(data: IndoorDataset): Set<string> {
         blocked.add(edge.id);
     } catch {
       blocked.add(edge.id);
+    }
     }
   }
   return blocked;

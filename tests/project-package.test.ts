@@ -90,7 +90,9 @@ test('exact native dataset allowance matches the authoring reader and retains ex
   // Central-directory probes avoid allocating a campus-sized fixture. An
   // allowed declaration reaches the missing-manifest check after preflight.
   await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 145 * 1024 * 1024)), /missing its Reviter project manifest/);
-  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 193 * 1024 * 1024)), /oversized/);
+  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 233060975)), /missing its Reviter project manifest/);
+  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 320 * 1024 * 1024)), /missing its Reviter project manifest/);
+  await assert.rejects(readProjectPackage(declared({'viewer/indoor.json': strToU8('{}')}, 321 * 1024 * 1024)), /oversized/);
   const models = Object.fromEntries(Array.from({length: 5}, (_, i) => [`model/part-${i}.rvt`, strToU8('{}')]));
   await assert.rejects(readProjectPackage(declared(models, 200 * 1024 * 1024)), /Expanded project exceeds/);
 });

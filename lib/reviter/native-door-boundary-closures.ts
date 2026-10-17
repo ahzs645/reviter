@@ -1,5 +1,6 @@
 import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
+import { simpleOriginalNativeColumnJambRing } from "./native-column-jamb-profile.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 
 type Point = [number, number];
@@ -14,6 +15,8 @@ export type NativeDoorBoundaryClosures = {
     id: string;
     levelId: number;
     nativeElementId: number;
+    /** Preserved source history. Only an absent state applies a display closure. */
+    reviewState?: "held" | "superseded";
     /** Closes an evidenced unmatched threshold for selection only; admits no route. */
     selectionBarrierOnly?: true;
     /** Explicit measured exception for a supported two-sided portal (0.15 to 0.3 ft); default 0.15 ft. */
@@ -25,7 +28,12 @@ export type NativeDoorBoundaryClosures = {
       roomKeys: string[];
     };
     footprintFeet: Point[];
-    jambEvidence: { nativeElementId: number; ringsFeet: Rings }[];
+    jambEvidence: {
+      nativeElementId: number;
+      ringsFeet: Rings;
+      /** Complete original native column profile; holes remain unsupported. */
+      sourceNativeColumnProfile?: true;
+    }[];
     evidenceSha256: string;
     notes: string;
   }[];
@@ -79,6 +87,7 @@ export function validateNativeDoorBoundaryClosures(
   )
     error("source identity or payload");
   const ids = new Set<string>();
+  const activeIdentities = new Set<string>();
   for (const d of v.doors) {
     const key = `${d.levelId}:${d.nativeElementId}`;
     if (
@@ -89,7 +98,11 @@ export function validateNativeDoorBoundaryClosures(
       !Number.isSafeInteger(d.levelId) ||
       !Number.isSafeInteger(d.nativeElementId) ||
       d.nativeElementId <= 0 ||
-      ids.has(key) ||
+      ids.has(d.id) ||
+      (d.reviewState !== undefined &&
+        d.reviewState !== "held" &&
+        d.reviewState !== "superseded") ||
+      (d.reviewState === undefined && activeIdentities.has(key)) ||
       (d.measuredTangentLimitFeet !== undefined &&
         (typeof d.measuredTangentLimitFeet !== "number" ||
           !Number.isFinite(d.measuredTangentLimitFeet) ||
@@ -103,9 +116,11 @@ export function validateNativeDoorBoundaryClosures(
       !validFoot(d.originalDoor.footprintFeet) ||
       !validFoot(d.footprintFeet) ||
       !Array.isArray(d.originalDoor.roomKeys) ||
-      (d.selectionBarrierOnly !== undefined && d.selectionBarrierOnly !== true) ||
+      (d.selectionBarrierOnly !== undefined &&
+        d.selectionBarrierOnly !== true) ||
       d.originalDoor.roomKeys.length !== (d.selectionBarrierOnly ? 1 : 2) ||
-      new Set(d.originalDoor.roomKeys).size !== d.originalDoor.roomKeys.length ||
+      new Set(d.originalDoor.roomKeys).size !==
+        d.originalDoor.roomKeys.length ||
       d.originalDoor.roomKeys.some((k) => typeof k !== "string" || !k) ||
       !Array.isArray(d.jambEvidence) ||
       // Two jambs, or up to four where a door end meets a wall corner.
@@ -120,7 +135,11 @@ export function validateNativeDoorBoundaryClosures(
           j.nativeElementId <= 0 ||
           !Array.isArray(j.ringsFeet) ||
           j.ringsFeet.length !== 1 ||
-          !validFoot(j.ringsFeet[0]!),
+          (j.sourceNativeColumnProfile !== undefined &&
+            j.sourceNativeColumnProfile !== true) ||
+          !(j.sourceNativeColumnProfile === true
+            ? simpleOriginalNativeColumnJambRing(j.ringsFeet[0])
+            : validFoot(j.ringsFeet[0]!)),
       ) ||
       !hash(d.evidenceSha256) ||
       typeof d.notes !== "string" ||
@@ -128,7 +147,8 @@ export function validateNativeDoorBoundaryClosures(
       d.notes.length > 10000
     )
       error("geometry evidence or duplicate door");
-    ids.add(key);
+    ids.add(d.id);
+    if (d.reviewState === undefined) activeIdentities.add(key);
     const n: Point = d.originalDoor.normalFeet.map(
       (x) => x / DMath.hypot(...d.originalDoor.normalFeet),
     ) as Point;
@@ -146,7 +166,9 @@ export function validateNativeDoorBoundaryClosures(
       newT[1] - oldT[1] > (d.measuredTangentLimitFeet ?? 0.15) + 1e-9 ||
       (oldT[0] - newT[0] < 1e-7 && newT[1] - oldT[1] < 1e-7)
     )
-      error("only a measured tangent extension within its checked limit is permitted");
+      error(
+        "only a measured tangent extension within its checked limit is permitted",
+      );
     const rectangle = (
       r: Point[],
       ab: [number, number],
@@ -167,6 +189,16 @@ export function validateNativeDoorBoundaryClosures(
   }
 }
 
+/** Active selection/display recipes only. Historical records remain fully
+ * structurally validated and portable, but never contribute physical geometry. */
+export function activeNativeDoorBoundaryClosures(
+  value: NativeDoorBoundaryClosures | undefined,
+  modelSha?: string,
+): NativeDoorBoundaryClosures["doors"] {
+  validateNativeDoorBoundaryClosures(value, modelSha);
+  return (value?.doors ?? []).filter((d) => d.reviewState === undefined);
+}
+
 /** Returns disposable display/selection copies only. All native door metadata,
  * physical source bytes, graph, access and original dataset remain untouched. */
 export function closedBoundaryDoors(
@@ -174,9 +206,12 @@ export function closedBoundaryDoors(
   levelId: number,
   value?: NativeDoorBoundaryClosures,
 ): Door[] {
-  validateNativeDoorBoundaryClosures(value, data.source.modelSha256);
+  const active = activeNativeDoorBoundaryClosures(
+    value,
+    data.source.modelSha256,
+  );
   const doors = (data.doors ?? []).filter((d) => d.levelId === levelId);
-  const reviewed = (value?.doors ?? []).filter((d) => d.levelId === levelId);
+  const reviewed = active.filter((d) => d.levelId === levelId);
   if (!reviewed.length) return doors;
   const level = data.nativeLevels.find((l) => l.id === levelId);
   if (
@@ -220,11 +255,20 @@ export function closedBoundaryDoors(
     if (saved.selectionBarrierOnly) {
       // An unmatched physical door may still close a measured selection boundary.
       // It cannot acquire a pass-through permission or route through this metadata.
-      if (data.edges.some((e) => e.enabled && (e.id === door!.id || (e.kind === "door" && e.nativeElementId === door!.nativeElementId))))
+      if (
+        data.edges.some(
+          (e) =>
+            e.enabled &&
+            (e.id === door!.id ||
+              (e.kind === "door" &&
+                e.nativeElementId === door!.nativeElementId)),
+        )
+      )
         error("unmatched selection barrier cannot have an enabled portal");
-    } else if (!supportedPortal) error("missing original supported door portal");
+    } else if (!supportedPortal)
+      error("missing original supported door portal");
     const jambs = saved.jambEvidence.map((j) => {
-      const wall = data.walls.find(
+      const current = data.walls.filter(
         (w) =>
           w.levelId === levelId &&
           w.nativeElementId === j.nativeElementId &&
@@ -233,7 +277,17 @@ export function closedBoundaryDoors(
           // A door may end on a native column as well as on a wall (its jamb).
           (w.kind === "wall" || w.kind === "column"),
       );
-      if (!wall || !same(wall.ringsFeet, j.ringsFeet))
+      const wall =
+        j.sourceNativeColumnProfile === true
+          ? current.length === 1
+            ? current[0]
+            : undefined
+          : current[0];
+      if (
+        !wall ||
+        !same(wall.ringsFeet, j.ringsFeet) ||
+        (j.sourceNativeColumnProfile === true && wall.kind !== "column")
+      )
         error("stale jamb evidence or a jamb that is not a wall or column");
       return wall!;
     });
@@ -371,7 +425,10 @@ export function validateNativeDoorBoundaryClosureBinding(
   if (!same(source.nativeDoorBoundaryClosures, data.nativeDoorBoundaryClosures))
     error("source and prepared closure evidence differ; regenerate the master");
   for (const level of new Set(
-    data.nativeDoorBoundaryClosures?.doors.map((d) => d.levelId) ?? [],
+    activeNativeDoorBoundaryClosures(
+      data.nativeDoorBoundaryClosures,
+      data.source.modelSha256,
+    ).map((d) => d.levelId),
   ))
     nativeDoorBoundaryClosureFootprints(data, level);
 }

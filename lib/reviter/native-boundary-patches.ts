@@ -1,4 +1,5 @@
 import * as DMath from "./deterministic-math.ts";
+import { validateNativeBoundarySourceReviewEvidence, type NativeBoundarySourceReviewEvidence } from "./native-boundary-source-review-evidence.ts";
 import pc from "polygon-clipping";
 import {validateNativeMaterialSections, type NativeMaterialSections} from "./native-material-sections";
 import {validateReviewedDoorApertures, reviewedDoorWallSourceEvidence} from "./reviewed-door-apertures";
@@ -73,6 +74,7 @@ export type NativeBoundaryPatch = {
 export type NativeBoundaryPatches = {
   version: 1;
   patches: NativeBoundaryPatch[];
+  sourceReviewEvidence?: NativeBoundarySourceReviewEvidence[];
 };
 /** Reconstruct a measured missing run, never a polygon inferred from labels.
  * The starting cap must be a complete original wall edge; its outward normal,
@@ -606,6 +608,7 @@ export function validateNativeBoundaryPatches(
     throw new Error(
       "Invalid native boundary patch geometry or model identity.",
     );
+  validateNativeBoundarySourceReviewEvidence(v.sourceReviewEvidence, modelSha);
 }
 /** Compare complete independently recovered owner material, never a cropped
  * footprint. The 1e-10 ft analytical grid removes only floating-point union

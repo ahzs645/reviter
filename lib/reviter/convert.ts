@@ -27,6 +27,9 @@
  * warnings.
  */
 import { dominantMarker } from "./element-objects.ts";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { prepareNativeMaterialSource, type NativeInstanceOnlyContainer } from "./native-material-source.ts";
 import { limitCensus, resetLimitCensus } from "./limit-census.ts";
 import { setActiveClassTagTranslation } from "./revit-class-tags.ts";
 import { setActiveElementIdBytes } from "./element-id-width.ts";
@@ -116,6 +119,7 @@ export function convertRvtBytes(
       transmissionData,
       coverage,
       schema,
+      nativeSourceSchemaBytes,
       partitionNames,
       contentDocuments,
     } = openRevitContainer(bytes, options);
@@ -127,6 +131,7 @@ export function convertRvtBytes(
       maxSegments,
       segmentScale,
       maxNativeMeshBytes: options.maxNativeMeshBytes,
+      nativeSourceSchemaBytes,
       onProgress,
       contentDocuments,
     });
@@ -134,6 +139,7 @@ export function convertRvtBytes(
       candidates,
       categoryTokens,
       elementHeaders,
+      originalElementHeaders,
       levelDefinitions,
       lightSourceStyleIds,
       familyDocuments,
@@ -178,6 +184,7 @@ export function convertRvtBytes(
       nativeCompoundStructureDefinitions,
       wallThicknessByType,
       nativeMeshCollector,
+      nativeDrawingReferenceSourceCollector,
     } = scan;
 
     onProgress?.({
@@ -366,7 +373,12 @@ export function convertRvtBytes(
     // builds no scene passes nothing and every stair stays undetermined.
     const decodedRelations = (
       spiralStairRunIds: ReadonlySet<number> = new Set<number>(),
+      instanceOnlyContainers: readonly NativeInstanceOnlyContainer[] = [],
     ) => ({
+      nativeDrawingReferenceSource: nativeDrawingReferenceSourceCollector.snapshot(bytesToHex(sha256(bytes))),
+      nativeMaterialSource: prepareNativeMaterialSource(
+        bytesToHex(sha256(bytes)), originalElementHeaders, instanceOnlyContainers, elementOwnership,
+      ),
       // The assembly tree was decoded to place run geometry and then dropped
       // before anything could publish it, so a consumer of the export could
       // not tell a stringer from a mullion or two flights of one stairwell
@@ -412,6 +424,15 @@ export function convertRvtBytes(
       nativeCompoundStructureDefinitions,
       ...relations,
     };
+
+    const largeFrameWarnings = [
+      ...(scan.largeWholeGElementFrames.skippedChecksumBudget
+        ? ["Large whole-page GElement checksum work exceeded its partition budget; additional large bodies were withheld."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedBufferBudget
+        ? ["Supplemental whole-page GElement buffers reached their 64 MiB limit; additional large bodies were withheld while original geometry retained priority."] : []),
+      ...(scan.largeWholeGElementFrames.nativeCompilation.skippedDefinitionBudget
+        ? ["Supplemental whole-page GElements reached the native definition budget; original native geometry retained priority and remaining large bodies were withheld."] : []),
+    ];
 
     // The bounds branch is the release's own record decoder. Records the
     // release-independent passes synthesised (a wall solid rebuilt from plane
@@ -468,9 +489,11 @@ export function convertRvtBytes(
         method: "partition-bounds-recovery",
         ...decodedRelations(
           scene.report.meshCollection.spiralStairRunOwnerIds,
+          scene.report.meshCollection.originalInstanceOnlyContainers,
         ),
-        warnings: buildWarnings(basis, scene.report),
+        warnings: [...buildWarnings(basis, scene.report), ...largeFrameWarnings],
         stats: {
+          largeWholeGElementFrames: scan.largeWholeGElementFrames,
           streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
           partitionStreams: partitions.length,
           gzipChunks,
@@ -573,8 +596,9 @@ export function convertRvtBytes(
       levels: levelsFor(used),
       method: "partition-coordinate-recovery",
       ...decodedRelations(),
-      warnings: buildWarnings(basis, coordinateReport),
+      warnings: [...buildWarnings(basis, coordinateReport), ...largeFrameWarnings],
       stats: {
+        largeWholeGElementFrames: scan.largeWholeGElementFrames,
         streamCount: cfb.FileIndex.filter((entry) => entry.type === 2 && entry.size > 0).length,
         partitionStreams: partitions.length,
         gzipChunks,

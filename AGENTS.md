@@ -10,6 +10,8 @@ Use the current canonical master, task-specific candidates, preservation checks 
 
 These instructions are scoped to the indoor export/review workflow; unrelated Reviter work follows its normal conventions.
 
+For iterative repairs, follow the shared [local repair loop](../openindoormaps/docs/indoor-local-iteration.md). Test the changed production predicate and related geometry first, then replay affected cells or exact physical elevations with complete source obstacles, openings, owners and policy context. A vertical change includes both served planes and its full clearance demand. Batch stable fixes before complete regeneration, export and navigation/browser acceptance; local diagnostics cannot authorize a visitor map or restore cached validation authority.
+
 For separate CAD circulation interpretation, read `docs/dwg-floor-analysis.md`.
 Use `cad:paths --interpret-building CODE` (or `all`) with a new candidate folder.
 Preserve original geometry and drawing bytes; keep derived leaf/contact evidence

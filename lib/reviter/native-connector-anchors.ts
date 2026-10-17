@@ -9,6 +9,8 @@ export function nativeConnectorAnchors(data: IndoorDataset) {
     .filter(
       (e) =>
         e.enabled &&
+        // Existing-claimed-cell v2 stairs cannot introduce anchor ownership.
+        !e.nativeSteppedStairV2 &&
         ["stairs", "local-steps", "ramp", "elevator", "escalator"].includes(
           e.kind,
         ) &&

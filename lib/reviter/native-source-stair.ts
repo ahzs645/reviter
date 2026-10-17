@@ -1,8 +1,10 @@
+import { validateReviewedDrawingReferences } from "./reviewed-drawing-references.ts";
 import { nativeAuthoredStairTreads } from "./native-authored-stair-treads.ts";
 import { validNativeSourceStairBody } from "./native-source-stair-body.ts";
 import { validNativeSourceStairMaterial } from "./native-source-stair-material.ts";
 import type { IndoorDataset, IndoorEdge } from "./indoor-contract.ts";
 import { validateNativeSourceStairWidth } from "./native-source-stair-width.ts";
+import { validNativeSteppedStairV2Binding } from "./native-stepped-stair-v2.ts";
 
 const samePoint = (a: number[], b: number[]) =>
   a.length === b.length && a.every((v, i) => v === b[i]);
@@ -30,6 +32,7 @@ export function validNativeSourceStairBinding(
   edge: IndoorEdge,
 ): boolean {
   try {
+    validateReviewedDrawingReferences(data.reviewedDrawingReferences, data.source.modelSha256);
     const proof = edge.nativeSourceStair;
     if (
       !data.nativeIndoorEnvelopes ||
@@ -143,6 +146,7 @@ export function validNativeSourceStairBinding(
         data.nativeDerivedFrameReturns,
         data.nativeProvisionalCornerSeals,
         true,
+        data.reviewedDrawingReferences,
       ) &&
       validateNativeSourceStairWidth(proof, data.walkingSupport.floors, true)
     );
@@ -168,6 +172,7 @@ export function nativeSourceStairNodeIds(data: IndoorDataset): Set<string> {
 /** Strict native stairs require complete current body/width/material evidence.
  * Legacy archives keep their existing reviewed routing behavior. */
 export function nativeStairRouteQualified(data: IndoorDataset, edge: IndoorEdge): boolean {
+  if (edge.nativeSteppedStairV2) return validNativeSteppedStairV2Binding(data, edge);
   if (edge.nativeSourceStair) return validNativeSourceStairBinding(data, edge);
   return !(data.nativeIndoorEnvelopes && (edge.kind === "stairs" || edge.kind === "local-steps"));
 }

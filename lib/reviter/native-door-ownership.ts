@@ -8,7 +8,16 @@ import type {DoorReview} from './directory-navigation.ts';
 import {containsDirectoryRoomPoint,containsRoomPoint,isWalkable,isHallway,roomBuilding,nativeRouteBlocker,roomArea,type DirectoryRoom,type RoomPoint,type RoomPortal} from './room-directory.ts';
 
 export type NativeDoorOwnershipFinding={doorId:number;status:'recovered'|'review';reason:string};
-export type NativeDoorOwnershipRecovery = {portal:RoomPortal;proof:{widthFeet:number;approachDepthFeet:number;floorCoveredSquareFeet:number;sourceSha256?:string;sourceSectionId?:string;sourceRegistrationErrorFeet?:number;sourceDoorSymbolSegmentIndices?:number[]}};
+export type NativeDoorOwnershipRecovery = {portal:RoomPortal;proof:{widthFeet:number;approachDepthFeet:number;floorCoveredSquareFeet:number;sourceSha256?:string;sourceSectionId?:string;sourceRegistrationErrorFeet?:number;sourceDoorSymbolSegmentIndices?:number[];nativeAssemblyBarrierOwnerIds?:number[]}};
+export type NativeAssemblyDoorBridgeCandidate = {
+  review: DoorReview;
+  from: RoomPoint;
+  to: RoomPoint;
+  fromDepthFeet: number;
+  toDepthFeet: number;
+  footprint: pc.MultiPolygon;
+  legacyBlockingNativeElementIds: number[];
+};
 const area=(polygons:pc.MultiPolygon)=>polygons.reduce((sum,p)=>sum+roomArea(p[0]! as RoomPoint[])-p.slice(1).reduce((s,h)=>s+roomArea(h as RoomPoint[]),0),0);
 const shape=(room:DirectoryRoom):pc.Polygon=>[room.polygonFeet,...room.holesFeet??[]];
 /** Native threshold sides can be recessed relative to registered room boundaries.
@@ -16,7 +25,7 @@ const shape=(room:DirectoryRoom):pc.Polygon=>[room.polygonFeet,...room.holesFeet
  * bridge proved on native floor and clear of every non-aperture wall, column,
  * repaired joint, third room and hole. This never establishes access permissions.
  */
-type OwnershipOptions={depths?:(review:DoorReview)=>readonly number[];eligiblePair?:(a:DirectoryRoom,b:DirectoryRoom)=>boolean;additionalProof?:(a:DirectoryRoom,b:DirectoryRoom,footprint:pc.MultiPolygon,review:DoorReview)=>string|undefined;proofFields?:(a:DirectoryRoom,b:DirectoryRoom,review:DoorReview)=>Partial<NativeDoorOwnershipRecovery["proof"]>};
+type OwnershipOptions={depths?:(review:DoorReview)=>readonly number[];eligiblePair?:(a:DirectoryRoom,b:DirectoryRoom)=>boolean;additionalProof?:(a:DirectoryRoom,b:DirectoryRoom,footprint:pc.MultiPolygon,review:DoorReview)=>string|undefined;proofFields?:(a:DirectoryRoom,b:DirectoryRoom,review:DoorReview)=>Partial<NativeDoorOwnershipRecovery["proof"]>;nativeAssemblyBridgeProof?:(candidate:NativeAssemblyDoorBridgeCandidate)=>boolean};
 function recoverDoorOwnership(rooms:readonly DirectoryRoom[], reviews:readonly DoorReview[],geometry:ArchitecturalPlanGeometry,onReview:((finding:NativeDoorOwnershipFinding)=>void)|undefined,options:OwnershipOptions={}):NativeDoorOwnershipRecovery[]{
  const result:NativeDoorOwnershipRecovery[]=[];
  const active=rooms.filter(isWalkable).filter((r,i,all)=>!r.circulationGroup||all.findIndex(o=>o.circulationGroup===r.circulationGroup)===i);
@@ -57,15 +66,19 @@ function recoverDoorOwnership(rooms:readonly DirectoryRoom[], reviews:readonly D
    if(rooms.some(r=>r.status!=='deleted'&&r.key!==a.key&&r.key!==b.key&&!(r.circulationGroup&&[a.circulationGroup,b.circulationGroup].includes(r.circulationGroup))&&area(pc.intersection(footprint,shape(r)))>1e-8)){failure='Bridge overlaps a third room boundary.';continue;}
    if(rooms.flatMap(r=>[...r.holesFeet??[],...r.floorOpeningsFeet??[]]).some(h=>area(pc.intersection(footprint,[h]))>1e-8)){failure='Bridge overlaps a source or native floor opening.';continue;}
    if(geometry.columns.some(c=>area(pc.intersection(footprint,[c.polygon]))>1e-8)){failure='Bridge intersects a native column.';continue;}
-   if(geometry.walls.some(w=>area(pc.difference(pc.intersection(footprint,[w.polygon]),[door.footprint!]))>1e-8)){failure='Bridge intersects a native wall or repaired joint outside the actual aperture.';continue;}
+   const legacyBlockingNativeElementIds=[...new Set(geometry.walls.filter(w=>area(pc.difference(pc.intersection(footprint,[w.polygon]),[door.footprint!]))>1e-8).map(w=>w.elementId))];
    let uncovered=footprint;
    for(const floor of geometry.floors){uncovered=pc.difference(uncovered,floor);if(!uncovered.length)break;}
    if(area(uncovered)>1e-8){failure='Full bridge width is not continuously supported by native floor.';continue;}
    const proofFailure=options.additionalProof?.(a,b,footprint,review);if(proofFailure){failure=proofFailure;continue;}
+   if(legacyBlockingNativeElementIds.length && !options.nativeAssemblyBridgeProof?.({review,from,to,fromDepthFeet:fromDepth,toDepthFeet:toDepth,footprint,legacyBlockingNativeElementIds})){failure='Bridge intersects a native wall or repaired joint outside the actual aperture.';continue;}
    const portal:RoomPortal={doorId:door.id,rooms:[a.key,b.key],point:door.point,from,to,halfWidth:door.halfWidth,halfHeight:door.halfHeight,footprint:door.footprint,normal:door.normal};
-   const blocked=nativeRouteBlocker(geometry,[portal]);
+   // Only a provenance-bound complete native-assembly proof can supersede its
+   // gross rectangle in this temporary final check. Every other original wall,
+   // column, floor and source ownership restriction remains unchanged.
+   const blocked=nativeRouteBlocker(legacyBlockingNativeElementIds.length?{...geometry,walls:geometry.walls.filter(w=>!legacyBlockingNativeElementIds.includes(w.elementId))}:geometry,[portal]);
    if([-1,0,1].some(offset=>blocked(at(mid+offset,lo-fromDepth),at(mid+offset,hi+toDepth)))){failure='Continuous native barrier check blocks the bridge.';continue;}
-   result.push({portal,proof:{widthFeet:2,approachDepthFeet:Math.max(fromDepth,toDepth),floorCoveredSquareFeet:area(footprint),...options.proofFields?.(a,b,review)}});
+   result.push({portal,proof:{widthFeet:2,approachDepthFeet:Math.max(fromDepth,toDepth),floorCoveredSquareFeet:area(footprint),...(legacyBlockingNativeElementIds.length?{nativeAssemblyBarrierOwnerIds:legacyBlockingNativeElementIds}:{}),...options.proofFields?.(a,b,review)}});
    accepted=true;
    onReview?.({doorId:door.id,status:'recovered',reason:'Unique threshold sides, full two-foot native floor support and continuous native barrier clearance proved.'});
    break;
@@ -77,8 +90,8 @@ function recoverDoorOwnership(rooms:readonly DirectoryRoom[], reviews:readonly D
 }
 
 
-export function recoverNativeDoorOwnership(rooms:readonly DirectoryRoom[],reviews:readonly DoorReview[],geometry:ArchitecturalPlanGeometry,onReview?:(finding:NativeDoorOwnershipFinding)=>void):NativeDoorOwnershipRecovery[]{
- return recoverDoorOwnership(rooms,reviews,geometry,onReview);
+export function recoverNativeDoorOwnership(rooms:readonly DirectoryRoom[],reviews:readonly DoorReview[],geometry:ArchitecturalPlanGeometry,onReview?:(finding:NativeDoorOwnershipFinding)=>void,nativeAssemblyBridgeProof?:OwnershipOptions["nativeAssemblyBridgeProof"]):NativeDoorOwnershipRecovery[]{
+ return recoverDoorOwnership(rooms,reviews,geometry,onReview,{nativeAssemblyBridgeProof});
 }
 
 /** Source boundaries may omit the flat approach to an actual native stair

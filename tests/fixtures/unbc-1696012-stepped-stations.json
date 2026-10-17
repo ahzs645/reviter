@@ -1,0 +1,125 @@
+{
+  "authority": "Untrusted path demand fixture only; original source context and every support/sequence check are required",
+  "stations": [
+    {
+      "typedIndex": 0,
+      "pointFeet": [0.03829515363675812, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 1,
+      "pointFeet": [-0.7983190195915968, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 2,
+      "pointFeet": [-1.618528993344878, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 3,
+      "pointFeet": [-2.438738967098159, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 4,
+      "pointFeet": [-3.25894894085144, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 5,
+      "pointFeet": [-4.0791589146047205, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 6,
+      "pointFeet": [-4.899368888358002, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 7,
+      "pointFeet": [-5.719578862111283, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 8,
+      "pointFeet": [-6.539788835864564, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 9,
+      "pointFeet": [-7.359998809617845, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 10,
+      "pointFeet": [-8.180208783371127, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 11,
+      "pointFeet": [-9.000418757124407, -323.3025630530456],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 12,
+      "pointFeet": [-11.089601315686476, -323.3025630530456],
+      "lateralAxis": "x"
+    },
+    {
+      "typedIndex": 12,
+      "pointFeet": [-11.089601315686476, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 13,
+      "pointFeet": [-8.989142863484215, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 14,
+      "pointFeet": [-8.168932889730936, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 15,
+      "pointFeet": [-7.348722915977657, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 16,
+      "pointFeet": [-6.528512942224378, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 17,
+      "pointFeet": [-5.708302968471095, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 18,
+      "pointFeet": [-4.888092994717816, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 19,
+      "pointFeet": [-4.067883020964526, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 20,
+      "pointFeet": [-3.247673047211199, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 21,
+      "pointFeet": [-2.4274630734578766, -318.12343176841307],
+      "lateralAxis": "y"
+    },
+    {
+      "typedIndex": 22,
+      "pointFeet": [-1.5252321023293158, -318.12343176841307],
+      "lateralAxis": "y"
+    }
+  ]
+}

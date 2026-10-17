@@ -31,6 +31,7 @@ export type IndoorNode = {
   kind: "arrival" | "junction" | "portal" | "stair" | "connector";
 };
 export type IndoorEdge = {
+  nativeSteppedStairV2?: import("./native-stepped-stair-v2.ts").NativeSteppedStairV2EdgeProof;
   /** Original source-owned physical stair flight; no named room is invented for intermediate landings. */
   nativeSourceStair?: import("./native-source-stair-width").NativeSourceStairReceipt & {foreignMaterial: import("./native-source-stair-material").NativeSourceStairMaterial; walkingBody: import("./native-source-stair-body").NativeSourceStairBody};
   /** Source-bound ramp profile; rechecked independently by each route calculation. */
@@ -143,6 +144,9 @@ export type IndoorIssue = {
   levelId?: number;
 };
 export type IndoorDataset = {
+  nativeSteppedStairV2SourceIndices?: import("./native-stepped-stair-v2.ts").NativeSteppedStairV2SourceIndexEntry[];
+  /** Source-reviewed drawing imports contribute no physical clearance obstacle. */
+  reviewedDrawingReferences?: import("./reviewed-drawing-references.ts").ReviewedDrawingReferences;
   /** Original physical planes and reversible display grouping; no access grant. */
   nativeSourceStairMaterials?: import("./native-source-stair-material").NativeSourceStairMaterials;
   nativePhysicalLevels?: import("./native-physical-levels.ts").NativePhysicalLevels;

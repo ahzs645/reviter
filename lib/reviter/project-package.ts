@@ -1,3 +1,4 @@
+import { validateNativeDoorBoundarySourceReviewEvidence } from "./native-door-boundary-source-review-evidence.ts";
 import {
   preparedDisplayCacheEntryLimit,
   isPreparedDisplayChunkPath,
@@ -43,9 +44,10 @@ const limits: Record<string, number> = {
   "manifest.json": 64 * 1024,
   "floors/rooms.json": 128 * MB,
   "gis/reference-points.json": MB,
-  // Match the authoring reader: exact native faces and source-bound route
-  // proofs can exceed 128 MiB. The shared 900 MiB expanded archive cap remains.
-  "viewer/indoor.json": 192 * MB,
+  // Match OpenIndoorMaps authoring: exact native faces and floor mappings
+  // exceed 192 MiB in the current source package. Keep the unchanged 900 MiB
+  // aggregate archive cap and all per-entry checksum/schema checks.
+  "viewer/indoor.json": 320 * MB,
   "model/scene.glb": 256 * MB,
   "review/companions.bin": MAX_REVIEW_CONTAINER_BYTES,
 };
@@ -146,6 +148,7 @@ export async function createProjectPackage(
     },
     floors: await describe("floors/rooms.json", roomBytes),
   };
+  validateNativeDoorBoundarySourceReviewEvidence(parsed.nativeDoorBoundaryClosureReviewHistory, manifest.model.sha256);
   await verifyNativeMaterialSections(parsed.nativeMaterialSections, manifest.model.sha256);
   await verifyNativeIndoorEnvelopes(parsed.nativeIndoorEnvelopes, manifest.model.sha256);
   validateNativeDisplayScopes(parsed.nativeDisplayScopes, manifest.model.sha256);
@@ -295,6 +298,7 @@ export async function readProjectPackage(bytes: Uint8Array): Promise<{
   );
   const roomBytes = await verify(files, manifest.floors, "floors/rooms.json");
   const rooms = parseRoomDirectory(JSON.stringify(await hydrateRoomNativeMaterials(JSON.parse(strFromU8(roomBytes)))));
+  validateNativeDoorBoundarySourceReviewEvidence(rooms.nativeDoorBoundaryClosureReviewHistory, manifest.model.sha256);
   await verifyNativeMaterialSections(rooms.nativeMaterialSections, manifest.model.sha256);
   await verifyNativeIndoorEnvelopes(rooms.nativeIndoorEnvelopes, manifest.model.sha256);
   validateNativeDisplayScopes(rooms.nativeDisplayScopes, manifest.model.sha256);

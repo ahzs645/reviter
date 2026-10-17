@@ -3,6 +3,8 @@
  * translated native walls, or source-verified construction. */
 import * as DMath from "./deterministic-math.ts";
 import pc from "polygon-clipping";
+import { createPolygonBoundsQuery } from "./polygon-bounds-query.ts";
+import { createStaticBoundsIndex, polygonPartsBounds, type StaticBounds } from "./static-bounds-index.ts";
 import {
   nativePositiveMaterialBandsAcrossLevels,
   nativePositiveMaterialBandOverlapsParts,
@@ -1408,10 +1410,9 @@ function drawingBackedRowMemoKeys(
   v: NativeProvisionalCornerSeals,
   hostSkip: Set<number>,
   shifts: Map<number, P2>,
+  edges: Map<string, NonNullable<Data["edges"]>[number]>,
 ) {
   const material = data.nativeMaterialSections!;
-  const edges = new Map<string, NonNullable<Data["edges"]>[number]>();
-  for (const e of data.edges ?? []) if (!edges.has(e.id)) edges.set(e.id, e);
   const floors =
     data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
       ? data.walkingSupport.floors
@@ -1467,6 +1468,94 @@ function drawingBackedRowMemoKeys(
     return exactContentDigest([inputs, r.id, bound]);
   };
 }
+
+/** Read-only indexes for this one validation operation. Preserve Array.find's
+ * first edge, every duplicate section/floor and their original iteration order.
+ * Nothing is retained across calls or used as a substitute for content checks. */
+function drawingBackedQueries(
+  data: Data,
+  model: string,
+  edges: Map<string, NonNullable<Data["edges"]>[number]>,
+) {
+  type Level = NativeMaterialSections["levels"][number];
+  type Section = Level["sections"][number];
+  const levels = new Map<number, Level[]>(),
+    sections = new Map<
+      Level,
+      Map<number, { section: Section; index: number }[]>
+    >();
+  for (const level of data.nativeMaterialSections!.levels) {
+    const matching = levels.get(level.levelId) ?? [];
+    matching.push(level);
+    levels.set(level.levelId, matching);
+    const owners = new Map<number, { section: Section; index: number }[]>();
+    level.sections.forEach((section, index) => {
+      const entries = owners.get(section.nativeElementId) ?? [];
+      entries.push({ section, index });
+      owners.set(section.nativeElementId, entries);
+    });
+    sections.set(level, owners);
+  }
+  const floors =
+    data.walkingSupport?.sourceModelSha256 === model
+      ? data.walkingSupport.floors.map((f, index) => ({
+          index,
+          floor: {
+            nativeElementId: f.nativeElementId,
+            elevationFeet: f.elevationFeet,
+            partsFeet: f.partsFeet ?? [f.ringsFeet],
+          },
+        }))
+      : [];
+  const floorIds = new Map<number, typeof floors>();
+  for (const entry of floors) {
+    const matching = floorIds.get(entry.floor.nativeElementId) ?? [];
+    matching.push(entry);
+    floorIds.set(entry.floor.nativeElementId, matching);
+  }
+  const floorQueries = new Map<string, (typeof floors)[number]["floor"][]>();
+  const sectionQueries = new Map<Level, ReturnType<typeof createStaticBoundsIndex<Section>>>();
+  return {
+    levels: (id: number) => levels.get(id) ?? [],
+    sections: (level: Level, ids: readonly number[]) =>
+      [...new Set(ids)]
+        .flatMap((id) => sections.get(level)?.get(id) ?? [])
+        .sort((a, b) => a.index - b.index)
+        .map((entry) => entry.section),
+    sectionsMeeting: (level: Level, parts: Parts) => {
+      let query = sectionQueries.get(level);
+      if (!query) {
+        query = createStaticBoundsIndex(level.sections, (s) => polygonPartsBounds(s.partsFeet), 2);
+        sectionQueries.set(level, query);
+      }
+      return query(polygonPartsBounds(parts));
+    },
+    floors: (ids: readonly number[]) => {
+      const key = ids.join(",");
+      let selected = floorQueries.get(key);
+      if (!selected) {
+        selected = [...new Set(ids)]
+          .flatMap((id) => floorIds.get(id) ?? [])
+          .sort((a, b) => a.index - b.index)
+          .map((entry) => entry.floor);
+        floorQueries.set(key, selected);
+      }
+      return selected;
+    },
+    doors: (data.doors ?? []).flatMap((door) => {
+      const edge = edges.get(door.id);
+      return door.footprintFeet && edge?.kind === "door"
+        ? [{ door, edge, footprint: door.footprintFeet }]
+        : [];
+    }),
+  };
+}
+type DrawingBackedQueries = ReturnType<typeof drawingBackedQueries>;
+type MaterialBroadPhase = {
+  bodies: (bounds: StaticBounds) => NativeProvisionalCornerSeals["foreignBodies"];
+  bands: (parts: Parts) => ReturnType<typeof nativePositiveMaterialBandsAcrossLevels>;
+};
+
 export function createNativeProvisionalCornerSealIndex(
   data: Data,
   options?: { reviewProposed?: boolean },
@@ -1556,10 +1645,30 @@ export function createNativeProvisionalCornerSealIndex(
       r.state === "applied" ||
       (options?.reviewProposed && r.state === "proposed"),
   );
+  const edges = new Map<string, NonNullable<Data["edges"]>[number]>();
+  for (const edge of data.edges ?? [])
+    if (!edges.has(edge.id)) edges.set(edge.id, edge);
+  const drawingQueries = rows.some((r) => r.drawingBacked)
+    ? drawingBackedQueries(data, v.sourceModelSha256, edges)
+    : undefined;
   const memoKey =
     drawingBackedRowMemoState.enabled && rows.some((r) => r.drawingBacked)
-      ? drawingBackedRowMemoKeys(data, v, hostSkip, shifts)
+      ? drawingBackedRowMemoKeys(data, v, hostSkip, shifts, edges)
       : undefined;
+  const boundsMeet = createPolygonBoundsQuery();
+  const intersectionArea = (a: Parts, b: Parts) =>
+    boundsMeet(a, b) ? area(pc.intersection(a, b) as Parts) : 0;
+  const bodyQuery = createStaticBoundsIndex(v.foreignBodies, (b) => b.boundsFeet, 3);
+  const bandQuery = createStaticBoundsIndex(positiveBands, (band) => {
+    const shift = shifts.get(band.nativeElementId);
+    // Shifted exact source constraints must not be culled by a rounded bound.
+    if (shift && (shift[0] !== 0 || shift[1] !== 0)) return null;
+    return polygonPartsBounds(band.cells.flatMap((cell) => cell.partsFeet));
+  }, 2);
+  const broadPhase: MaterialBroadPhase = {
+    bodies: bodyQuery,
+    bands: (parts) => bandQuery(polygonPartsBounds(parts)),
+  };
   for (const r of rows) {
     if (r.drawingBacked) {
       const key = memoKey?.(r);
@@ -1575,6 +1684,9 @@ export function createNativeProvisionalCornerSealIndex(
         shifts,
         census,
         hostSkip,
+        intersectionArea,
+        drawingQueries!,
+        broadPhase,
       );
       if (key !== undefined) {
         drawingBackedRowMemoState.misses++;
@@ -1934,7 +2046,7 @@ export function createNativeProvisionalCornerSealIndex(
     const foreignFoot = r.reviewedConstructionShape
       ? (pc.difference(r.partsFeet, commonOriginalContacts) as Parts)
       : r.partsFeet;
-    for (const band of positiveBands) {
+    for (const band of broadPhase.bands(foreignFoot)) {
       if (
         !contacts.includes(band.nativeElementId) &&
         !hostSkip.has(band.nativeElementId) &&
@@ -1953,7 +2065,7 @@ export function createNativeProvisionalCornerSealIndex(
             band.nativeElementId,
         );
     }
-    for (const b of v.foreignBodies) {
+    for (const b of broadPhase.bodies(box)) {
       if (
         contacts.includes(b.nativeElementId) ||
         hostSkip.has(b.nativeElementId) ||
@@ -2019,13 +2131,15 @@ function checkDrawingBackedRow(
   shifts: Map<number, P2>,
   census: Map<number, NativeProvisionalCornerSeals["foreignBodies"][number]>,
   hostSkip: Set<number>,
+  intersectionArea: (a: Parts, b: Parts) => number,
+  queries: DrawingBackedQueries,
+  broadPhase: MaterialBroadPhase,
 ) {
   const d = r.drawingBacked!,
     c = d.construction,
     fail = (why: string): never => {
       throw new Error(`Drawing-backed assumption ${r.id}: ${why}`);
     };
-  const material = data.nativeMaterialSections!;
   const expected = drawingBackedAssumptionFootprint(c);
   if (area(pc.xor(expected, r.partsFeet) as Parts) > 0)
     fail("body differs from its declared construction");
@@ -2112,17 +2226,16 @@ function checkDrawingBackedRow(
   )
     fail("registered drawing evidence is required");
   // Material rows on this level whose cut lies in the body band.
-  const bandRows = material.levels.filter(
-    (l) =>
-      l.levelId === r.levelId &&
-      l.cutElevationFeet >= r.baseElevationFeet &&
-      l.cutElevationFeet < r.topElevationFeet,
-  );
+  const bandRows = queries
+    .levels(r.levelId)
+    .filter(
+      (l) =>
+        l.cutElevationFeet >= r.baseElevationFeet &&
+        l.cutElevationFeet < r.topElevationFeet,
+    );
   const ownerParts = (id: number, rows = bandRows) =>
     rows.flatMap((l) =>
-      l.sections
-        .filter((s) => s.nativeElementId === id)
-        .flatMap((s) => s.partsFeet),
+      queries.sections(l, [id]).flatMap((s) => s.partsFeet),
     ) as Parts;
   const ps = r.partsFeet.flat(PARTS_VERTEX_DEPTH),
     box = {
@@ -2143,12 +2256,20 @@ function checkDrawingBackedRow(
       b.min.some((x, i) => x > box.max[i])
     );
   if (d.kind === "dwg-drawn-material")
-    checkDrawnMaterialEvidence(data, v, r, bandRows, fail);
+    checkDrawnMaterialEvidence(
+      data,
+      v,
+      r,
+      bandRows,
+      fail,
+      intersectionArea,
+      queries,
+    );
   for (const id of d.nativeOwnerIds) {
     const own = ownerParts(id);
     if (own.length > 0) {
       if (c.kind === "native-column-outline") continue;
-      if (area(pc.intersection(r.partsFeet, own) as Parts) <= 0)
+      if (intersectionArea(r.partsFeet, own) <= 0)
         fail(`no positive contact with sectioned native owner ${id}`);
     } else {
       const body = census.get(id);
@@ -2167,14 +2288,13 @@ function checkDrawingBackedRow(
   }
   if (c.kind === "native-column-outline") {
     const column = d.nativeOwnerIds[0];
-    const source = material.levels.filter(
-      (l) =>
-        l.levelId === c.sourceLevelId &&
-        l.cutElevationFeet === c.sourceCutElevationFeet,
-    );
+    const source = queries
+      .levels(c.sourceLevelId)
+      .filter((l) => l.cutElevationFeet === c.sourceCutElevationFeet);
     const outlines = source.flatMap((l) =>
-      l.sections
-        .filter((s) => s.nativeElementId === column && s.kind === "column")
+      queries
+        .sections(l, [column])
+        .filter((s) => s.kind === "column")
         .flatMap((s) => s.partsFeet.map((p) => p[0])),
     );
     const norm = (ring: P2[]) =>
@@ -2183,7 +2303,7 @@ function checkDrawingBackedRow(
       fail("assumed column outline is not the exact native column section");
   }
   // Exact original foreign material (non-owners) may never be covered.
-  for (const band of positiveBands)
+  for (const band of broadPhase.bands(r.partsFeet))
     if (
       !d.nativeOwnerIds.includes(band.nativeElementId) &&
       !hostSkip.has(band.nativeElementId) &&
@@ -2197,14 +2317,14 @@ function checkDrawingBackedRow(
     )
       fail(`covers exact original foreign material ${band.nativeElementId}`);
   for (const l of bandRows)
-    for (const sct of l.sections)
+    for (const sct of queries.sectionsMeeting(l, r.partsFeet))
       if (
         !d.nativeOwnerIds.includes(sct.nativeElementId) &&
         !hostSkip.has(sct.nativeElementId) &&
-        area(pc.intersection(r.partsFeet, sct.partsFeet as Parts) as Parts) > 0
+        intersectionArea(r.partsFeet, sct.partsFeet as Parts) > 0
       )
         fail(`covers sectioned foreign native material ${sct.nativeElementId}`);
-  const unverified = v.foreignBodies
+  const unverified = broadPhase.bodies(box)
     .filter(
       (b) =>
         !d.nativeOwnerIds.includes(b.nativeElementId) &&
@@ -2213,7 +2333,7 @@ function checkDrawingBackedRow(
     )
     .filter((b) => {
       if (b.partsFeet) {
-        if (area(pc.intersection(r.partsFeet, b.partsFeet) as Parts) > 0)
+        if (intersectionArea(r.partsFeet, b.partsFeet) > 0)
           fail(`covers original foreign body ${b.nativeElementId}`);
         return false;
       }
@@ -2231,16 +2351,7 @@ function checkDrawingBackedRow(
       "unverified original bodies meeting the body are not completely acknowledged: " +
         JSON.stringify(unverified),
     );
-  const floors =
-    data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
-      ? data.walkingSupport.floors
-          .filter((f) => r.sourceFloorIds.includes(f.nativeElementId))
-          .map((f) => ({
-            nativeElementId: f.nativeElementId,
-            elevationFeet: f.elevationFeet,
-            partsFeet: f.partsFeet ?? [f.ringsFeet],
-          }))
-      : [];
+  const floors = queries.floors(r.sourceFloorIds);
   const full = floors.flatMap((f) => f.partsFeet);
   const unsupported = r.partsFeet.flatMap((p) =>
     exactNativeDoorFloorDifference(p, full),
@@ -2274,17 +2385,14 @@ function checkDrawingBackedRow(
       (!facade || area(unsupported) - area(beyondOuter()) > slivers))
   )
     fail("crosses unsupported native floor or an original opening");
-  for (const door of data.doors ?? []) {
-    const e = data.edges?.find((e) => e.id === door.id);
+  for (const { edge: e, footprint } of queries.doors) {
     if (
       r.materialRole !== "enclosure-context-only" &&
-      e?.enabled &&
-      e.kind === "door" &&
-      door.footprintFeet &&
+      e.enabled &&
       e.pointsFeet.some(
         (p) => p[2] >= r.baseElevationFeet - 0.05 && p[2] <= r.topElevationFeet,
       ) &&
-      area(pc.intersection(r.partsFeet, [door.footprintFeet]) as Parts) > 0
+      intersectionArea(r.partsFeet, [[footprint]]) > 0
     )
       fail(
         "intersects a preserved physical doorway; only enclosure-context-only rows may close it",
@@ -2304,6 +2412,9 @@ function checkDrawnMaterialEvidence(
   r: NativeProvisionalCornerSeals["rows"][number],
   bandRows: NativeMaterialSections["levels"],
   fail: (why: string) => never,
+  intersectionArea: (a: Parts, b: Parts) => number = (a, b) =>
+    area(pc.intersection(a, b) as Parts),
+  queries: DrawingBackedQueries,
 ) {
   const d = r.drawingBacked!,
     c = d.construction,
@@ -2319,15 +2430,13 @@ function checkDrawnMaterialEvidence(
   // A closed outline is wall or column material only where it draws a declared native owner
   // (a casing round its column, a wall polygon round its wall), never an empty room or closet.
   const ownMaterial = bandRows.flatMap((l) =>
-    l.sections
-      .filter((x) => d.nativeOwnerIds.includes(x.nativeElementId))
-      .flatMap((x) => x.partsFeet),
+    queries.sections(l, d.nativeOwnerIds).flatMap((x) => x.partsFeet),
   ) as Parts;
   for (const { ring, label } of drawnOutlineRings(dwg)) {
     let encloses = false;
     for (const part of ownMaterial) {
       try {
-        encloses = area(pc.intersection([[ring]], [part]) as Parts) > tiny;
+        encloses = intersectionArea([[ring]], [part]) > tiny;
       } catch {
         encloses = false;
       }
@@ -2338,12 +2447,7 @@ function checkDrawnMaterialEvidence(
         `cited drawn outline ${label} encloses no declared native owner material`,
       );
   }
-  const floors =
-    data.walkingSupport?.sourceModelSha256 === v.sourceModelSha256
-      ? data.walkingSupport.floors
-          .filter((f) => r.sourceFloorIds.includes(f.nativeElementId))
-          .flatMap((f) => f.partsFeet ?? [f.ringsFeet])
-      : [];
+  const floors = queries.floors(r.sourceFloorIds).flatMap((f) => f.partsFeet);
   const unsupported = r.partsFeet.flatMap((p) =>
     exactNativeDoorFloorDifference(p, floors),
   ) as Parts;
@@ -2351,8 +2455,8 @@ function checkDrawnMaterialEvidence(
   // owners' native sections at a cut (the overlap into the wall and its target) are native.
   const uncoveredAt = (l?: NativeMaterialSections["levels"][number]) => {
     const own = l
-      ? (l.sections
-          .filter((x) => d.nativeOwnerIds.includes(x.nativeElementId))
+      ? (queries
+          .sections(l, d.nativeOwnerIds)
           .flatMap((x) => x.partsFeet) as Parts)
       : [];
     return r.partsFeet.flatMap((p) =>
@@ -2409,8 +2513,8 @@ function checkDrawnMaterialEvidence(
     )
       fail("extension band exceeds the extended wall's own height");
     for (const l of bandRows) {
-      const own = l.sections
-        .filter((s) => s.nativeElementId === c.wallNativeElementId)
+      const own = queries
+        .sections(l, [c.wallNativeElementId])
         .flatMap((s) => s.partsFeet) as Parts;
       const edges = segments(own);
       const on = (p: P2) =>
@@ -2461,15 +2565,12 @@ function checkDrawnMaterialEvidence(
       segmentLengthInside(e.segmentFeet, r.partsFeet) > 1e-6
     )
       fail(`crosses registered DWG door segment doorSegments#${e.index}`);
-  for (const door of data.doors ?? []) {
-    const e = data.edges?.find((x) => x.id === door.id);
+  for (const { door, edge: e, footprint } of queries.doors) {
     if (
-      door.footprintFeet &&
-      e?.kind === "door" &&
       e.pointsFeet.some(
         (p) => p[2] >= r.baseElevationFeet - 0.05 && p[2] <= r.topElevationFeet,
       ) &&
-      area(pc.intersection(r.partsFeet, [door.footprintFeet]) as Parts) > tiny
+      intersectionArea(r.partsFeet, [[footprint]]) > tiny
     )
       fail(`crosses native door footprint ${door.nativeElementId}`);
   }

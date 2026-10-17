@@ -46,6 +46,11 @@ import {
 } from "./native-circulation-clearance.ts";
 import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
 import { buildIndoorGrid } from "./indoor-grid.ts";
+import { createNativeExactRoutingAuthority } from "./native-exact-routing-authority.ts";
+import { refineNativeTerminalPath } from "./native-terminal-refinement.ts";
+import { nativeTerminalRepairPairs } from "./native-terminal-repair-pairs.ts";
+import { certifiedStationaryNativeAlias } from "./indoor-stationary-native-alias.ts";
+import { createNativeArrivalOwnerQuery } from "./native-arrival-owner.ts";
 import { indoorRegionBlocker } from "./indoor-region.ts";
 import {
   containsRoomPoint,
@@ -756,6 +761,7 @@ type DoorApproachContext = {
   boundaries: ReturnType<typeof createNativeBoundaryMaterialQuery>;
   exactBoundaries: ReturnType<typeof createNativeExactBoundaryMaterialQuery>;
   exactIndex?: ReturnType<typeof createNativeExactTopologyIndex>;
+  physicalFace?: (cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number]) => NativeRationalParts | undefined;
   exactApproaches:Map<Rings,NativeRationalParts>;
   levels: Map<
     string,
@@ -827,7 +833,7 @@ function nativeForeignPortalTerminalDecision(
   const ring = cell.ringsFeet[0] ?? [];
   if (!ring.length || x < Math.min(...ring.map((p) => p[0])) - 2 || x > Math.max(...ring.map((p) => p[0])) + 2 ||
       y < Math.min(...ring.map((p) => p[1])) - 2 || y > Math.max(...ring.map((p) => p[1])) + 2) return false;
-  const pure = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
+  const pure = context.physicalFace?.(cell) ?? (cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined);
   if (!pure) return false;
   let portals = foreignPortalDoors.get(context);
   if (!portals) {
@@ -945,7 +951,7 @@ function nativeCellDoorApproach(
 ): Rings {
   if (!data.nativeIndoorEnvelopes) return cell.ringsFeet;
   let rings = cell.ringsFeet;
-  let exactParts = cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined;
+  let exactParts = context.physicalFace?.(cell) ?? (cell.exactFaceId ? context.exactIndex?.parts(cell.exactFaceId) : undefined);
   if(!exactParts) throw new Error("Missing exact native cell authority.");
   context.exactApproaches.set(rings,exactParts);
   const local = nativeLargeCellFace(context, cell, exactParts);
@@ -1080,20 +1086,7 @@ function nativeCellDoorApproach(
   return rings;
 }
 
-/** Rebuild walk branches inside each physical cell, keeping all existing fixed
- * door/connector node coordinates. Closed thresholds stay separate graph edges. */
-export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
-  // A regeneration replaces its earlier derived branches; it must never revive
-  // an old polyline because a rebuilt cell happens to reuse the same ID.
-  // Reviewed owner links (reviewed-circulation-links.ts) are not derived
-  // branches: they keep their identity and are replayed separately.
-  const derived = (edge: IndoorDataset["edges"][number]) =>
-    !!edge.nativeCellId ||
-    (!!data.nativeIndoorEnvelopes && edge.kind === "walk" && edge.reviewedCirculationLinkId === undefined);
-  const removed = data.edges.some(derived);
-  for (let i = data.edges.length - 1; i >= 0; i--)
-    if (derived(data.edges[i]!)) data.edges.splice(i, 1);
-  if(data.nativeIndoorEnvelopes && (!data.circulationGeometry?.exactTopology || data.circulationGeometry.sourceModelSha256!==data.source.modelSha256 || data.circulationGeometry.sourceGeometryKey!==nativeCirculationGeometryKey(data))) return 0;
+function createDoorApproachContext(data: IndoorDataset): DoorApproachContext {
   const context: DoorApproachContext = {
     floorBlockedDoors: nativeDoorFloorBlockers(data),
     edges: new Map(data.edges.map((e) => [e.id, e])),
@@ -1114,6 +1107,24 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
   for (const door of data.doors ?? [])
     for (const key of door.roomKeys)
       context.doors.set(key, [...(context.doors.get(key) ?? []), door]);
+  return context;
+}
+
+/** Rebuild walk branches inside each physical cell, keeping all existing fixed
+ * door/connector node coordinates. Closed thresholds stay separate graph edges. */
+export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
+  // A regeneration replaces its earlier derived branches; it must never revive
+  // an old polyline because a rebuilt cell happens to reuse the same ID.
+  // Reviewed owner links (reviewed-circulation-links.ts) are not derived
+  // branches: they keep their identity and are replayed separately.
+  const derived = (edge: IndoorDataset["edges"][number]) =>
+    !!edge.nativeCellId ||
+    (!!data.nativeIndoorEnvelopes && edge.kind === "walk" && edge.reviewedCirculationLinkId === undefined);
+  const removed = data.edges.some(derived);
+  for (let i = data.edges.length - 1; i >= 0; i--)
+    if (derived(data.edges[i]!)) data.edges.splice(i, 1);
+  if(data.nativeIndoorEnvelopes && (!data.circulationGeometry?.exactTopology || data.circulationGeometry.sourceModelSha256!==data.source.modelSha256 || data.circulationGeometry.sourceGeometryKey!==nativeCirculationGeometryKey(data))) return 0;
+  const context = createDoorApproachContext(data);
   const physicalDoorPairs = new Set(
     data.edges
       .filter((e) => e.kind === "door" && e.enabled)
@@ -1162,7 +1173,9 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
             pointsFeet: [a.pointFeet, b.pointFeet],
             lengthMetres: 0,
             enabled: true,
-            accessible: "unknown",
+            accessible: certifiedStationaryNativeAlias(a, b, cell,
+              context.exactIndex!.parts(cell.exactFaceId!)!, context.records.get(a.roomKey))
+              ? "yes" : "unknown",
             evidence:
               "Coincident source arrival and native connector identity on the same checked physical native cell; no walking segment or geometry movement.",
           });
@@ -1281,21 +1294,22 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
             [],
             0.6,
           ).branches[0];
-          if (!rebuilt) return false;
-          const start = positions.get(rebuilt.from)!,
-            end = positions.get(rebuilt.to)!;
           const ownParts = context.exactApproaches.get(ownRings)!;
-          let rebuiltPoints = [start, ...rebuilt.points, end];
+          const start = rebuilt ? positions.get(rebuilt.from)! : a,
+            end = rebuilt ? positions.get(rebuilt.to)! : b;
+          let rebuiltPoints = rebuilt ? [start, ...rebuilt.points, end] : undefined;
           // Grid snapping can move a terminal onto a neighbouring cell point that
           // its own exact face does not reach (e.g. into a door frame). Pull the
           // path tight through exactly supported straight segments only.
-          if (!nativeRationalPathSupported(rebuiltPoints,ownParts)) {
-            const pulled = nativeSupportedPull(rebuiltPoints, ownParts);
-            if (!pulled) return false;
-            rebuiltPoints = pulled;
-          }
+          if (rebuiltPoints && !nativeRationalPathSupported(rebuiltPoints,ownParts))
+            rebuiltPoints = nativeSupportedPull(rebuiltPoints, ownParts);
+          // Fine local proposals retain the original terminals, exact face,
+          // own door halves and final physical blockers. A finer grid cannot
+          // waive a real opening, foreign doorway or positive exact gap.
+          rebuiltPoints ??= refineNativeTerminalPath(ownParts, start, end);
+          if (!rebuiltPoints) return false;
           points =
-            rebuilt.from === branch.from
+            !rebuilt || rebuilt.from === branch.from
               ? rebuiltPoints
               : rebuiltPoints.toReversed();
         }
@@ -1363,7 +1377,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
                   pairs.push({ a, b, d: DMath.hypot(a.pointFeet[0] - b.pointFeet[0], a.pointFeet[1] - b.pointFeet[1]) });
         pairs.sort((x, y) => x.d - y.d || (x.a.id + x.b.id < y.a.id + y.b.id ? -1 : 1));
         let joined = false;
-        for (const { a, b } of pairs.slice(0, 24)) {
+        for (const { a, b } of nativeTerminalRepairPairs(pairs, root)) {
           // A terminal the grid cannot snap (e.g. deep in a wide door half) is
           // offered as one straight segment; accept() still checks it exactly.
           const planned = buildIndoorGrid(scope, [], [a, b].map((n) => ({ id: n.id, roomKey: cell.id, point: [n.pointFeet[0], n.pointFeet[1]] as RoomPoint, maxSnapFeet: 1.2 })), { walls: [], columns: [] }, [], 0.6).branches[0] ??
@@ -1373,6 +1387,49 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
           if (ok) { parent.set(root(a.id), root(b.id)); joined = true; break; }
         }
         if (!joined) break;
+      }
+    }
+  }
+  if (data.nativeIndoorEnvelopes) {
+    // Minority stair-landing identities can share an original physical face
+    // whose metadata belongs to larger neighbours. Only a still-unapproached
+    // ORIGINAL arrival may use its actual own physical doorway, along a fully
+    // two-foot supported path inside both original own outline and this face.
+    // Do not select it as an unrestricted terminal of the foreign cell/grid.
+    const approached = new Set(data.edges.filter(edge => edge.enabled && edge.kind === "walk" && edge.nativeCellId)
+      .flatMap(edge => [edge.from, edge.to]));
+    let ownerQuery: ReturnType<typeof createNativeArrivalOwnerQuery> | undefined;
+    for (const arrival of data.nodes) {
+      if (arrival.kind !== "arrival" || approached.has(arrival.id)) continue;
+      const owner = context.records.get(arrival.roomKey);
+      if (!owner?.walkable || owner.access === "staff" || owner.elevationFeet !== arrival.pointFeet[2]) continue;
+      const ownPortals = (context.doors.get(owner.key) ?? []).flatMap(door => {
+        const edge = context.edges.get(door.id);
+        return edge ? [context.nodes.get(edge.from), context.nodes.get(edge.to)]
+          .filter(node => node?.roomKey === owner.key) : [];
+      });
+      if (!ownPortals.length) continue;
+      for (const cell of data.circulationGeometry!.cells) {
+        if (cell.accessZoneId !== undefined || cell.roomKeys.includes(owner.key) ||
+            cell.elevationFeet !== arrival.pointFeet[2] || !cell.levelIds.includes(owner.levelId)) continue;
+        const pure = cell.exactFaceId && context.exactIndex!.parts(cell.exactFaceId);
+        if (!pure || !nativeRationalPointInParts(arrival.pointFeet, pure) ||
+            !ownPortals.some(portal => nativeForeignPortalTerminal(data, context, cell, portal))) continue;
+        ownerQuery ??= createNativeArrivalOwnerQuery(data);
+        const proof = ownerQuery(arrival.id, cell.id);
+        if (!proof) continue;
+        const id = `${cell.id}:walk:${[proof.arrivalNodeId, proof.portalNodeId].sort().join("|")}`;
+        if (data.edges.some(edge => edge.id === id)) continue;
+        data.edges.push({ id, nativeCellId: cell.id, from: proof.arrivalNodeId, to: proof.portalNodeId,
+          kind: "walk", pointsFeet: proof.pointsFeet, roomKeys: proof.roomKeys,
+          lengthMetres: proof.pointsFeet.slice(1).reduce((sum, point, i) => sum +
+            DMath.hypot(...point.map((value, k) => value - proof.pointsFeet[i]![k]!)) * data.alignment.horizontalMetresPerFoot, 0),
+          enabled: true, accessible: "unknown",
+          evidence: `Original minority-owner arrival and native doorway #${proof.nativeDoorElementId}; unchanged original terminals, same named original slabs ${proof.nativeFloorIds.join(",")}, full two-foot exact own-outline/physical-cell approach; every foreign owner retained; no stair flight or accessibility granted.` });
+        data.issues.push({ id: `native-arrival-owner:${arrival.id}`, code: "native-arrival-owner",
+          severity: "info", roomKey: owner.key, levelId: owner.levelId, nativeElementId: proof.nativeDoorElementId,
+          message: "Original arrival recovered through its own connected native doorway with complete two-foot original floor, own-outline and independently checked physical-cell support; access and stair qualification remain unchanged." });
+        approached.add(arrival.id); added++; break;
       }
     }
   }
@@ -1408,4 +1465,62 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
     data.report.largestComponentArrivals = Math.max(0, ...components);
   }
   return added;
+}
+
+/** Final source-bound physical replay of derived branches. The analytical
+ * planner may have a different conservative projection than the independent
+ * visitor authority (for example a raised foreign glazing panel). Replan only
+ * inside that unchanged authority or retain the original edge disabled, with
+ * its identity/points and a diagnostic. No access or portal is manufactured. */
+export function replayNativePhysicalCellRoutes(data: IndoorDataset) {
+  const result = { checked: 0, rerouted: [] as string[], disabled: [] as string[] };
+  if (!data.nativeIndoorEnvelopes) return result;
+  const context = createDoorApproachContext(data),
+    authority = createNativeExactRoutingAuthority(data, context.materials),
+    cells = new Map((data.circulationGeometry?.cells ?? []).map(cell => [cell.id, cell]));
+  context.physicalFace = cell => {
+    const original = cell.exactFaceId && context.exactIndex?.parts(cell.exactFaceId);
+    return original ? authority(cell.elevationFeet, original) : undefined;
+  };
+  for (const edge of data.edges) {
+    if (!edge.enabled || edge.kind !== "walk" || !edge.nativeCellId) continue;
+    result.checked++;
+    const cell = cells.get(edge.nativeCellId),
+      from = context.nodes.get(edge.from), to = context.nodes.get(edge.to);
+    let repaired = false;
+    if (cell && from && to &&
+        JSON.stringify(edge.pointsFeet[0]) === JSON.stringify(from.pointFeet) &&
+        JSON.stringify(edge.pointsFeet.at(-1)) === JSON.stringify(to.pointFeet) &&
+        edge.pointsFeet.every(p => p.length === 3 && p.every(Number.isFinite) &&
+          Math.abs(p[2] - cell.elevationFeet) < 0.05)) {
+      const own = nativeCellDoorApproach(data, context, cell, new Set([edge.from, edge.to])),
+        parts = context.exactApproaches.get(own)!;
+      if (nativeRationalPathSupported(edge.pointsFeet, parts)) continue;
+      // The native walking path is planar. Tolerated original source height
+      // differences never authorize moving either fixed endpoint to the cell.
+      const points = from.pointFeet[2] === cell.elevationFeet && to.pointFeet[2] === cell.elevationFeet
+        ? refineNativeTerminalPath(parts,
+          [from.pointFeet[0], from.pointFeet[1]], [to.pointFeet[0], to.pointFeet[1]])
+        : undefined;
+      if (points && nativeRationalPathSupported(points, parts)) {
+        edge.pointsFeet = points.map(p => [p[0], p[1], cell.elevationFeet]);
+        edge.lengthMetres = points.slice(1).reduce((sum, p, i) => sum +
+          DMath.hypot(p[0] - points[i]![0], p[1] - points[i]![1]) * data.alignment.horizontalMetresPerFoot, 0);
+        edge.accessible = "unknown";
+        edge.evidence += "; independently replayed original physical support with unchanged fixed terminals; changed derived path accessibility requires a fresh review";
+        result.rerouted.push(edge.id);
+        repaired = true;
+      }
+    }
+    if (repaired) continue;
+    edge.enabled = false;
+    result.disabled.push(edge.id);
+    (data.issues ??= []).push({
+      id: `native-physical-route:${edge.id}`,
+      code: "native-physical-route-refused", severity: "review",
+      message: `Derived walking branch ${edge.id} has no proved path between its fixed original terminals inside the independent original floor, opening and material authority. Its original identity and geometry are retained disabled; no arrival may rely on it.`,
+      ...(from ? {roomKey: from.roomKey, levelId: from.levelId} : {}),
+    });
+  }
+  return result;
 }

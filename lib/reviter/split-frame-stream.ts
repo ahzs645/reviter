@@ -40,6 +40,8 @@ export type StreamedFrame = {
   data: Uint8Array;
   /** Whether the frame crossed a page, i.e. no per-page scan could see it. */
   crossedPage: boolean;
+  /** Original offset on the page supplied by this push; null for split frames. */
+  pageOffset: number | null;
 };
 
 export type SplitFrameStreamOptions = {
@@ -47,6 +49,11 @@ export type SplitFrameStreamOptions = {
   markers: readonly number[];
   minObjectLength: number;
   maxFrameBytes: number;
+  /** Minimum bytes available from a candidate's start before acceptHeader is
+   * called. A collector inspecting fields beyond class + type must declare
+   * that lookahead so a short page tail is retried on the next push. The
+   * callback receives the current width-dependent frame header size. */
+  minimumHeaderBytes?: number | ((frameHeaderBytes: number) => number);
   /** Further header checks a collector's classes guarantee. */
   acceptHeader?: (view: DataView, offset: number) => boolean;
   /**
@@ -55,6 +62,12 @@ export type SplitFrameStreamOptions = {
    * every one out again would be most of the work.
    */
   crossingOnly?: boolean;
+  /** Skip complete same-page objects below this stored object-length boundary.
+   * Crossing objects remain eligible. This avoids copying ordinary small
+   * objects when only the page scanner's oversized omissions are requested. */
+  minWholeObjectLength?: number;
+  /** Check a same-page frame through a borrowed view before copying it. */
+  acceptWholeFrame?: (frame: Readonly<{ data: Uint8Array; objectLength: number }>) => boolean;
 };
 
 export type SplitFrameStream = {
@@ -97,7 +110,12 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
       // `header + length`.
       const header = frameHeaderBytes();
       const narrow = header === 12;
-      const headerScanBytes = header + HEADER_TAIL_BYTES;
+      const requestedHeaderBytes = typeof options.minimumHeaderBytes === "function"
+        ? options.minimumHeaderBytes(header) : options.minimumHeaderBytes;
+      if (requestedHeaderBytes != null && (!Number.isSafeInteger(requestedHeaderBytes) || requestedHeaderBytes < 0 || requestedHeaderBytes > options.maxFrameBytes)) {
+        throw new RangeError("Invalid split-frame header lookahead");
+      }
+      const headerScanBytes = Math.max(header + HEADER_TAIL_BYTES, requestedHeaderBytes ?? 0);
       const frameSuffixBytes = header + 4;
       const fileMarkers = new Map<number, number>();
       for (const marker of options.markers) {
@@ -108,8 +126,8 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
       held.push({ start: pageStart, data: page });
       streamEnd += page.byteLength;
 
-      // Only the header bytes behind this page not yet scannable need joining
-      // to it: normally the last 21 of the previous page.
+      // Keep every byte of a candidate header the collector cannot inspect
+      // yet: normally 21 bytes, or the declared lookahead minus one.
       const windowStart = Math.max(held[0]!.start, Math.min(nextScanOffset, pageStart));
       const window = bytesBetween(windowStart, streamEnd);
       const view = new DataView(window.buffer, window.byteOffset, window.byteLength);
@@ -155,6 +173,7 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
           streamOffset < pageStart ||
           streamOffset + objectLength + frameSuffixBytes > streamEnd;
         if (options.crossingOnly && !crossedPage) continue;
+        if (!crossedPage && options.minWholeObjectLength != null && objectLength < options.minWholeObjectLength) continue;
         pending.set(streamOffset, { elementId, marker, objectLength, crossedPage });
       }
       nextScanOffset = Math.max(nextScanOffset, scanEnd + 1);
@@ -168,12 +187,17 @@ export function createSplitFrameStream(options: SplitFrameStreamOptions): SplitF
         const echoAt = streamOffset + target.objectLength + header;
         const echo = new DataView(bytesBetween(echoAt, echoAt + 4).buffer).getUint32(0, true);
         if (echo !== target.objectLength) continue;
+        if (!target.crossedPage && options.acceptWholeFrame && !options.acceptWholeFrame({
+          data: page.subarray(streamOffset - pageStart, frameEnd - pageStart),
+          objectLength: target.objectLength,
+        })) continue;
         complete.push({
           elementId: target.elementId,
           marker: target.marker,
           objectLength: target.objectLength,
           data: bytesBetween(streamOffset, frameEnd),
           crossedPage: target.crossedPage,
+          pageOffset: target.crossedPage ? null : streamOffset - pageStart,
         });
       }
 
