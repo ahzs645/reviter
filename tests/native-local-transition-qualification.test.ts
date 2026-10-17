@@ -33,7 +33,7 @@ function fixture(options: { lip?: boolean; wall?: boolean; finish?: boolean } = 
   const t1 = ring(0.5, 1.5), t2 = ring(1.5, 2.45), nosing = ring(2.4, 2.55);
   const owned: [number, number[][][]][] = [[11, [...top(t1, 0.5), ...top(t2, 1), ...(lip ? top(nosing, 1.25) : [])]]];
   if (options.wall) owned.push([300, box(1.0, 0.5, 1.2, 2.5, 0, 3)]);
-  // The run's Treads/Risers finish occupies the run's own bounds: walking body, not foreign.
+  // Its original owner AND compatible run bounds make this a walking finish.
   if (options.finish) owned.push([12, box(0.5, 0, 2.55, 3, 0, 1.25)]);
   const floors = [{ elementId: 100, z: 0, r: ring(-2, 0.5) }, { elementId: 101, z: 1.5, r: ring(2.5, 5) }];
   const model = {
@@ -49,6 +49,7 @@ function fixture(options: { lip?: boolean; wall?: boolean; finish?: boolean } = 
     meshes: [mesh(owned)],
     nativeStairAssemblies: [{ stairElementId: 10, runAndLandingIds: [11], stringerIds: [], railingIds: [], supportIds: [] }],
     nativeHostRelations: [],
+    elementOwnership: { records: options.finish ? [{ elementId: 12, owningElementId: 11, byteOffset: 0 }] : [] },
   };
   return { model, floors };
 }
@@ -105,6 +106,20 @@ test("the run's own Treads/Risers finish is walking body, not foreign material",
   const out = qualifyNativeLocalTransitions(f.model as never, await dataset(f), [recipe as never], () => [0, 0]);
   assert.equal(out.qualified.length, 1, JSON.stringify(out.refused));
   assert.ok(!out.qualified[0]!.edge.nativeSourceStair!.foreignMaterial.sourceElementIds.includes(12));
+});
+test("matching finish bounds without consistent original ownership cannot qualify a stair", async () => {
+  for (const mutation of ["missing-owner", "foreign-owner", "conflicting-owner", "escaped-bounds"] as const) {
+    const f = fixture({ finish: true });
+    if (mutation === "missing-owner") f.model.elementOwnership.records = [];
+    if (mutation === "foreign-owner") f.model.elementOwnership.records[0]!.owningElementId = 999;
+    if (mutation === "conflicting-owner") f.model.elementOwnership.records.push({ elementId: 12, owningElementId: 999, byteOffset: 1 });
+    if (mutation === "escaped-bounds") f.model.elementBounds.find((e) => e.elementId === 12)!.boundsFeet.max.x += 0.001;
+    const before = JSON.stringify(f.model);
+    const out = qualifyNativeLocalTransitions(f.model as never, await dataset(f), [recipe as never], () => [0, 0]);
+    assert.equal(out.qualified.length, 0, mutation);
+    assert.match(out.refused[0]!.reason, /foreign material crosses the 2 ft walking path: elements 12/, mutation);
+    assert.equal(JSON.stringify(f.model), before, "the checker must not manufacture ownership");
+  }
 });
 test("a riser line without its native lip, foreign material in the path or a wrong recipe slab is refused", async () => {
   for (const [why, f, r] of [
