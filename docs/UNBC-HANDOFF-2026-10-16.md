@@ -102,3 +102,16 @@ historical master, failed source input and published visitor, and explicitly
 lists omitted rebuildable multi-gigabyte caches. Do not commit those large model
 or cache files to GitHub. Optional source evidence and cache reconstruction are
 described in the transfer README; original source data remains authoritative.
+
+## Post-push CI caveat
+
+The current-sibling CI retry passed TypeScript but its complete 2,210-test suite
+had 2,186 passes, two failures and 22 skips. Failures are
+`tests/deterministic-math.test.ts` (11 forbidden Math matches in seven source
+files) and the run-owned Treads/Risers finish case in
+`tests/native-local-transition-qualification.test.ts` (element 12 refused as
+foreign). These are retained unresolved checks, not waived fixture approvals.
+The Pages lint step also reports 140 errors/82 warnings, spanning old and
+preserved changed files; the previous main already failed lint. No lint rule or
+material/determinism guard was disabled. Read the consolidated `CHECKS.md`
+post-push section and exact failure excerpts before subsequent native repairs.
