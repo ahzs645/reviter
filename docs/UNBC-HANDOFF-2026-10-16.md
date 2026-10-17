@@ -186,3 +186,29 @@ This documentation-only receipt follows the published source commits. Repackage
 then-current clean source HEADs for the next publication. Native authoring inputs
 remain missing; all 28 full stairs remain disabled. Exact deployment and checks
 are in the sibling pathway report's publication-v13 JSON receipts.
+
+## Later October 17 source recovery
+
+The exact original RVT and historical accepted master are now restored, as are
+canonical rooms/GIS, all 890 packed review companions, paired IFC and Autodesk
+SVF. The failed input indoor JSON was reconstructed with its exact recorded
+hash; the containing reconstructed ZIP has a distinct wrapper hash. A fresh
+405,405,300-byte base conversion cache was generated with SHA
+`a36d46455ae741b01c99646fb60653c26c8d3de52d931bacfff0ac479cdc13d9`.
+It does not replace the old enriched-cache proof or checkpoint bindings.
+
+All 28 assemblies / 38 runs / 605 treads / 7,537 source faces were freshly
+reread across all 3,666 original pages with no missing requested records or
+comparison differences. Sixteen targeted source tests pass, including actual
+RVT controls. All four saved ramp profiles recalculate; one retains unknown
+accessibility. No full physical routes were approved and all 28 stairs remain
+held. The seven excluded source IDs have no matching saved stair edge.
+
+Read the sibling
+[source recovery report](../../openindoormaps/docs/continuation/unbc-20261017/source-recovery/README.md)
+and complete 28-row table before asking the user for original files again.
+The original 1.27 GB transfer, old enriched cache, nine checkpoint pairs and
+remaining later source review inputs are still absent; recover or regenerate
+bound evidence rather than relabelling a cache. The failed run exported no
+newer accepted master. The live version-13 application snapshot predates this
+recovery and still omits the separately recovered native files.
