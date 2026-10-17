@@ -1,5 +1,7 @@
 # UNBC compiler continuation for the next AI
 
+> **October 17 regeneration update:** [Fresh original-source materials and all four later review inputs are checked and backed up](../../openindoormaps/docs/continuation/unbc-20261017/regeneration-recovery/README.md). Nine new production floor checkpoints are being regenerated in an isolated guarded build; use the linked private Drive progress index for the current count. No historical digest has been rebound, no original-arrival guard waived, and no newer master accepted or published.
+
 Latest publication: **private Site version 13** and its 116.53 MB development
 snapshot are live. The publication receipt at the end records exact source refs
 and 37 successful normal-URL checks. The older version-12 section is historical.
