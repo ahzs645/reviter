@@ -212,3 +212,16 @@ remaining later source review inputs are still absent; recover or regenerate
 bound evidence rather than relabelling a cache. The failed run exported no
 newer accepted master. The live version-13 application snapshot predates this
 recovery and still omits the separately recovered native files.
+
+A durable new available-inputs backup is now saved in the owner's private Drive:
+https://drive.google.com/drive/folders/1FO-aO6JTBXKR0-Wkyfdrw3GLPvZ9pZ1g .
+It is 466,093,911 bytes (SHA `7dd8789dea31098c89b3c455fd524ed79add148976fcc95143f53e0bd60448c7`),
+split into five bounded parts with DOWNLOAD.json and JOIN.py. Full readback and
+restore matched 3,789 tracked source files plus the five included data files.
+Snapshots are OpenIndoorMaps a327c7f and Reviter be55831; later documentation
+commits record this receipt. The bundle includes the canonical master, current
+visitor, IFC/SVF and new base cache, with duplicate standalone model/rooms/review
+files omitted. It does not replace missing later enrichment/review inputs or
+nine historical checkpoints. Source assembly census is 82 total: 28 held links,
+one enabled local-step owner and 53 without saved stair/step edges, including
+all seven preference exclusions. No new physical route is approved.
