@@ -86,6 +86,27 @@ of a deployed viewer or on-site observations.
 
 ## Survey related doorway thresholds
 
+For source body questions, scan original requested GRep records directly:
+
+```sh
+node --max-old-space-size=4096 --experimental-strip-types \
+  --import ./scripts/register-test-typescript.mjs \
+  scripts/indoor/inspect-native-element-bodies.ts \
+  ORIGINAL.rvt REQUESTS.json NEW-BODY-INSPECTION
+```
+
+The request contains `sourceModelSha256` and unique `elementIds` (at most 128).
+The inspector checks actual RVT bytes and embedded schema, scans every original
+page with complete split-frame recovery, retains all requested occurrences and
+reports missing IDs explicitly. It saves binary source frames, original instance
+bindings, face/filling semantics and strict planar-prism refusal reasons. Follow
+external definition IDs with a separate bounded request; never silently choose
+one duplicate occurrence. A placed instance wrapper is not its referenced body.
+This is a source diagnostic, not a complete foreign-material census, threshold-
+specific body reader or route certificate. The existing strict prism predicate
+is designed for supported stair-source bodies; a rejection of another native
+representation does not establish missing physical geometry.
+
 For the UNBC four-floor inventory, use the complete native-model cache, complete
 indoor dataset and checked source state together:
 

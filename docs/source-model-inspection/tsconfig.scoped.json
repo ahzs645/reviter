@@ -17,7 +17,8 @@
     "../../tests/native-door-side-proposals.test.ts",
     "../../tests/native-door-sill-candidates.test.ts",
     "../../tests/native-door-threshold-proposal.test.ts",
-    "../../scripts/indoor/replay-door-threshold-proposals.ts"
+    "../../scripts/indoor/replay-door-threshold-proposals.ts",
+    "../../scripts/indoor/inspect-native-element-bodies.ts"
   ],
   "exclude": [
     "../../node_modules"
