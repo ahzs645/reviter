@@ -1,5 +1,12 @@
 # Indoor geometry pipeline
 
+For native first-person/source-model inspection, use the shared, checksummed
+[source inspection workflow](docs/source-model-inspection/README.md). Keep the
+complete source scene unchanged, record original-foot camera positions, inspect
+both sides and the actual threshold/landing, then replay exact physical facts.
+Render only affected views during iteration; a source render is not route or
+visitor-browser approval.
+
 For indoor room enclosure, circulation, door/stair/ramp/lift review or prepared OpenIndoorMaps ZIP work, read `docs/indoor-project-pipeline.md` and the shared [OpenIndoorMaps enclosure workflow](../openindoormaps/docs/indoor-enclosure-review.md). The reusable skill is [indoor-enclosure-review](../openindoormaps/.agents/skills/indoor-enclosure-review/SKILL.md).
 
 Preserve native model/GIS bytes and source annotation provenance. Derive boundaries from native inside wall faces, measured doors and real slab support; a drawing outline is not by itself a certified room. Keep closed-door display enclosures separate from traversable routing portals. Preserve actual slab holes, stair landings/flights and neighbouring room identities.
