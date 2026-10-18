@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { readRevit2027GInfo, revit2027GInfoShrink, type Revit2027GInfo } from "./revit-2027-grep-prefixes.ts";
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 
@@ -78,7 +79,7 @@ export function decodeRevit2027GLine(
   ) {
     return { ok: false, error: "Revit 2027 GLine contains a non-finite scalar" };
   }
-  if (Math.hypot(...direction) <= Number.EPSILON) {
+  if (DMath.hypot(...direction) <= Number.EPSILON) {
     return { ok: false, error: "Revit 2027 GLine direction is degenerate" };
   }
 

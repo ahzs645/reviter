@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import {
   revit2027GEdgeLoopDirection,
   revit2027GEdgeLoopNextReference,
@@ -51,7 +52,7 @@ export function uvDistance(
   left: Revit2027FaceUv,
   right: Revit2027FaceUv,
 ): number {
-  return Math.hypot(left[0] - right[0], left[1] - right[1]);
+  return DMath.hypot(left[0] - right[0], left[1] - right[1]);
 }
 
 export function revit2027FaceUv(

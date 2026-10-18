@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import type { IndoorDataset, IndoorEdge } from "./indoor-contract.ts";
 import { nativeCirculationGeometryKey } from "./native-circulation-geometry.ts";
 import { createNativeExactRoutingAuthority } from "./native-exact-routing-authority.ts";
@@ -26,7 +27,7 @@ const doorSignature = (edge: IndoorEdge, door: NonNullable<IndoorDataset["doors"
 function fullWidthPath(parts: NativeRationalParts, path: RoomPoint[]) {
   if (!nativeRationalPathSupported(path, parts)) return false;
   const strips = path.slice(1).flatMap((b, i) => {
-    const a = path[i]!, dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+    const a = path[i]!, dx = b[0] - a[0], dy = b[1] - a[1], length = DMath.hypot(dx, dy);
     if (!length) return [];
     const nx = -dy / length, ny = dx / length;
     const ring: RoomPoint[] = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny],
@@ -45,7 +46,7 @@ function doorwayArrivalPath(parts: NativeRationalParts, from: RoomPoint, to: Roo
   const direct = refineNativeTerminalPath(parts, from, to);
   if (direct && fullWidthPath(parts, direct)) return direct;
   if (normal.length !== 2 || !normal.every(Number.isFinite)) return;
-  const length = Math.hypot(...normal);
+  const length = DMath.hypot(...normal);
   if (!length) return;
   const sign = Math.sign((to[0] - other[0]!) * normal[0]! + (to[1] - other[1]!) * normal[1]!);
   if (!sign) return;

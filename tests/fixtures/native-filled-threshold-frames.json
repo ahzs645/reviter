@@ -1,0 +1,71 @@
+{
+  "format": "original-filled-threshold-source-frames-v1",
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "schemaSha256": "d961c44726fe7fc32bce4425639481a5d5e91acecec7b7fd897610fc369f046f",
+  "provenance": "Original full3666page extraction, October18 retained original-placed-bodies and original-shared-definitions; frame hashes verified against extraction receipts. These are diagnostic fixtures, not original model/source authority.",
+  "results": [
+    {
+      "nativeElementId": 1191708,
+      "kind": "definition",
+      "file": "native-filled-threshold-1191708.bin",
+      "bytes": 3704,
+      "sha256": "ee1595c685b022c2ea74a17319a06ec70e69abe642a5ba7250c51759f3a99586"
+    },
+    {
+      "nativeElementId": 1223587,
+      "kind": "definition",
+      "file": "native-filled-threshold-1223587.bin",
+      "bytes": 3704,
+      "sha256": "939047c1fbcdeb5c5c669ed89e0dcbf6be8553e36dcc2aa358c12df826edd125"
+    },
+    {
+      "nativeElementId": 1439914,
+      "kind": "definition",
+      "file": "native-filled-threshold-1439914.bin",
+      "bytes": 3704,
+      "sha256": "5742315c03c387bf30f58a602ebdaa29a13753ebc71d852e46448c24315b1801"
+    },
+    {
+      "nativeElementId": 2464392,
+      "kind": "definition",
+      "file": "native-filled-threshold-2464392.bin",
+      "bytes": 3704,
+      "sha256": "2dbc0411d6408af8fc873889707e7b2d9dd666286ec68f36643162835a8930a3"
+    },
+    {
+      "nativeElementId": 2315423,
+      "kind": "placed",
+      "file": "native-filled-threshold-2315423.bin",
+      "bytes": 320,
+      "sha256": "27512ad56f5a158e5a9d915dd0ac3cf93f0b7b828f697bb6bafdaacad4477e35"
+    },
+    {
+      "nativeElementId": 2311773,
+      "kind": "placed",
+      "file": "native-filled-threshold-2311773.bin",
+      "bytes": 320,
+      "sha256": "d7928ff5ac2e85f6d2057270096f78037c8fb66696d17325bc51d7bbae351497"
+    },
+    {
+      "nativeElementId": 1505916,
+      "kind": "placed",
+      "file": "native-filled-threshold-1505916.bin",
+      "bytes": 320,
+      "sha256": "6aa386cef779247184cd08d6848b59671e3429e10b9b0bcaea14e33e6b655f50"
+    },
+    {
+      "nativeElementId": 2042019,
+      "kind": "placed",
+      "file": "native-filled-threshold-2042019.bin",
+      "bytes": 320,
+      "sha256": "d822d3878560c2682e23ff110a7fa57734fe871d4328b3195e02e7da804f0108"
+    },
+    {
+      "nativeElementId": 2465287,
+      "kind": "placed",
+      "file": "native-filled-threshold-2465287.bin",
+      "bytes": 320,
+      "sha256": "226418dc826a6f563508bf9bf1d085d0e725182fce4735821ba6cd661539d112"
+    }
+  ]
+}

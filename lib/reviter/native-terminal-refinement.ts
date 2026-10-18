@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 import { buildIndoorGrid } from "./indoor-grid.ts";
 import {
   nativeExactPartsForProposals,
@@ -65,8 +66,9 @@ export function refineNativeTerminalPath(
   for (const cell of [0.3, 0.15, 0.075]) {
     // A rotated grid fits inside a square with this diagonal. Keep each trial
     // well below buildIndoorGrid's two-million-cell hard limit.
-    const span = Math.hypot(box[2]! - box[0]!, box[3]! - box[1]!);
-    if ((span / cell + 4) ** 2 > 1_000_000) continue;
+    const span = DMath.hypot(box[2]! - box[0]!, box[3]! - box[1]!);
+    const gridSpan = span / cell + 4;
+    if (gridSpan * gridSpan > 1_000_000) continue;
     const grid = buildIndoorGrid(scope, [], [
       { id: "from", roomKey: scope[0]!.key, point: from, maxSnapFeet: 1.2 },
       { id: "to", roomKey: scope[0]!.key, point: to, maxSnapFeet: 1.2 },

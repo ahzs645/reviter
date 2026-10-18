@@ -107,6 +107,34 @@ specific body reader or route certificate. The existing strict prism predicate
 is designed for supported stair-source bodies; a rejection of another native
 representation does not establish missing physical geometry.
 
+For a supported six-face filled sill, the separate bounded diagnostic now reads
+one persisted external instance and its exact referenced definition:
+
+```sh
+node --experimental-strip-types --import ./scripts/register-test-typescript.mjs \
+  scripts/indoor/inspect-filled-threshold-bodies.ts REQUEST.json NEW-REPORT.json
+node --experimental-strip-types --import ./scripts/register-test-typescript.mjs \
+  --test tests/native-filled-threshold-body.test.ts
+```
+
+The request declares source model/schema hashes and up to sixteen unique pairs;
+each `placed`/`definition` contains `path`, `nativeElementId` and `sha256`. Paths
+are relative to the request. It checks exact frame hashes, inner checksums, root
+semantics and complete typed FIFO consumption; only one six-face/twelve-edge
+planar box with six explicit null-data face hatches is supported. It preserves
+flags 4/6, every original source operand, twin embeddings, exact caps/riser sides
+and the full affine transform, including tiny nonzero terms. Unknown fillings,
+extra geometry, holes, open/tangent mismatches and tilted caps remain refusals.
+
+A successful result is an exact mathematical body diagnostic, not original-RVT
+membership, walking support, continuous foreign-material clearance, ownership,
+wheelchair eligibility or route approval. Compare its supplied frame bytes with
+a fresh actual-RVT source context before composing any original-source proof.
+Use complete source floors/holes and foreign material for the subsequent demand;
+never substitute the new cap/body result for the whole route qualification.
+The [October 18 routing readiness evidence](../../../openindoormaps/docs/continuation/unbc-20261018/ship-readiness/routing.md)
+retains the five original sill results and the outstanding physical/context gates.
+
 For the UNBC four-floor inventory, use the complete native-model cache, complete
 indoor dataset and checked source state together:
 

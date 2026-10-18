@@ -1,3 +1,4 @@
+import * as DMath from "./deterministic-math.ts";
 /** Exact Revit 2027 source slot for `GConditionDir`. */
 import { usesRevit2027RecordLayout } from "./revit-class-tags.ts";
 export const REVIT_2027_GCONDITION_DIR_SOURCE_CLASS_SLOT = 2235;
@@ -55,7 +56,7 @@ export function decodeRevit2027GConditionDir(
   ] as const;
   if (
     !direction.every(Number.isFinite) ||
-    Math.hypot(...direction) <= Number.EPSILON
+    DMath.hypot(...direction) <= Number.EPSILON
   ) {
     return {
       ok: false,
