@@ -245,7 +245,7 @@ function readDwgEntity(raw: RawEntity): DwgEntity | null {
         ? (raw.bulges as unknown[]).map((bulge) => number(bulge) ?? 0)
         : (raw.vertices as { bulge?: unknown }[] | undefined)?.map((vertex) => number(vertex?.bulge) ?? 0) ?? [];
       const closed = polylineIsClosed(raw, type);
-      return { ...base, points: expandBulges(vertices, bulges, closed), closed };
+      return { ...base, points: expandBulges(vertices, bulges, closed), closed, sampled: bulges.some(bulge => Math.abs(bulge) > 1e-9) };
     }
     case "CIRCLE": {
       const centre = point(raw.center ?? raw.centre);
@@ -285,13 +285,13 @@ function readDwgEntity(raw: RawEntity): DwgEntity | null {
           centre[1] + x * Math.sin(rotation) + y * Math.cos(rotation),
         ]);
       }
-      return { ...base, points: sampled };
+      return { ...base, points: sampled, sampled: true };
     }
     case "SPLINE": {
       const control = points(raw.controlPoints ?? raw.fitPoints ?? raw.points);
       if (control.length < 2) return null;
       const degree = number(raw.degree) ?? 3;
-      return { ...base, points: sampleSpline(control, degree) };
+      return { ...base, points: sampleSpline(control, degree), sampled: true };
     }
     case "SOLID":
     case "3DFACE": {

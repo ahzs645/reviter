@@ -366,6 +366,15 @@ export function createRecoveredElementSelection(
   elementId: number,
   sceneScale: number,
 ): THREE.Group | null {
+  return createRecoveredElementsSelection(root, new Set([elementId]), sceneScale);
+}
+
+/** Scan the triangle ownership table once for a multi-object selection. */
+export function createRecoveredElementsSelection(
+  root: THREE.Object3D,
+  selected: ReadonlySet<number>,
+  sceneScale: number,
+): THREE.Group | null {
   let remaining = MAX_ELEMENT_TRIANGLES;
   const fragments: SelectionFragment[] = [];
   root.traverse((object) => {
@@ -374,7 +383,7 @@ export function createRecoveredElementSelection(
     if (!elementIds) return;
     const faceIndices: number[] = [];
     for (let face = 0; face < elementIds.length && remaining; face += 1) {
-      if (elementIds[face] !== elementId) continue;
+      if (!selected.has(elementIds[face]!)) continue;
       faceIndices.push(face);
       remaining -= 1;
     }
@@ -383,7 +392,8 @@ export function createRecoveredElementSelection(
   if (!fragments.length) return null;
   return createSelectionOverlay(fragments, sceneScale, "Selected recovered element", {
     scope: "element",
-    elementId,
+    elementId: selected.size === 1 ? selected.values().next().value : undefined,
+    selectedCount: selected.size,
     truncated: remaining === 0,
   });
 }

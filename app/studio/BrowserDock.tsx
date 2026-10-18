@@ -25,6 +25,7 @@ export function BrowserDock({
   onSearch,
   records,
   selectedElementId,
+  selectedElementIds,
   onSelect,
   categories,
   emptyNote,
@@ -54,7 +55,8 @@ export function BrowserDock({
   onSearch: (value: string) => void;
   records: ElementBoundsRecord[];
   selectedElementId: number | null;
-  onSelect: (elementId: number) => void;
+  onSelect: (elementId: number, additive?: boolean) => void;
+  selectedElementIds?: ReadonlySet<number>;
   categories: readonly CategoryRow[];
   /** Why the lists are empty, when they are. */
   emptyNote: string;
@@ -115,6 +117,7 @@ export function BrowserDock({
           <ObjectList
             records={records}
             selectedElementId={selectedElementId}
+            selectedElementIds={selectedElementIds}
             onSelect={onSelect}
           />
         ) : <p className="dock-note">{emptyNote}</p>

@@ -500,6 +500,89 @@ button[data-reason]:focus-visible::after {
 }
 .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
+/* CAD review commands, portable views and precision overlays. */
+.workarea .left-dock { width: min(var(--browser-width, 280px), max(210px, calc((100vw - 360px) / 2))); flex-basis: min(var(--browser-width, 280px), max(210px, calc((100vw - 360px) / 2))); }
+.workarea .right-dock { width: min(var(--properties-width, 296px), max(210px, calc((100vw - 360px) / 2))); flex-basis: min(var(--properties-width, 296px), max(210px, calc((100vw - 360px) / 2))); }
+.dock-resize { flex: 0 0 6px; width: 6px; background: var(--panel); cursor: col-resize; touch-action: none; z-index: 5; border-inline: 1px solid var(--line); }
+.dock-resize:hover, .dock-resize:focus-visible { background: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.review-workbench, .drawing-review-tools { flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 11px; }
+.review-quick-actions, .review-actions, .drawing-precision-options { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.review-quick-actions { padding: 6px 12px; }
+.review-quick-actions > span { color: var(--text-2); margin-right: auto; }
+.review-workbench button, .drawing-review-tools button, .command-palette button, .dwg-print-settings button { min-height: 28px; border: 1px solid var(--line); padding: 4px 8px; border-radius: 4px; background: var(--panel-2); color: var(--text); cursor: pointer; }
+.review-workbench button:hover, .drawing-review-tools button:hover, .command-palette button:hover { background: var(--hover); }
+.review-workbench button:disabled, .drawing-review-tools button:disabled { opacity: .45; cursor: default; }
+.review-workbench input:not([type=checkbox]), .review-workbench select, .drawing-review-tools input:not([type=checkbox]):not([type=color]):not([type=range]), .drawing-review-tools select, .dwg-print-settings input, .command-palette input { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--text); padding: 6px 8px; }
+.review-workbench label, .drawing-review-tools label { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.review-workbench input[type=checkbox], .drawing-review-tools input[type=checkbox] { accent-color: var(--accent); flex-shrink: 0; }
+.review-workbench kbd, .drawing-review-tools kbd { opacity: .6; margin-left: 8px; }
+.review-workbench > details > summary, .drawing-review-tools > details > summary { cursor: pointer; padding: 7px 12px; border-top: 1px solid var(--line-soft); }
+.review-workbench-grid, .drawing-review-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 12px; max-height: 36vh; overflow: auto; border-top: 1px solid var(--line); }
+.drawing-review-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.review-workbench h3, .drawing-review-tools h3 { margin: 0 0 7px; font-size: 12px; }
+.review-workbench p, .drawing-review-tools p { color: var(--text-2); line-height: 1.45; margin: 7px 0; }
+.review-scroll { max-height: 145px; overflow: auto; margin-top: 8px; }
+.review-list-row { display: flex; align-items: center; gap: 7px; padding: 5px 0; border-bottom: 1px solid var(--line-soft); }
+.review-list-row > label, .review-list-row > span, .review-list-row > button:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.review-list-row small { display: block; margin-top: 3px; color: var(--text-3); font-size: 10px; }
+.review-list-row input[type=color] { flex: 0 0 28px; width: 28px; height: 25px; padding: 0; border: 0; background: none; }
+.review-list-row input[type=range] { max-width: 72px; }
+.review-file-button { position: relative; overflow: hidden; min-height: 28px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.review-file-button input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.review-file-button:focus-within { outline: 2px solid var(--accent); }
+.review-status { margin: 0 !important; padding: 5px 12px; border-top: 1px solid var(--line-soft); font-size: 11px; }
+.command-palette { width: min(560px, calc(100vw - 24px)); max-height: min(620px, calc(100dvh - 32px)); border: 1px solid var(--line); border-radius: 10px; padding: 0; color: var(--text); background: var(--panel); box-shadow: 0 20px 70px #0008; }
+.command-palette::backdrop { background: #0008; }
+.command-content { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.review-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.review-panel-heading h2 { font-size: 16px; margin: 0; }
+.command-palette input { width: 100%; font-size: 14px; }
+.command-palette form label { display: block; font-size: 12px; }
+.command-palette form .review-actions { margin-top: 12px; }
+.command-list { display: flex; flex-direction: column; gap: 3px; max-height: 380px; overflow: auto; }
+.command-list button { display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 10px; }
+.command-list button.active { border-color: var(--accent); background: var(--accent-soft); }
+.command-list button[aria-disabled=true] { opacity: .5; }
+.command-list small { display: block; color: var(--text-3); margin-top: 3px; font-size: 11px; }
+.home-command-button { align-self: flex-end; margin: 8px 16px; }
+.selection-rectangle { position: absolute; z-index: 25; pointer-events: none; border: 1px solid #2989f2; background: #2989f21f; }
+.selection-rectangle.crossing { border-style: dashed; border-color: #18a76c; background: #18a76c1f; }
+.model-snap-controls { position: absolute; bottom: 40px; left: 12px; z-index: 8; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 24px); padding: 7px 10px; background: var(--panel); border: 1px solid var(--line); font-size: 10px; }
+.model-snap-controls label { display: flex; align-items: center; gap: 5px; }
+.orientation-widget { position: absolute; right: 12px; top: 12px; z-index: 7; width: 100px; display: flex; flex-direction: column; gap: 2px; opacity: .9; }
+.orientation-widget > div { display: flex; gap: 2px; }
+.orientation-widget button { flex: 1; min-height: 26px; padding: 4px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 3px; font-size: 10px; cursor: pointer; }
+.orientation-widget button:hover { background: var(--hover); }
+.model-dimension-layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+.model-dimension-layer span { position: absolute; top: 0; left: 0; padding: 3px 5px; border: 1px solid #007a98; border-radius: 3px; background: var(--panel); color: var(--text); font-size: 11px; visibility: hidden; white-space: nowrap; }
+.dwg-image { position: relative; }
+.dwg-precision-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.dwg-precision-overlay.measuring { pointer-events: auto; touch-action: none; cursor: crosshair; }
+.drawing-precision-options { padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.drawing-precision-options > span { flex: 1 0 100%; font-weight: 600; }
+.drawing-precision-options > form { flex: 1 0 100%; }
+.drawing-precision-options input[type=number] { width: 100px; }
+.drawing-precision-options small { color: var(--text-3); }
+@media (max-width: 1100px) {
+  .review-quick-actions kbd { display: none; }
+  .review-workbench-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .review-workbench { order: -1; }
+  .review-quick-actions { padding: 6px 8px; gap: 5px; }
+  .review-quick-actions > span { font-size: 10px; }
+  .review-quick-actions label { flex: 1; justify-content: space-between; }
+  .review-workbench button, .drawing-review-tools button { min-height: 36px; }
+  .review-workbench-grid, .drawing-review-grid { grid-template-columns: minmax(0, 1fr); max-height: 40dvh; padding: 8px; gap: 12px; }
+  .drawing-precision-options { max-height: 32dvh; overflow: auto; }
+  .review-quick-actions select { max-width: 155px; }
+  .mobile-viewport .orientation-widget { right: 64px; width: 82px; }
+  .drawing-review-tools .review-quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .drawing-review-tools .review-quick-actions > label { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; }
+  .drawing-review-tools .review-quick-actions select { width: 100%; max-width: none; min-height: 36px; }
+  .drawing-review-tools .review-quick-actions > button { min-width: 0; }
+}
+
 .tabstrip {
   height: 36px;
   flex: 0 0 36px;
