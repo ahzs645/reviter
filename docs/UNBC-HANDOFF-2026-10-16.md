@@ -1,3 +1,5 @@
+> Current paired viewer/publication and Drive restoration entry: sibling OpenIndoorMaps `docs/continuation/unbc-20261018/live-publication/START-HERE.md`. Source inspection remains here in `docs/source-model-inspection/README.md`. Original RVT and functional regenerated evidence/checkpoints are backed up separately; no newer accepted master or full-stair admission.
+
 # UNBC compiler continuation for the next AI
 
 > **Original body and directions follow-up:** [The latest report](../../openindoormaps/docs/continuation/unbc-20261018/directions-and-threshold-blockers/README.md) recovers all requested placed records and eight referenced definitions from actual RVT pages. Four mullion definitions each have six faces/twelve edges, face filling records and a faceFlags=6 variant outside the available strict prism checker's support. A dedicated source-bound threshold body/clearance/admission handler is still needed; no source is missing for that next investigation. The sibling viewer's next build has a freshly validated 2.59 MB directions cache and publication gate, with exact worker comparisons. No doorway, held stair, new native master or live publication was approved.
