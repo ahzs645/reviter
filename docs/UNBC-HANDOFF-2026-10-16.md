@@ -1,5 +1,7 @@
 # UNBC compiler continuation for the next AI
 
+> **October 18 update:** [Shared four-floor pathway candidate](../../openindoormaps/docs/continuation/unbc-20261018/systemic-pathways/README.md) adds bounded exact-supported terminal visibility proposals before fine-grid refinement, preserving original doorway, stair and ramp endpoints/obstacles. Thirty-nine related compiler tests pass. This does not qualify the 28 held full stairs. The guarded native rebuild finished with all nine checkpoints backed up, but still fails preservation of 05-S204 and 03-S104; a targeted minority-owner replay with the new helper did not repair either. No new master or publication is accepted. Use the saved complete prepared snapshot and affected cells for the next local repair.
+
 > **October 17 regeneration update:** [Fresh original-source materials and all four later review inputs are checked and backed up](../../openindoormaps/docs/continuation/unbc-20261017/regeneration-recovery/README.md). All nine new production floor checkpoints are regenerated and verified by complete Drive download/readback in an isolated guarded build; use the linked private Drive progress index for the current count. No historical digest has been rebound, no original-arrival guard waived, and no newer master accepted or published.
 
 Latest publication: **private Site version 13** and its 116.53 MB development
