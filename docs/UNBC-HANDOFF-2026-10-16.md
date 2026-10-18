@@ -1,9 +1,55 @@
+> Current paired viewer/publication and Drive restoration entry: sibling OpenIndoorMaps `docs/continuation/unbc-20261018/live-publication/START-HERE.md`. Source inspection remains here in `docs/source-model-inspection/README.md`. Original RVT and functional regenerated evidence/checkpoints are backed up separately; no newer accepted master or full-stair admission.
+
 # UNBC compiler continuation for the next AI
+
+> **Original body and directions follow-up:** [The latest report](../../openindoormaps/docs/continuation/unbc-20261018/directions-and-threshold-blockers/README.md) recovers all requested placed records and eight referenced definitions from actual RVT pages. Four mullion definitions each have six faces/twelve edges, face filling records and a faceFlags=6 variant outside the available strict prism checker's support. A dedicated source-bound threshold body/clearance/admission handler is still needed; no source is missing for that next investigation. The sibling viewer's next build has a freshly validated 2.59 MB directions cache and publication gate, with exact worker comparisons. No doorway, held stair, new native master or live publication was approved.
+
+> **Reusable 3D inspection and threshold review:** Use the [shared rendering workflow](source-model-inspection/README.md) and [four-floor findings](../../openindoormaps/docs/continuation/unbc-20261018/door-threshold-workflow/README.md). The generic full-scene exporter, selected-view Blender renderer, source survey and non-authoritative stepped-profile tool pass 14 focused tests and scoped checks. Forty-two doors match the 50 mm sill pattern; 22 are unpaired. Five have checked owner/envelope proposals (both datasets), including corresponding Building 04–08 links on Floors 2 and 3. Complete body/cap/riser/continuous clearance, access and production admission are still required. Do not enable these proposals or relabel the failed prepared snapshot as an accepted master.
+
+> **Floor 3 gateway follow-up:** [Door 2315416 between 08-360 and 08-316](../../openindoormaps/docs/continuation/unbc-20261018/floor3-building04-building08/README.md) still has no room owners/portal in both visitor and failed prepared source. Host 2315413 and its 50 × 150 mm bottom mullion 2315423 block the proposed two-foot approach outside the thin leaf footprint; the door leaf starts 50 mm above the native floor. Repair ownership plus supported sill traversal or an evidenced source correction; do not erase the real source member or merely increase the ordinary 1.5-ft recovery radius. No runtime compiler change or new master was made for this diagnosis.
+
+> **October 18 update:** [Shared four-floor pathway candidate](../../openindoormaps/docs/continuation/unbc-20261018/systemic-pathways/README.md) adds bounded exact-supported terminal visibility proposals before fine-grid refinement, preserving original doorway, stair and ramp endpoints/obstacles. Thirty-nine related compiler tests pass. This does not qualify the 28 held full stairs. The guarded native rebuild finished with all nine checkpoints backed up, but still fails preservation of 05-S204 and 03-S104; a targeted minority-owner replay with the new helper did not repair either. No new master or publication is accepted. Use the saved complete prepared snapshot and affected cells for the next local repair.
+
+> **October 17 regeneration update:** [Fresh original-source materials and all four later review inputs are checked and backed up](../../openindoormaps/docs/continuation/unbc-20261017/regeneration-recovery/README.md). All nine new production floor checkpoints are regenerated and verified by complete Drive download/readback in an isolated guarded build; use the linked private Drive progress index for the current count. No historical digest has been rebound, no original-arrival guard waived, and no newer master accepted or published.
+
+Latest publication: **private Site version 13** and its 116.53 MB development
+snapshot are live. The publication receipt at the end records exact source refs
+and 37 successful normal-URL checks. The older version-12 section is historical.
 
 Read this repository's `AGENTS.md`, [the pipeline](indoor-project-pipeline.md),
 and the [consolidated OpenIndoorMaps handoff](https://github.com/ahzs645/openindoormaps/blob/main/docs/continuation/unbc-20261016/HANDOFF.md).
 That handoff owns the live viewer, exact receipts, remaining navigation work,
 test record and transfer instructions. Keep the repositories adjacent.
+
+October 17 viewer publication: private Site **version 12** is live, from Site
+source `dc165335885ff92e80540ae1d127fb0c17c3009b` and OpenIndoorMaps viewer
+`e41e4ae`. The downloadable shared-guide candidate is 45,519,753 bytes,
+SHA-256 `09d35032a47d4cde544207c5a83f28c061750dfdaf2b32e07f042362c164658a`.
+Original source geometry, nodes/edges and access remain unchanged from version
+10; all 28 full stair links remain held. The viewer adds `paths=1`, solid teal
+hallway guides and dotted amber room-door approaches. Internal passage/vestibule
+door branches are omitted from this optional overlay. The new geometry replay,
+earlier complete desktop/mobile cache/lift proof, partial new overlay probe,
+publication receipt and remaining source blockers are distinguished in the
+[October 17 pathway report](https://github.com/ahzs645/openindoormaps/blob/codex/unbc-corridor-analysis-20261017/docs/continuation/unbc-20261017/pathway-repairs/README.md).
+The older version-10 section below is the October 16 baseline. Native Sites
+deployment succeeded; signed-in production content verification is pending.
+
+October 17 availability update: this filesystem retains the repositories and
+visitor candidates, but the previously created `UNBC-data-handoff-20261017.tar.gz`,
+newer enriched cache and failed-run physical checkpoints are absent. Original
+chat commands confirm creation/readback of the 1,271,906,669-byte archive with
+SHA-256 `24119b663b78afc8250ceeefd13f5a0854a3c94a29f0d566d97961bd5f375253`;
+neither that archive nor its later Zstandard alternative was recovered from
+current scratch/shared files, attached artifacts or accessible Drive searches.
+Do not assume older scratch paths still exist. Source stair work needs those
+actual authoring inputs restored; the visitor ZIP cannot replace them.
+
+The focused ownership-fixture correction in [PR #17](https://github.com/ahzs645/reviter/pull/17)
+passes 15 local-transition/material-census tests and TypeScript. It adds the
+original finish-to-flight ownership record to the positive fixture and verifies
+missing, foreign, contradictory and escaped-bound refusals. Production
+qualification is unchanged, and no UNBC held link is approved by that test fix.
 
 ## Source state and failed rebuild
 
@@ -115,3 +161,79 @@ The Pages lint step also reports 140 errors/82 warnings, spanning old and
 preserved changed files; the previous main already failed lint. No lint rule or
 material/determinism guard was disabled. Read the consolidated `CHECKS.md`
 post-push section and exact failure excerpts before subsequent native repairs.
+
+## Paired development download continuation
+
+The next viewer publication adds a source development download alongside the
+visitor ZIP. Read the sibling
+[portable development procedure](../../openindoormaps/docs/continuation/unbc-20261017/pathway-repairs/PORTABLE-DEVELOPMENT.md)
+for the exact source-pair packaging/restore/publication guard. Every publication
+must archive both clean committed source trees and match the current visitor
+checksum. It excludes reinstallable dependencies/history/caches, stores the map
+only once on the site and assembles the combined ZIP on request. Approximately
+117 MB is the initial source-plus-visitor estimate; use its release manifest for
+exact size and branch/commit identities.
+
+This is an application development snapshot, not the missing native rebuild
+archive. Original RVT bytes, latest authoring master/review companions, enriched
+cache and failed-run checkpoints are still absent. Keep nativeRebuildReady false
+and list the missing identities; do not declare the visitor ZIP sufficient for
+source geometry repairs or waive the lost-arrival guard.
+
+Connection inspection adds original saved ramps/lifts/local steps, solid
+passage thresholds and optional held-stair markers. It changes no graph or
+physical approval. The saved data still has 28 disabled full stair links;
+all-building and Floor 4 step-free route certification remain unresolved.
+
+Publication receipt: private Site **version 13** deployed successfully at
+2026-10-17T20:27:29Z from Site source
+`991048d32c3b9d61c4b8868456afee1d9602cad1`. The exact published source snapshot
+binds OpenIndoorMaps `55659c46de2ecb122112c74a69f5dc8a0bad12b7` and Reviter
+`1d9b2be824dd242fc316ea5478406536f8651556`. Its on-request development ZIP is
+116,526,015 bytes; fresh restoration matched all 3,774 tracked source files and
+the visitor checksum. All 37 normal production URLs matched expected bytes with
+authorized owner access and same-origin canonical redirects, without cache
+busting. That is HTTP content verification, not new browser rendering proof.
+This documentation-only receipt follows the published source commits. Repackage
+then-current clean source HEADs for the next publication. Native authoring inputs
+remain missing; all 28 full stairs remain disabled. Exact deployment and checks
+are in the sibling pathway report's publication-v13 JSON receipts.
+
+## Later October 17 source recovery
+
+The exact original RVT and historical accepted master are now restored, as are
+canonical rooms/GIS, all 890 packed review companions, paired IFC and Autodesk
+SVF. The failed input indoor JSON was reconstructed with its exact recorded
+hash; the containing reconstructed ZIP has a distinct wrapper hash. A fresh
+405,405,300-byte base conversion cache was generated with SHA
+`a36d46455ae741b01c99646fb60653c26c8d3de52d931bacfff0ac479cdc13d9`.
+It does not replace the old enriched-cache proof or checkpoint bindings.
+
+All 28 assemblies / 38 runs / 605 treads / 7,537 source faces were freshly
+reread across all 3,666 original pages with no missing requested records or
+comparison differences. Sixteen targeted source tests pass, including actual
+RVT controls. All four saved ramp profiles recalculate; one retains unknown
+accessibility. No full physical routes were approved and all 28 stairs remain
+held. The seven excluded source IDs have no matching saved stair edge.
+
+Read the sibling
+[source recovery report](../../openindoormaps/docs/continuation/unbc-20261017/source-recovery/README.md)
+and complete 28-row table before asking the user for original files again.
+The original 1.27 GB transfer, old enriched cache, nine checkpoint pairs and
+remaining later source review inputs are still absent; recover or regenerate
+bound evidence rather than relabelling a cache. The failed run exported no
+newer accepted master. The live version-13 application snapshot predates this
+recovery and still omits the separately recovered native files.
+
+A durable new available-inputs backup is now saved in the owner's private Drive:
+https://drive.google.com/drive/folders/1FO-aO6JTBXKR0-Wkyfdrw3GLPvZ9pZ1g .
+It is 466,093,911 bytes (SHA `7dd8789dea31098c89b3c455fd524ed79add148976fcc95143f53e0bd60448c7`),
+split into five bounded parts with DOWNLOAD.json and JOIN.py. Full readback and
+restore matched 3,789 tracked source files plus the five included data files.
+Snapshots are OpenIndoorMaps a327c7f and Reviter be55831; later documentation
+commits record this receipt. The bundle includes the canonical master, current
+visitor, IFC/SVF and new base cache, with duplicate standalone model/rooms/review
+files omitted. It does not replace missing later enrichment/review inputs or
+nine historical checkpoints. Source assembly census is 82 total: 28 held links,
+one enabled local-step owner and 53 without saved stair/step edges, including
+all seven preference exclusions. No new physical route is approved.

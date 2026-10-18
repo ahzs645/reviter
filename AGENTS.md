@@ -1,5 +1,12 @@
 # Indoor geometry pipeline
 
+For native first-person/source-model inspection, use the shared, checksummed
+[source inspection workflow](docs/source-model-inspection/README.md). Keep the
+complete source scene unchanged, record original-foot camera positions, inspect
+both sides and the actual threshold/landing, then replay exact physical facts.
+Render only affected views during iteration; a source render is not route or
+visitor-browser approval.
+
 For indoor room enclosure, circulation, door/stair/ramp/lift review or prepared OpenIndoorMaps ZIP work, read `docs/indoor-project-pipeline.md` and the shared [OpenIndoorMaps enclosure workflow](../openindoormaps/docs/indoor-enclosure-review.md). The reusable skill is [indoor-enclosure-review](../openindoormaps/.agents/skills/indoor-enclosure-review/SKILL.md).
 
 Preserve native model/GIS bytes and source annotation provenance. Derive boundaries from native inside wall faces, measured doors and real slab support; a drawing outline is not by itself a certified room. Keep closed-door display enclosures separate from traversable routing portals. Preserve actual slab holes, stair landings/flights and neighbouring room identities.
@@ -23,3 +30,8 @@ or served stair/lift stops. Verify source-bound importer checks and actual
 2D/3D desktop/mobile comparisons before promoting the separate CAD pointer.
 
 For the current UNBC continuation, start with [the October 16 handoff](docs/UNBC-HANDOFF-2026-10-16.md). It distinguishes the live publication, failed source rebuild, next targeted repairs and portable data. Older handoffs are historical.
+
+For every UNBC site publication, follow the sibling
+[paired development download procedure](../openindoormaps/docs/continuation/unbc-20261017/pathway-repairs/PORTABLE-DEVELOPMENT.md).
+Pair both exact committed source trees with the visitor checksum and test fresh
+restoration; preserve explicit missing-native-input disclosure until recovered.

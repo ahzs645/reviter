@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "../../lib/reviter/source-inspection-scene.ts",
+    "../../lib/reviter/native-door-side-proposals.ts",
+    "../../lib/reviter/native-door-sill-candidates.ts",
+    "../../lib/reviter/native-door-threshold-proposal.ts",
+    "../../scripts/indoor/export-inspection-scene.ts",
+    "../../scripts/indoor/audit-native-door-thresholds.ts",
+    "../../tests/source-inspection-scene.test.ts",
+    "../../tests/native-door-side-proposals.test.ts",
+    "../../tests/native-door-sill-candidates.test.ts",
+    "../../tests/native-door-threshold-proposal.test.ts",
+    "../../scripts/indoor/replay-door-threshold-proposals.ts",
+    "../../scripts/indoor/inspect-native-element-bodies.ts"
+  ],
+  "exclude": [
+    "../../node_modules"
+  ]
+}

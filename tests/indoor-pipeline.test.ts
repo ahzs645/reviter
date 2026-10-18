@@ -73,6 +73,31 @@ const data: RoomDirectoryData = {
     ],
   },
 };
+test("prelanding diagnostic snapshots cannot alter compiler geometry or access", async () => {
+  const hash = await sha256Bytes(new Uint8Array(await modelFile.arrayBuffer()));
+  const baseline = await prepareIndoorDataset(model, data, hash);
+  let observed = 0;
+  const candidate = await prepareIndoorDataset(model, data, hash, undefined, {
+    onPreLandingSnapshot(snapshot) {
+      observed++;
+      snapshot.records[0]!.access = "staff";
+      snapshot.records[0]!.name = "Changed only in detached diagnostics";
+      snapshot.edges.length = 0;
+      snapshot.nodes.length = 0;
+    },
+  });
+  assert.equal(observed, 1);
+  assert.deepEqual(candidate, baseline);
+});
+test("a failed prelanding diagnostic capture aborts before downstream compilation", async () => {
+  const hash = await sha256Bytes(new Uint8Array(await modelFile.arrayBuffer()));
+  let downstream = false;
+  await assert.rejects(prepareIndoorDataset(model, data, hash, undefined, {
+    onPreLandingSnapshot() { throw Error("Diagnostic capture complete; stop before validation"); },
+    async nativeLandingApproaches() { downstream = true; throw Error("Unexpected downstream work"); },
+  }), /Diagnostic capture complete/);
+  assert.equal(downstream, false);
+});
 test("prepared v2 archive binds graph to original bytes and exact room reviews", async () => {
   const hash = await sha256Bytes(new Uint8Array(await modelFile.arrayBuffer())),
     indoor = await prepareIndoorDataset(model, data, hash);

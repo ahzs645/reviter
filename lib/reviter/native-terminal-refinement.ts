@@ -9,6 +9,7 @@ import {
   type NativeRationalParts,
 } from "./native-rational-overlay.ts";
 import type { DirectoryRoom, RoomPoint } from "./room-directory.ts";
+import { nativeTerminalVisibilityPath } from "./native-terminal-visibility.ts";
 
 /** Pull a proposal through the unchanged exact face. Proposal vertices never
  * authorize support, including tiny gaps hidden by their IEEE coordinates. */
@@ -54,6 +55,8 @@ export function refineNativeTerminalPath(
     [box[0]!, box[1]!], [box[2]!, box[1]!],
     [box[2]!, box[3]!], [box[0]!, box[3]!],
   ]]]);
+  const visibility = nativeTerminalVisibilityPath(clipped, from, to);
+  if (visibility && nativeRationalPathSupported(visibility, parts)) return visibility;
   const scope: DirectoryRoom[] = nativeExactPartsForProposals(clipped).map((part, i) => ({
     key: `terminal-window:${i}`, levelId: 0, polygonFeet: part[0]!,
     holesFeet: part.slice(1), labelPointFeet: [0, 0], confidence: 1,

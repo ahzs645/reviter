@@ -120,6 +120,10 @@ export async function prepareIndoorDataset(
     nativeCirculationCompiler?: (model: ConvertResult, dataset: IndoorDataset) => Promise<ReturnType<typeof prepareNativeCirculationGeometry>>;
     /** CLI resumable/parallel landing-approach stage with byte-identical output. */
     nativeLandingApproaches?: (model: ConvertResult, dataset: IndoorDataset, onProgress: (checked: number, total: number, edges: number) => void) => Promise<ReturnType<typeof attachNativeCirculation>>;
+    /** Authoring diagnostics only. Receives a detached mathematical snapshot,
+     * immediately before closure/landing validation. Throwing aborts compilation;
+     * the observer cannot amend compiler inputs or confer validation authority. */
+    onPreLandingSnapshot?: (snapshot: IndoorDataset) => void | Promise<void>;
   } = {},
 ): Promise<IndoorDataset> {
   const data = parseRoomDirectory(JSON.stringify(input));
@@ -1161,6 +1165,9 @@ export async function prepareIndoorDataset(
     issue("reviewed-landing-door-link", `Reviewed physical door connects ${a.roomKeys.join(" and ")} (generated ramp landing). Access and accessibility remain unverified.`, undefined, a.link.doorId, a.link.levelId);
   }
   if (landingDoors.applied.length) dataset.nodes = [...nodes.values()];
+
+  if (options.onPreLandingSnapshot)
+    await options.onPreLandingSnapshot(structuredClone(dataset));
 
   // Physical doors, pending portals and reviewed ramp landing doors now exist.
   // Refuse stale display/selection closures before the expensive landing-pair

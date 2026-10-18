@@ -1,0 +1,32 @@
+{
+  "sourceModelPath": "../../../data/UNBC.original.rvt",
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "modelCachePath": "../../../data/native-model-d3f445e6b1cee72f023cf4af0cbb3179ddcc259a2b05c8fc63928641586b9876.bin",
+  "modelCacheSha256": "d3f445e6b1cee72f023cf4af0cbb3179ddcc259a2b05c8fc63928641586b9876",
+  "expectedVertices": 1763196,
+  "expectedTriangles": 898257,
+  "render": {
+    "version": 1,
+    "width": 1280,
+    "height": 960,
+    "samples": 64,
+    "seed": 0,
+    "lensMillimetres": 23,
+    "clipStartFeet": 0.015,
+    "clipEndFeet": 5000,
+    "ambientStrength": 0.65,
+    "lights": [
+      { "pointFeet": [15, 528.5495338272797, 32.278215223097114], "energy": 1800, "sizeFeet": 8 },
+      { "pointFeet": [27, 528.5495338272797, 32.278215223097114], "energy": 1800, "sizeFeet": 8 },
+      { "pointFeet": [36, 528.5495338272797, 32.278215223097114], "energy": 1800, "sizeFeet": 8 },
+      { "pointFeet": [46, 528.5495338272797, 32.278215223097114], "energy": 1800, "sizeFeet": 8 },
+      { "pointFeet": [60, 528.5495338272797, 32.278215223097114], "energy": 1800, "sizeFeet": 8 }
+    ],
+    "views": [
+      { "id": "link-side", "label": "08-360 toward Building 08", "kind": "eye-level", "referenceElevationFeet": 24.278215223097114, "eyeFeet": [17, 528.5495338272797, 29.778215223097114], "targetFeet": [35, 528.5495338272797, 27.278215223097114] },
+      { "id": "building08-side", "label": "Building 08 toward 08-360", "kind": "eye-level", "referenceElevationFeet": 24.278215223097114, "eyeFeet": [44, 528.5495338272797, 29.778215223097114], "targetFeet": [28, 528.5495338272797, 27.278215223097114] },
+      { "id": "threshold-detail", "label": "Original bottom sill, low close-up", "kind": "low-detail", "referenceElevationFeet": 24.278215223097114, "eyeFeet": [25.5, 528.5495338272797, 25.528215223097114], "targetFeet": [31.8, 528.5495338272797, 24.578215223097114] },
+      { "id": "hallway-beyond", "label": "Beyond the doorway into 08-316", "kind": "eye-level", "referenceElevationFeet": 24.278215223097114, "eyeFeet": [34, 528.5495338272797, 29.778215223097114], "targetFeet": [49, 528.5495338272797, 27.278215223097114] }
+    ]
+  }
+}
