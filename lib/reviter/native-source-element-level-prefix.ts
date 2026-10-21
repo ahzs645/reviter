@@ -5,7 +5,14 @@ import type { SchemaStream, SchemaStreamProperty } from "./schema-reader.ts";
 export function inspectOriginalElementLevelPrefix(
   data: Uint8Array,
   schema: SchemaStream,
-  expectedClass: "Floor" | "StairsElement",
+  expectedClass:
+    | "Floor"
+    | "StairsElement"
+    | "BasicWallType"
+    | "CurtainWallType"
+    | "NRCurtainWallType"
+    | "NewCurtainWallType"
+    | "StackedWallType",
 ) {
   const fail = (message: string): never => {
     throw Error(message);
@@ -178,9 +185,10 @@ export function inspectOriginalElementLevelPrefix(
     );
   };
   const result: Record<string, unknown> = {},
-    targetClass = expectedClass === "Floor" ? "Element" : "StairsElement",
+    targetClass =
+      expectedClass === "StairsElement" ? "StairsElement" : "Element",
     targetField =
-      expectedClass === "Floor" ? "m_assocLevelId" : "m_topLevelOffset";
+      expectedClass === "StairsElement" ? "m_topLevelOffset" : "m_assocLevelId";
   let stopped = false;
   for (const c of ancestors) {
     if (c.unknownWord || c.propertyCount !== c.properties.length)

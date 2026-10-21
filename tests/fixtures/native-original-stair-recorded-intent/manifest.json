@@ -1,0 +1,23 @@
+{
+  "sourceRoomsSha256": "f329b643c18c86fa611b0843da0b8c5924b9e211336005eeaf5020c76bffac50",
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "scope": "Exact original recorded identity/display metadata slices only; no physical, human-review, source-DWG, access or route authority",
+  "sourceExtractionSha256": "1bcb1ca034d7f29f274c5273d876600c72514d482f679e7d50e99c1d078bf991",
+  "files": [
+    {
+      "file": "lower-annotation.original.json",
+      "bytes": 1082,
+      "sha256": "bab58ba3053abb987b9a169b1f2f04f332ee5ef9db29f273d45ce60a8145c7a7"
+    },
+    {
+      "file": "upper-annotation.original.json",
+      "bytes": 1658,
+      "sha256": "9ca130826f6cd156e3bdace4862cf55963b2a9a2e0fb7967f8167aca052493bb"
+    },
+    {
+      "file": "lower-review.original.json",
+      "bytes": 367,
+      "sha256": "a2ad0fcd2be7c793e2d28fdd7cba18003b5e365378913e8871954dbfd17100e7"
+    }
+  ]
+}

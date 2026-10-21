@@ -42,7 +42,7 @@ test("forged census/copies and invalid diagnostic retention requests cannot crea
 const rvt = process.env.NATIVE_SLAB_SOURCE_RVT,
   reviewPath = process.env.NATIVE_DRAWING_SOURCE_REVIEW;
 test(
-  "complete actual-RVT census retains native host/grid bytes without changing physical census or unknown bodies",
+  "complete actual-RVT census preserves physical materials and excludes only a fully qualified original view grid",
   { skip: !rvt || !reviewPath },
   () => {
     const bytes = readFileSync(rvt!),
@@ -57,7 +57,25 @@ test(
       ),
       cert = result.certificate,
       facts = originalNativeForeignEnvelopeFacts(cert);
-    assert.equal(facts.rows.length, 39798);
+    // Historical39798/c6787390… included the original virtual SketchGrid24930.
+    // Fresh165-module exact-row audit preserves every other physical row;
+    // EVIDENCE-028 retains the old census and complete source-role proof.
+    assert.deepEqual(
+      result.summary.originalViewGridNonPhysicalProofs.map(
+        (p) => p.nativeElementId,
+      ),
+      [24930],
+    );
+    const grid = result.summary.originalViewGridNonPhysicalProofs[0]!;
+    assert.equal(grid.originalViewId, 695);
+    assert.equal(grid.originalNativeParentId, 316);
+    assert.equal(
+      grid.originalGElementSha256,
+      "0f88252f46625a13370c7b7eef40268219cc4cfbeccc4125200cebdf217ecad3",
+    );
+    assert.equal(grid.drawingControlCommandQualified, false);
+    assert.equal(grid.drawingUsedForPhysicalClearance, false);
+    assert.equal(facts.rows.length, 39797);
     assert.equal(facts.unboundedSourceRecordCount, 68);
     // The full census receipt also hashes parser diagnostics. Bind the actual
     // physical rows and delegations independently so a data-retention request
@@ -66,7 +84,7 @@ test(
       createHash("sha256").update(JSON.stringify(value)).digest("hex");
     assert.equal(
       digest(facts.rows),
-      "c678739019b0b666d073bbdc4d3bd6d033e82429008e3e5c5c19f5a5b1dd37f7",
+      "e59852dd7c6885636064cb55b5f20b978f3557dbaa63755099e34f3f31c1ef9c",
     );
     assert.equal(
       digest(facts.delegatedOriginalContainers),

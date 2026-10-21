@@ -82,6 +82,33 @@ test("named trimmed cap retains all six holes and complete cylinder uncertainty,
   assert.equal(demand.fullTwoFootStationWithinGuaranteedOriginalSupport, true);
   assert.equal(demand.retainedBoundaryUncertaintyContact, false);
   assert.equal(demand.exactOriginalTerminalHeightContact, false);
+  const explicit = inspectLocalFloorTwoFootStation(
+    cap, [0.5148043399884723, -323.3025630530456], [0, 8],
+    24.278215223097114,
+  );
+  assert.equal(explicit.fullTwoFootStationWithinGuaranteedOriginalSupport, true);
+  assert.deepEqual(explicit.originalTwoFootLateralEndpointsFeet, demand.originalTwoFootLateralEndpointsFeet);
+  assert.equal(explicit.routeApproved, false);
+  assert.equal(
+    inspectLocalFloorTwoFootStation(
+      cap, [0.5148043399884723, -323.3025630530456], [1, 1],
+      24.278215223097114,
+    ).fullTwoFootStationWithinGuaranteedOriginalSupport,
+    false,
+    "a wider diagonal demand cannot silently use the narrower supported axis station",
+  );
+  assert.equal(
+    inspectLocalFloorTwoFootStation(cap, [-5, -320], [1, 1], 24.278215223097114)
+      .fullTwoFootStationWithinGuaranteedOriginalSupport,
+    false,
+    "an oriented station cannot cover the original stair hole",
+  );
+  for (const invalid of [[0, 0], [Infinity, 1], []]) assert.throws(
+    () => inspectLocalFloorTwoFootStation(
+      cap, [0.5148043399884723, -323.3025630530456],
+      invalid as [number, number], 24.278215223097114,
+    ), /station direction/,
+  );
   assert.ok(demand.physicalMinusNominalElevationFeet.n > 0n);
   assert.equal(
     inspectLocalFloorTwoFootStation(cap, [-5, -320], "y", 24.278215223097114)

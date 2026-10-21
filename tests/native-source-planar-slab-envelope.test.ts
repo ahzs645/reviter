@@ -452,6 +452,9 @@ test(
       rational(6),
     );
     assert.deepEqual(highDemand.componentContacts, []);
+    assert.deepEqual(highDemand.localizedComponentContacts, []);
+    assert.deepEqual(highDemand.sourceMaterialLocalizationBlockers, []);
+    assert.equal(highDemand.originalLocalizedMaterialCellsChecked, 239);
     assert.deepEqual(highDemand.nonSurfaceGraphicalContacts, []);
     assert.equal(highDemand.routeApproved, false);
     const intersectsDemand = auditOriginalPlacedStairAboveFoot(
@@ -461,6 +464,12 @@ test(
       rational(6),
     );
     assert.ok(intersectsDemand.componentContacts.length > 0);
+    assert.ok(intersectsDemand.localizedComponentContacts!.length > 0);
+    assert.ok(
+      intersectsDemand.localizedComponentContacts!.some(
+        (contact) => contact.role === "cap-bounded-core",
+      ),
+    );
     assert.ok(intersectsDemand.nonSurfaceGraphicalContacts.length > 0);
     assert.equal(intersectsDemand.completeHumanHeadroomApproved, false);
     assert.equal(stations.completeContinuousWalkingHeadroomApproved, false);

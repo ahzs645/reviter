@@ -29,7 +29,7 @@ checks. Logical entrance proposals do not create physical walls, doors, access
 or served stair/lift stops. Verify source-bound importer checks and actual
 2D/3D desktop/mobile comparisons before promoting the separate CAD pointer.
 
-For the current UNBC continuation, start with [the October 16 handoff](docs/UNBC-HANDOFF-2026-10-16.md). It distinguishes the live publication, failed source rebuild, next targeted repairs and portable data. Older handoffs are historical.
+For the current UNBC continuation, start with [the October 20 handoff](docs/continuation/unbc-20261020/HANDOFF.md). It distinguishes the source checkpoint, running native rebuild, verified recovery files and pending release checks. Older handoffs are historical.
 
 For every UNBC site publication, follow the sibling
 [paired development download procedure](../openindoormaps/docs/continuation/unbc-20261017/pathway-repairs/PORTABLE-DEVELOPMENT.md).

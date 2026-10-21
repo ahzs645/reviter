@@ -20,6 +20,7 @@ import {
 import type { Revit2027PlaneSurface } from "./revit-2027-surfaces.ts";
 import type { Revit2027GRepReplay } from "./revit-2027-grep-replay.ts";
 import { inspectOriginalStairSourceTopology } from "./native-source-stair-solid-proof.ts";
+import { originalStairPlanarFaceReversal } from "./native-source-stair-face-orientation.ts";
 import {
   inspectOriginalNativeStairPhysicalInventory,
   readOriginalNativeStairPhysicalSource,
@@ -248,7 +249,7 @@ export function inspectOriginalStairSupportEnvelopes(
         !plane ||
         plane.kind !== "plane" ||
         face.cutType !== 0 ||
-        face.faceFlags !== 4 ||
+        originalStairPlanarFaceReversal(face.faceFlags, plane) === undefined ||
         !loop ||
         loop.loop.nextLoop.token !== 0 ||
         face.faceRegions.count ||
@@ -330,7 +331,8 @@ export function inspectOriginalStairSupportEnvelopes(
         sub(
           mul(rational(plane.xVector[0]), rational(plane.yVector[1])),
           mul(rational(plane.xVector[1]), rational(plane.yVector[0])),
-        ).n * (plane.surface.orientFlag ? 1n : -1n);
+        ).n * (plane.surface.orientFlag ? 1n : -1n) *
+        BigInt(originalStairPlanarFaceReversal(index.faces.get(token)!.faceFlags, plane)!);
       if (plane.xVector[2] !== 0 || plane.yVector[2] !== 0 || normal <= 0n)
         continue;
       const walked = faceWalks.get(token)!,

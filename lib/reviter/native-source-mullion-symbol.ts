@@ -1,7 +1,8 @@
 import type { SchemaStream, SchemaStreamProperty } from "./schema-reader.ts";
 
 type ObjectValue = Record<string, unknown>;
-export type NativeMullionRootClassName = "SysMullionFamSym" | "FamilyInstance";
+export type NativeMullionRootClassName =
+  "SysMullionFamSym" | "FamilyInstance" | "FamilySymbol";
 export type NativeMullionTypedDescriptor = {
   token: number;
   sourceClassSlot: number | null;
@@ -59,6 +60,24 @@ const DYNAMIC_CLASSES = new Set([
   "BaseFamilySymbolGStep",
   "SysMullionFamSymPatternHelper",
   "Plane",
+]);
+// A separate root-specific grammar. Adding native curtain-door Symbol support
+// must not broaden the existing system-mullion/instance generator grammar.
+const CURTAIN_DOOR_SYMBOL_CLASSES = new Set([
+  "GeomStepList",
+  "GeomTable",
+  "CellList",
+  "SymbolInfo",
+  "FamilyParams",
+  "ControlIcon",
+  "CurtainCellSymFamRef",
+  "Face",
+  "Matrix",
+  "BaseFamilySymbolGStep",
+  "FamilySymbolPatternHelper",
+  "Plane",
+  "CurveLoop",
+  "GLine",
 ]);
 /** These named runtime fields are absent from the stored object. Each admitted flag/field declaration is checked explicitly; a changed or
  * unfamiliar flag is refused. Full frame and FIFO closure are required. */
@@ -123,7 +142,11 @@ export function readOriginalMullionSymbolTypedFifo(
     if (classes.size !== schema.classes.length)
       fail("Duplicate source schema class");
     const rootClassSlot = view.getUint16(16, true);
-    if (!["SysMullionFamSym", "FamilyInstance"].includes(expectedRootClassName))
+    if (
+      !["SysMullionFamSym", "FamilyInstance", "FamilySymbol"].includes(
+        expectedRootClassName,
+      )
+    )
       fail("Unsupported expected original mullion root class");
     if (classes.get(rootClassSlot)?.name !== expectedRootClassName)
       fail(`Original root is not ${expectedRootClassName}`);
@@ -199,7 +222,7 @@ export function readOriginalMullionSymbolTypedFifo(
           ? {}
           : readObject(c.parent.index, path, depth + 1);
       for (const f of c.properties) {
-        let key = f.name;
+        const key = f.name;
         if (Object.hasOwn(result, key))
           fail("Duplicate same-class source field");
         result[key] = readField(f, `${path}.${key}`, c.name, depth + 1);
@@ -340,7 +363,13 @@ export function readOriginalMullionSymbolTypedFifo(
     for (let head = 0; head < queue.length; head++) {
       const descriptor = queue[head]!,
         c = classes.get(descriptor.sourceClassSlot!)!;
-      if (!DYNAMIC_CLASSES.has(c.name))
+      if (
+        !(
+          expectedRootClassName === "FamilySymbol"
+            ? CURTAIN_DOOR_SYMBOL_CLASSES
+            : DYNAMIC_CLASSES
+        ).has(c.name)
+      )
         fail(`Unsupported dynamic source class ${c.name}`);
       const start = at,
         descriptorCount = descriptors.length,

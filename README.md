@@ -11,6 +11,10 @@ record — what was probed, what the controls said, what was tried and rejected 
 lives in [`docs/`](docs/README.md) rather than here. This file describes what
 Reviter does now.
 
+## UNBC development checkpoint
+
+The latest [paired source handoff](docs/continuation/unbc-20261020/HANDOFF.md) documents source 019, verified recovery files, the running native rebuild, and the remaining route, browser and performance checks. This source checkpoint is not a completed UNBC release.
+
 ## Extract geometry from an RVT
 
 The converter reads the Revit release from the file's own `BasicFileInfo`

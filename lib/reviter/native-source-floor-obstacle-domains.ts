@@ -32,6 +32,7 @@ import {
   projectStatedTwoFootWalkingVolume,
   type SourceWalkingPoint3,
 } from "./native-source-walking-volume.ts";
+import { inspectOriginalFloorChainEnvelopeMaterial, type OriginalFloorChainMaterialCell } from "./native-source-floor-chain-envelope-material.ts";
 type Q = Rational;
 type P3 = [Q, Q, Q];
 const add = (a: Q, b: Q) => new Rational(a.n * b.d + b.n * a.d, a.d * b.d),
@@ -81,12 +82,12 @@ const box = (xs: Q[], ys: Q[]) => {
         ] as NativeRationalPoint[][],
       };
 };
-type Cell = OriginalPlanarMaterialCell & {
+type Cell = OriginalFloorChainMaterialCell | (OriginalPlanarMaterialCell & {
   sourceKind:
     | "plane-domain"
     | "full-vertical-cylinder-domain"
     | "cap-bounded-outer-volume";
-};
+});
 /** Mathematical complete source-domain enclosure only. Both trimmed and
  * auxiliary finite planes remain enclosed, and every cylinder uses a full
  * original circle XY enclosure plus its complete original vertical parameter
@@ -98,6 +99,7 @@ export function inspectOriginalFloorObstacleDomains(
 ) {
   const cells: Cell[] = [],
     blockers: string[] = [];
+  let chainEnvelopeMaterial: ReturnType<typeof inspectOriginalFloorChainEnvelopeMaterial> | undefined;
   let pointControls = 0,
     referencePlanes = 0,
     curvedFaces = 0;
@@ -107,6 +109,7 @@ export function inspectOriginalFloorObstacleDomains(
       "Revit2027Face",
       "Revit2027GEdge",
       "Revit2027EdgeLoop",
+      "Revit2027EdgeLoopWithChainEnvelopes",
       "Revit2027AnalyticSurface:634",
       "Revit2027AnalyticSurface:1144",
       "Revit2027GFilling",
@@ -123,6 +126,11 @@ export function inspectOriginalFloorObstacleDomains(
       )
     )
       throw Error("Unsupported original floor source branch/owner");
+    if (replay.spans.some(s => s.readerId === "Revit2027EdgeLoopWithChainEnvelopes")) {
+      chainEnvelopeMaterial = inspectOriginalFloorChainEnvelopeMaterial(replay);
+      if (!chainEnvelopeMaterial.completeSourceChainOperands)
+        throw Error(`Original floor chain-envelope source operands remain unsupported: ${chainEnvelopeMaterial.blockers.join("; ")}`);
+    }
     const index = revit2027OwnerMeshIndex(replay),
       geometries = replay.spans.filter(
         (s) => s.readerId === "Revit2027Geometry",
@@ -276,7 +284,7 @@ export function inspectOriginalFloorObstacleDomains(
         usedLoops.add(loopToken);
         const ls = replay.spans.find(
           (s) =>
-            s.readerId === "Revit2027EdgeLoop" && s.propertyToken === loopToken,
+            (s.readerId === "Revit2027EdgeLoop" || s.readerId === "Revit2027EdgeLoopWithChainEnvelopes") && s.propertyToken === loopToken,
         )!;
         accounted.add(ls.replayIndex);
         loopToken = loop.loop.nextLoop.token;
@@ -462,14 +470,20 @@ export function inspectOriginalFloorObstacleDomains(
       minimumElevationFeet: min(capPoints.map((p) => p[2])),
       maximumElevationFeet: max(capPoints.map((p) => p[2])),
     });
+    // Every source1437 UV box is retained as an operand. Boxes contained by
+    // the original whole-plane parameter domain are already in its enclosure.
+    // Keep any uncovered domain as its own CLOSED planar obstruction; never
+    // sweep an auxiliary acceleration box through the floor's body thickness.
+    if (chainEnvelopeMaterial) cells.push(...chainEnvelopeMaterial.additionalCells);
   } catch (error) {
     blockers.push(error instanceof Error ? error.message : String(error));
   }
   return {
     cells,
     blockers,
+    chainEnvelopeMaterial,
     originalFaces: cells.filter(
-      (c) => c.sourceKind !== "cap-bounded-outer-volume",
+      (c) => c.sourceKind === "plane-domain" || c.sourceKind === "full-vertical-cylinder-domain",
     ).length,
     pointControls,
     referencePlanes,
@@ -498,6 +512,19 @@ const sourceMetadata = new WeakMap<
     curvedFaces: number;
     referencePlanes: number;
     pointControls: number;
+    sourceChainEnvelopeLoopCount: number;
+    sourceChainEnvelopeAdditionalCellCount: number;
+    originalChainEnvelopeOperands: {
+      originalFaceToken: number;
+      originalLoopToken: number;
+      originalChainIndex: number;
+      originalChainStartEdgeToken: number;
+      originalChainUvMinimum: number[];
+      originalChainUvMaximum: number[];
+      originalPlaneUvMinimum: number[];
+      originalPlaneUvMaximum: number[];
+      coveredByOriginalWholePlaneParameterDomain: boolean;
+    }[];
   }
 >();
 export function certifyOriginalNativeFloorObstacleDomains(
@@ -552,6 +579,19 @@ export function certifyOriginalNativeFloorObstacleDomains(
     curvedFaces: result.curvedFaces,
     referencePlanes: result.referencePlanes,
     pointControls: result.pointControls,
+    sourceChainEnvelopeLoopCount: result.chainEnvelopeMaterial?.sourceChainLoopCount ?? 0,
+    sourceChainEnvelopeAdditionalCellCount: result.chainEnvelopeMaterial?.additionalCells.length ?? 0,
+    originalChainEnvelopeOperands: result.chainEnvelopeMaterial?.chainOperands.map(operand => ({
+      originalFaceToken: operand.originalFaceToken,
+      originalLoopToken: operand.originalLoopToken,
+      originalChainIndex: operand.originalChainIndex,
+      originalChainStartEdgeToken: operand.originalChainStartEdgeToken,
+      originalChainUvMinimum: operand.originalChainUvMinimum,
+      originalChainUvMaximum: operand.originalChainUvMaximum,
+      originalPlaneUvMinimum: operand.originalPlaneUvMinimum,
+      originalPlaneUvMaximum: operand.originalPlaneUvMaximum,
+      coveredByOriginalWholePlaneParameterDomain: operand.coveredByOriginalWholePlaneParameterDomain,
+    })) ?? [],
   });
   return {
     ok: true as const,
@@ -722,6 +762,13 @@ export function originalNativeFloorObstacleDomainFacts(
     sourceModelSha256: certificate.sourceModelSha256,
     nativeFloorElementId: certificate.nativeFloorElementId,
     ...source,
+    originalChainEnvelopeOperands: source.originalChainEnvelopeOperands.map(operand => ({
+      ...operand,
+      originalChainUvMinimum: [...operand.originalChainUvMinimum],
+      originalChainUvMaximum: [...operand.originalChainUvMaximum],
+      originalPlaneUvMinimum: [...operand.originalPlaneUvMinimum],
+      originalPlaneUvMaximum: [...operand.originalPlaneUvMaximum],
+    })),
     cells: cells.map((c) => ({
       ...c,
       originalFaceTokens: [...c.originalFaceTokens],

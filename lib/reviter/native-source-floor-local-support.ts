@@ -4,6 +4,7 @@
  * sampled chord is only a reference winding operand outside that uncertainty. */
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { originalExtendedCylinderTrigEnclosure } from "./native-source-cylinder-extended-trig.ts";
 import {
   Rational,
   rational,
@@ -36,9 +37,14 @@ import {
   type OriginalNativeForeignEnvelopeCensus,
 } from "./native-source-foreign-envelope-census.ts";
 import { exactClosedSourcePlanarContact } from "./native-source-planar-slab-envelope.ts";
-import { nativeAxisAlignedSegmentInExactParts } from "./native-source-stair-stepped-stations.ts";
+import {
+  nativeSegmentInExactParts,
+  nativeConservativeTwoFootStation,
+  nativeStairStationLateralDirection,
+} from "./native-source-stair-stepped-stations.ts";
 import { readSchema } from "./schema-reader.ts";
 import { inspectOriginalElementLevelPrefix } from "./native-source-element-level-prefix.ts";
+import { inspectOriginalCylinderDomainEnclosure } from "./native-source-cylinder-domain-enclosure.ts";
 
 type Q = Rational;
 type P2 = NativeRationalPoint;
@@ -114,8 +120,11 @@ export function validateOriginalNamedCapReference(parts: NativeRationalParts) {
 /** Exact Taylor/Lagrange bounds, not a tolerance. For real sin/cos all
  * derivatives have magnitude <=1, so the degree-24 remainder is bounded by
  * |u|^25/25!. The input angle and every arithmetic operation remain rational.
- * Refuse large source angles rather than perform an approximate reduction. */
+ * Literal angles beyond8 up to16 use a separate exact degree64 enclosure.
+ * Larger source angles still refuse; no approximate reduction is performed. */
 export function originalCylinderTrigEnclosure(angle: number) {
+  if (Number.isFinite(angle) && Math.abs(angle) > 8 && Math.abs(angle) <= 16)
+    return originalExtendedCylinderTrigEnclosure(angle);
   if (!Number.isFinite(angle) || Math.abs(angle) > 8)
     throw Error("Unsupported finite original cylinder angle");
   const x = rational(angle);
@@ -183,6 +192,14 @@ export type OriginalLocalFloorCapEnvelope = {
   completeDeclaredFaceCount: number;
   completeDeclaredEdgeCount: number;
   originalCapLoopTokens: number[];
+  originalChainEnvelopeLoops: {
+    originalLoopToken: number;
+    originalChainStartEdgeTokens: number[];
+    originalChainEnvelopesUv: {
+      minimum: readonly number[];
+      maximum: readonly number[];
+    }[];
+  }[];
   originalCapEdgeTokens: number[];
   originalCurvedCapEdgeTokens: number[];
   originalCurvedAdjacentFaceTokens: number[];
@@ -208,7 +225,7 @@ export type OriginalLocalFloorCapEnvelope = {
  * upward horizontal plane, face-bound fills and reciprocal finite boundaries.
  * Other original faces/edges remain in the complete census and are not
  * certified as material or support by this function. */
-export function inspectOriginalNamedFloorCapSupport(
+export function inspectOriginalNamedFloorCapBoundaryOperands(
   replay: Revit2027GRepReplay,
   faceToken: number,
 ): OriginalLocalFloorCapEnvelope {
@@ -306,6 +323,7 @@ export function inspectOriginalNamedFloorCapSupport(
       (s) =>
         ![
           "Revit2027EdgeLoop",
+          "Revit2027EdgeLoopWithChainEnvelopes",
           "Revit2027GFilling",
           "Revit2027AnalyticSurface:634",
         ].includes(s.readerId),
@@ -335,6 +353,8 @@ export function inspectOriginalNamedFloorCapSupport(
     )
       fail("Unsupported or unowned original cap filling");
   }
+  const chainEnvelopes: OriginalLocalFloorCapEnvelope["originalChainEnvelopeLoops"] =
+    [];
   const loops: number[] = [],
     edges: number[] = [],
     curvedEdges: number[] = [],
@@ -364,6 +384,53 @@ export function inspectOriginalNamedFloorCapSupport(
     if (!walked.ok || walked.edges.length < 3)
       fail("Original cap loop coedge topology does not close");
     if (!walked.ok) throw Error("Unreachable original cap walk");
+    const sourceLoopSpan = replay.spans.find((s) => s.propertyToken === next);
+    if (sourceLoopSpan?.readerId === "Revit2027EdgeLoopWithChainEnvelopes") {
+      const value = sourceLoopSpan.value as {
+        chains: {
+          startEdgeReference: number;
+          envelope: { minimum: number[]; maximum: number[] };
+        }[];
+      };
+      if (
+        sourceLoopSpan.propertySourceClassSlot !== 1437 ||
+        !Array.isArray(value.chains) ||
+        !value.chains.length ||
+        value.chains.length > walked.edges.length ||
+        new Set(value.chains.map((c) => c.startEdgeReference)).size !==
+          value.chains.length ||
+        value.chains.some(
+          (c) =>
+            !Number.isSafeInteger(c.startEdgeReference) ||
+            !walked.edges.some((e) => e.token === c.startEdgeReference) ||
+            c.envelope.minimum.length !== 2 ||
+            c.envelope.maximum.length !== 2 ||
+            [...c.envelope.minimum, ...c.envelope.maximum].some(
+              (n) => !Number.isFinite(n),
+            ) ||
+            c.envelope.minimum.some((n, i) => n > c.envelope.maximum[i]!),
+        )
+      )
+        fail("Unsupported or foreign original cap chain-envelope operand");
+      // Slot1437 extends EdgeLoop with acceleration envelopes and static start
+      // references (complete native reader: inherited loop + count + 36-byte
+      // chains). These bounds do not trim/add a Face. Keep every operand, but
+      // derive support only from ALL original reciprocal coedges below.
+      chainEnvelopes.push({
+        originalLoopToken: next,
+        originalChainStartEdgeTokens: value.chains.map(
+          (c) => c.startEdgeReference,
+        ),
+        originalChainEnvelopesUv: value.chains.map((c) => ({
+          minimum: [...c.envelope.minimum],
+          maximum: [...c.envelope.maximum],
+        })),
+      });
+    } else if (
+      sourceLoopSpan?.readerId !== "Revit2027EdgeLoop" ||
+      sourceLoopSpan.propertySourceClassSlot !== 1434
+    )
+      fail("Unsupported original cap loop source class");
     loops.push(next);
     const reference: P2[] = [],
       embeddings: { points: P2[]; start: P2[]; end: P2[] }[] = [];
@@ -441,39 +508,9 @@ export function inspectOriginalNamedFloorCapSupport(
           s.yVector[2] !== 0
         )
           fail("Unsupported original curved cap boundary");
-        const delta = [0, 1].map((axis) =>
-            mul(
-              rational(s.radius),
-              add(
-                abs(rational(s.xVector[axis]!)),
-                abs(rational(s.yVector[axis]!)),
-              ),
-            ),
-          ),
-          lo = [
-            sub(rational(s.center[0]), delta[0]!),
-            sub(rational(s.center[1]), delta[1]!),
-          ],
-          hi = [
-            add(rational(s.center[0]), delta[0]!),
-            add(rational(s.center[1]), delta[1]!),
-          ];
-        const box: P2[] = [
-          [lo[0]!, lo[1]!],
-          [hi[0]!, lo[1]!],
-          [hi[0]!, hi[1]!],
-          [lo[0]!, hi[1]!],
-        ];
-        // All analytic circle positions and every retained sample/chord are
-        // enclosed, including any sample/analytic residual. No tessellation
-        // becomes an authoritative replacement curved boundary.
-        const completeCurveBound = polygon(hull([...candidates, ...box]));
-        cylinderParts.push(completeCurveBound);
-        uncertainty.push(completeCurveBound);
-        // A whole circle encloses this boundary, while named source endpoint
-        // parameters give much tighter exact transcendental enclosures for
-        // its incidence with neighboring straight edges. The complete circle
-        // remains an uncertainty operand and is never deleted.
+        // Native finite angular domains and every retained raw/analytic
+        // endpoint embedding remain enclosed. No sampled chord replaces a
+        // curved boundary and an unsupported source domain refuses.
         for (const [j, endpoint] of e.edge.firstAndLastEdgePoints.entries()) {
           const uv =
             e.side === 0 ? endpoint.secondFaceUv : endpoint.firstFaceUv;
@@ -481,6 +518,13 @@ export function inspectOriginalNamedFloorCapSupport(
           candidates.push(...bound);
           ((j === 0) === (e.direction === 1) ? start : end).push(...bound);
         }
+        const domain = inspectOriginalCylinderDomainEnclosure(s, {
+          planPointsFeet: candidates,
+        });
+        if (!domain.ok) throw Error(domain.blockers.join("; "));
+        cylinderParts.push(domain.partsFeet);
+        uncertainty.push(domain.partsFeet);
+        zeroArea.push(...domain.closedSegmentsFeet);
         curvedEdges.push(e.token);
         curvedFaces.add(otherFaceToken);
       } else {
@@ -543,13 +587,9 @@ export function inspectOriginalNamedFloorCapSupport(
   )
     fail("Named original cap omits a declared boundary");
   const reference: NativeRationalParts = [rings];
-  // The original first loop/holes must be a valid exact winding operand; no
-  // repair, union, simplification or invented bridge may make it valid.
-  validateOriginalNamedCapReference(reference);
-  const boundary = union(uncertainty),
-    inner = boundary.length
-      ? nativeRationalOverlay("difference", reference, boundary)
-      : reference;
+  // Boundary operands alone grant no positive support. Global and bounded
+  // consumers apply their separate exact winding/containment predicates.
+  const boundary = union(uncertainty);
   return {
     nativeFloorElementId: Number(replay.ownerElementId),
     originalFaceToken: faceToken,
@@ -558,6 +598,7 @@ export function inspectOriginalNamedFloorCapSupport(
     completeDeclaredFaceCount: index.faces.size,
     completeDeclaredEdgeCount: index.edges.size,
     originalCapLoopTokens: loops,
+    originalChainEnvelopeLoops: chainEnvelopes,
     originalCapEdgeTokens: edges,
     originalCurvedCapEdgeTokens: curvedEdges,
     originalCurvedAdjacentFaceTokens: [...curvedFaces],
@@ -566,11 +607,36 @@ export function inspectOriginalNamedFloorCapSupport(
     retainedPositiveBoundaryUncertaintyPartsFeet: boundary,
     retainedZeroAreaBoundarySegmentsFeet: zeroArea,
     originalBoundaryEnvelopeCellsFeet: boundaryCells,
-    guaranteedInnerSupportPartsFeet: inner,
+    guaranteedInnerSupportPartsFeet: [],
     wholeFloorSolidApproved: false,
     originalSourceAuthorityGranted: false,
     terminalContactApproved: false,
     routeApproved: false,
+  };
+}
+
+/** Global support keeps the original strict simple-ring gate. Merely reading
+ * a1437 acceleration wrapper cannot repair an invalid reference winding. */
+export function inspectOriginalNamedFloorCapSupport(
+  replay: Revit2027GRepReplay,
+  faceToken: number,
+): OriginalLocalFloorCapEnvelope {
+  const operands = inspectOriginalNamedFloorCapBoundaryOperands(
+    replay,
+    faceToken,
+  );
+  const reference = operands.originalReferenceWindingPartsFeet;
+  validateOriginalNamedCapReference(reference);
+  return {
+    ...operands,
+    guaranteedInnerSupportPartsFeet: operands
+      .retainedPositiveBoundaryUncertaintyPartsFeet.length
+      ? nativeRationalOverlay(
+          "difference",
+          reference,
+          operands.retainedPositiveBoundaryUncertaintyPartsFeet,
+        )
+      : reference,
   };
 }
 
@@ -638,7 +704,7 @@ export function inspectOriginalNativeFloorLocalSupport(
 export function inspectLocalFloorTwoFootStation(
   cap: OriginalLocalFloorCapEnvelope,
   center: readonly [number, number],
-  lateralAxis: "x" | "y",
+  lateral: "x" | "y" | readonly [number, number],
   unchangedNominalFootElevationFeet: number,
 ) {
   if (
@@ -647,11 +713,14 @@ export function inspectLocalFloorTwoFootStation(
     )
   )
     throw Error("Nonfinite original station demand");
-  const a: P2 = [rational(center[0]), rational(center[1])],
-    b: P2 = [a[0], a[1]],
-    axis = lateralAxis === "x" ? 0 : 1;
-  a[axis] = sub(a[axis], rational(1));
-  b[axis] = add(b[axis], rational(1));
+  const [a, b] = nativeConservativeTwoFootStation(
+    [rational(center[0]), rational(center[1])],
+    nativeStairStationLateralDirection(
+      typeof lateral === "string"
+        ? { lateralAxis: lateral }
+        : { lateralDirectionFeet: lateral },
+    ),
+  );
   const boundaryContact = exactClosedSourcePlanarContact(
       [],
       cap.retainedPositiveBoundaryUncertaintyPartsFeet,
@@ -659,11 +728,8 @@ export function inspectLocalFloorTwoFootStation(
       [[a, b]],
     ),
     supported =
-      nativeAxisAlignedSegmentInExactParts(
-        a,
-        b,
-        cap.guaranteedInnerSupportPartsFeet,
-      ) && !boundaryContact;
+      nativeSegmentInExactParts(a, b, cap.guaranteedInnerSupportPartsFeet) &&
+      !boundaryContact;
   return {
     originalCenterFeet: [rational(center[0]), rational(center[1])],
     originalTwoFootLateralEndpointsFeet: [a, b],

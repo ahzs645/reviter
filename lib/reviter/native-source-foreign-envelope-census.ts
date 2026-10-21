@@ -1,3 +1,7 @@
+import {
+  inspectOriginalNonPhysicalSketchGrid,
+  originalSketchGridCensusVariantsMatch,
+} from "./native-source-sketch-grid.ts";
 import { originalTwoFootStandingSquare } from "./native-source-standing-footprint.ts";
 /** Unwired complete original GElement envelope census. Source snapshots and
  * unknown/unbounded records are retained independently of display meshes. */
@@ -127,6 +131,7 @@ const contexts = new WeakMap<
     nativeInstanceFrames: Map<number, Uint8Array>;
     nativePanelSymbolFrames: Map<number, Uint8Array>;
     nativeCurtainGeneratorFrames: Map<string, Uint8Array>;
+    nativeWallTypeFrames: Map<number, { marker: number; bytes: Uint8Array }>;
     sourceSchemaBytes: Uint8Array;
     sourceCategories: Map<number, Set<number | null>>;
   }
@@ -177,6 +182,10 @@ export function createOriginalNativeForeignEnvelopeCensus(
       sourceFrames = new Map<number, Uint8Array>(),
       ambiguousFrames = new Set<number>(),
       oversized = new Set<number>(),
+      oversizedOtherMarkerHeaders = new Map<
+        string,
+        { nativeElementId: number; marker: number; objectLength: number }
+      >(),
       rawScopeFrames = new Map<number, Uint8Array>(),
       requestedOnlyFrames = new Map<number, Uint8Array>(),
       requestedOnlyAmbiguous = new Set<number>(),
@@ -216,6 +225,10 @@ export function createOriginalNativeForeignEnvelopeCensus(
       if (ancestors.includes("Element")) elementClassNames.set(c.index, c.name);
       if (ancestors.includes("Symbol")) symbolClassNames.set(c.index, c.name);
     }
+    const sketchGridFrames = new Map<number, Uint8Array>(),
+      sketchGridAmbiguous = new Set<number>(),
+      sketchGridGElements = new Map<number, Uint8Array>(),
+      sketchGridGElementAmbiguous = new Set<number>();
     const semanticClasses = new Map<number, Map<string, string>>(),
       floorFrames = new Map<number, Uint8Array>(),
       floorAmbiguous = new Set<number>(),
@@ -225,6 +238,11 @@ export function createOriginalNativeForeignEnvelopeCensus(
       panelSymbolAmbiguous = new Set<number>(),
       partMakerFrames = new Map<number, Uint8Array>(),
       partMakerAmbiguous = new Set<number>(),
+      nativeWallTypeFrames = new Map<
+        number,
+        { marker: number; bytes: Uint8Array }
+      >(),
+      nativeWallTypeAmbiguous = new Set<number>(),
       nativeCurtainGeneratorFrames = new Map<string, Uint8Array>(),
       nativeCurtainGeneratorAmbiguous = new Set<string>();
     const nonPhysicalCategories = new Set([
@@ -247,6 +265,16 @@ export function createOriginalNativeForeignEnvelopeCensus(
       return (b * 65536 + a) >>> 0 === view.getUint32(8, true);
     };
     for (const partition of opened.partitions) {
+      // Separate role stream: source semantic capture cannot consume or alter
+      // the physical GElement frame walk. Missing/ambiguous bytes refuse.
+      const sketchGridStream = createSplitFrameStream({
+        markers: decodedSchema.schema.classes
+          .filter((c) => c.name === "SketchGrid")
+          .map((c) => c.index),
+        minObjectLength: 40,
+        maxFrameBytes: 16 * 1024 * 1024,
+        crossingOnly: false,
+      });
       const splitter = createSplitFrameStream({
           markers: [2246, 2153, 2031, 4075, 4318, 3234, 3899, 1049, 4316],
           minObjectLength: 40,
@@ -268,8 +296,38 @@ export function createOriginalNativeForeignEnvelopeCensus(
                 blocker: "Unconsumed recognized original GElement header",
               });
             }
+            if (id > 0 && id <= 0x7fffffff && length + 20 > 16 * 1024 * 1024) {
+              const marker = view.getUint16(offset + 16, true);
+              // Only an unconsumed physical GElement header is a missing
+              // physical envelope. A semantic type frame candidate is not a
+              // second GElement variant; retain it separately, without using
+              // it as a material-absence or complete-semantic-scan claim.
+              if (marker === 2246) oversized.add(id);
+              else
+                oversizedOtherMarkerHeaders.set(`${id}:${marker}:${length}`, {
+                  nativeElementId: id,
+                  marker,
+                  objectLength: length,
+                });
+            }
+            return id > 0 && id <= 0x7fffffff;
+          },
+        }),
+        wallTypeSplitter = createSplitFrameStream({
+          markers: [624, 1060, 2845, 2848, 4060, 2064],
+          minObjectLength: 40,
+          maxFrameBytes: 16 * 1024 * 1024,
+          crossingOnly: false,
+          acceptHeader: (view, offset) => {
+            const id = view.getUint32(offset, true),
+              length = view.getUint32(offset + 12, true),
+              marker = view.getUint16(offset + 16, true);
             if (id > 0 && id <= 0x7fffffff && length + 20 > 16 * 1024 * 1024)
-              oversized.add(id);
+              oversizedOtherMarkerHeaders.set(`${id}:${marker}:${length}`, {
+                nativeElementId: id,
+                marker,
+                objectLength: length,
+              });
             return id > 0 && id <= 0x7fffffff;
           },
         }),
@@ -286,6 +344,14 @@ export function createOriginalNativeForeignEnvelopeCensus(
         if (!page) throw Error("Original foreign census page failed inflation");
         window = revitWindowTail(page);
         pages++;
+        for (const frame of sketchGridStream.push(page)) {
+          if (!checkChecksum(frame.data))
+            throw Error("Original SketchGrid semantic checksum failed");
+          const previous = sketchGridFrames.get(frame.elementId);
+          if (previous && hash(previous) !== hash(frame.data))
+            sketchGridAmbiguous.add(frame.elementId);
+          sketchGridFrames.set(frame.elementId, Uint8Array.from(frame.data));
+        }
         const pageFrames = indexPageFrames(page).frames;
         drawings.scanPage(page, pageFrames);
         for (const f of pageFrames) {
@@ -303,6 +369,31 @@ export function createOriginalNativeForeignEnvelopeCensus(
           if (!list.some((h) => JSON.stringify(h) === JSON.stringify(header)))
             list.push(header);
           headers.set(header.elementId, list);
+        }
+        // Native semantic collection has its own frame walk. Adding a type
+        // marker cannot consume a physical frame or change its unknown ledger.
+        for (const frame of wallTypeSplitter.push(page)) {
+          if (!checkChecksum(frame.data))
+            throw Error("Original wall-type semantic checksum failed");
+          if (frame.marker === 2064) {
+            const key = `${frame.elementId}:${frame.marker}`,
+              previous = nativeCurtainGeneratorFrames.get(key);
+            if (previous && hash(previous) !== hash(frame.data))
+              nativeCurtainGeneratorAmbiguous.add(key);
+            nativeCurtainGeneratorFrames.set(key, Uint8Array.from(frame.data));
+            continue;
+          }
+          const previous = nativeWallTypeFrames.get(frame.elementId);
+          if (
+            previous &&
+            (previous.marker !== frame.marker ||
+              hash(previous.bytes) !== hash(frame.data))
+          )
+            nativeWallTypeAmbiguous.add(frame.elementId);
+          nativeWallTypeFrames.set(frame.elementId, {
+            marker: frame.marker,
+            bytes: Uint8Array.from(frame.data),
+          });
         }
         for (const frame of splitter.push(page)) {
           if (
@@ -388,6 +479,18 @@ export function createOriginalNativeForeignEnvelopeCensus(
             row.blocker = "Original GElement checksum failed";
             rows.push(row);
             continue;
+          }
+          if (
+            sketchGridFrames.has(frame.elementId) ||
+            headers.get(frame.elementId)?.some((h) => h.categoryId === -2000055)
+          ) {
+            const previous = sketchGridGElements.get(frame.elementId);
+            if (previous && hash(previous) !== frameSha)
+              sketchGridGElementAmbiguous.add(frame.elementId);
+            sketchGridGElements.set(
+              frame.elementId,
+              Uint8Array.from(frame.data),
+            );
           }
           const decoded = decodeRevit2027FramedGRepRoot(
             frame.data,
@@ -510,12 +613,72 @@ export function createOriginalNativeForeignEnvelopeCensus(
       }
       return undefined;
     };
+    const originalViewGridNonPhysicalProofs: ReturnType<
+        typeof inspectOriginalNonPhysicalSketchGrid
+      >[] = [],
+      refusedOriginalViewGridRoles: {
+        nativeElementId: number;
+        blocker: string;
+      }[] = [],
+      qualifiedViewGridIds = new Set<number>();
+    const originalViewClasses = new Map(
+      [...semanticClasses].map(([id, names]) => [id, [...names.keys()]]),
+    );
+    for (const [id, semanticBytes] of sketchGridFrames) {
+      const gElementBytes = sketchGridGElements.get(id),
+        h = header(id);
+      if (
+        !gElementBytes ||
+        !h ||
+        sketchGridAmbiguous.has(id) ||
+        sketchGridGElementAmbiguous.has(id)
+      ) {
+        refusedOriginalViewGridRoles.push({
+          nativeElementId: id,
+          blocker: "Missing or ambiguous original SketchGrid/GElement/header",
+        });
+        continue;
+      }
+      try {
+        const proof = inspectOriginalNonPhysicalSketchGrid({
+          semanticBytes,
+          gElementBytes,
+          schema: decodedSchema.schema,
+          header: h,
+          nativeParentId: sourceParents.get(id),
+          originalOwnedChildIds: opened.elementOwnership.records
+            .filter((r) => r.owningElementId === id)
+            .map((r) => r.elementId),
+          originalViewClasses,
+        });
+        if (
+          !currentSourceIds.has(proof.nativeElementId) ||
+          !currentSourceIds.has(proof.originalViewId) ||
+          !currentSourceIds.has(proof.originalNativeParentId)
+        )
+          throw Error(
+            "Original SketchGrid/view binding absent from current native identity table",
+          );
+        if (!originalSketchGridCensusVariantsMatch(proof, rows))
+          throw Error(
+            "Original SketchGrid has an invalid, unconsumed, oversized or different source GElement variant",
+          );
+        originalViewGridNonPhysicalProofs.push(proof);
+        qualifiedViewGridIds.add(id);
+      } catch (error) {
+        refusedOriginalViewGridRoles.push({
+          nativeElementId: id,
+          blocker: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     const hardNonPhysicalIds = new Set(
       rows
         .filter((row) => {
           const h = header(row.nativeElementId);
           return (
             drawingIds.has(row.nativeElementId) ||
+            qualifiedViewGridIds.has(row.nativeElementId) ||
             (!!h &&
               (h.ownerViewId !== null ||
                 (h.categoryId !== null &&
@@ -534,6 +697,16 @@ export function createOriginalNativeForeignEnvelopeCensus(
         nonPhysicalCategories.has(h.categoryId)
       )
         return `original-BuiltInCategory-non-surface:${h.categoryId}`;
+      if (
+        qualifiedViewGridIds.has(row.nativeElementId) &&
+        originalViewGridNonPhysicalProofs.some(
+          (p) =>
+            p.nativeElementId === row.nativeElementId &&
+            p.originalGElementSha256 === row.sourceFrameSha256 &&
+            row.blocker === undefined,
+        )
+      )
+        return "original-source-qualified-nonphysical-SketchGrid:view-identity-and-complete-drawing-children";
       const type = typeAncestor(row.nativeElementId);
       if (type !== undefined)
         return `original-Symbol-type-ancestry:${type}:${[...(semanticClasses.get(type)?.keys() ?? [])]}`;
@@ -798,6 +971,11 @@ export function createOriginalNativeForeignEnvelopeCensus(
           ([id]) => !nativeInstanceAmbiguous.has(id),
         ),
       ),
+      nativeWallTypeFrames: new Map(
+        [...nativeWallTypeFrames].filter(
+          ([id]) => !nativeWallTypeAmbiguous.has(id),
+        ),
+      ),
       nativeCurtainGeneratorFrames: new Map(
         [...nativeCurtainGeneratorFrames].filter(
           ([key]) => !nativeCurtainGeneratorAmbiguous.has(key),
@@ -828,8 +1006,23 @@ export function createOriginalNativeForeignEnvelopeCensus(
         pages,
         originalGElementVariants: rows.length,
         originalHeaderOwners: headers.size,
+        oversizedNonGElementHeaderCandidates: [
+          ...oversizedOtherMarkerHeaders.values(),
+        ],
         originalSemanticSymbolTypes: typeOwners.size,
         originalPartMakerDelegationProofs,
+        originalViewGridNonPhysicalProofs,
+        originalViewGridNativeViewClassFrameBindings:
+          originalViewGridNonPhysicalProofs.map((p) => ({
+            nativeElementId: p.nativeElementId,
+            originalReferencedViewClassFrames: [
+              ...(semanticClasses.get(p.originalViewId) ?? []),
+            ],
+            originalParentViewClassFrames: [
+              ...(semanticClasses.get(p.originalNativeParentId) ?? []),
+            ],
+          })),
+        refusedOriginalViewGridRoles,
         recoveredOriginalPhysicalInstances,
         refusedOriginalPhysicalInstances,
         originalRoleExcludedVariants: exclusions.length,
@@ -1041,12 +1234,12 @@ export function readOriginalForeignEnvelopeScopedFloor(
 export function readOriginalForeignEnvelopeScopedSemantic(
   certificate: OriginalNativeForeignEnvelopeCensus,
   nativeElementId: number,
-  marker: 2153 | 4075 | 2031 | 4318 | 3899 | 1049 | 4316,
+  marker: 2153 | 4075 | 2031 | 4318 | 3899 | 1049 | 4316 | 2064,
 ) {
   const context = contexts.get(certificate);
   if (!context) throw Error("Untrusted original foreign envelope census");
   const frame =
-    marker === 3899 || marker === 1049 || marker === 4316
+    marker === 3899 || marker === 1049 || marker === 4316 || marker === 2064
       ? context.nativeCurtainGeneratorFrames.get(`${nativeElementId}:${marker}`)
       : (marker === 2153
           ? context.floorFrames
@@ -1068,6 +1261,45 @@ export function readOriginalForeignEnvelopeScopedSemantic(
     originalFrameSha256: hash(frame),
     originalFrameBytes: Uint8Array.from(frame),
     originalSourceSchemaBytes: Uint8Array.from(context.sourceSchemaBytes),
+  };
+}
+
+/** Source wall-type class identity only; no class/JSON supplied by a caller
+ * can turn a basic host into a curtain container. All original conflicting
+ * frame variants refuse. The native type suffix is retained, not interpreted
+ * as a physical body or an aperture. */
+export function readOriginalForeignEnvelopeWallType(
+  certificate: OriginalNativeForeignEnvelopeCensus,
+  nativeWallTypeElementId: number,
+) {
+  const context = contexts.get(certificate);
+  if (!context) throw Error("Untrusted original foreign envelope census");
+  const stored = context.nativeWallTypeFrames.get(nativeWallTypeElementId);
+  if (!stored) throw Error("Original wall type absent or ambiguous");
+  const names = new Map([
+    [624, "BasicWallType"],
+    [1060, "CurtainWallType"],
+    [2845, "NRCurtainWallType"],
+    [2848, "NewCurtainWallType"],
+    [4060, "StackedWallType"],
+  ]);
+  const sourceClassName = names.get(stored.marker);
+  if (!sourceClassName) throw Error("Unsupported original wall-type class");
+  return {
+    sourceModelSha256: certificate.sourceModelSha256,
+    sourceSchemaSha256: certificate.sourceSchemaSha256,
+    nativeWallTypeElementId,
+    sourceClassSlot: stored.marker,
+    sourceClassName,
+    originalCategoryDeclarations: [
+      ...(context.sourceCategories.get(nativeWallTypeElementId) ?? []),
+    ],
+    originalFrameSha256: hash(stored.bytes),
+    originalFrameBytes: Uint8Array.from(stored.bytes),
+    originalSourceSchemaBytes: Uint8Array.from(context.sourceSchemaBytes),
+    classificationOnly: true as const,
+    materialAbsenceApproved: false as const,
+    routeApproved: false as const,
   };
 }
 

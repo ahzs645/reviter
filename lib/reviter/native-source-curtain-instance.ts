@@ -39,6 +39,7 @@ export type NativeCurtainInstanceTypedFifo = {
 };
 
 const DYNAMIC_CLASSES = new Set([
+  "ParamValueSetAString",
   "InstanceInfo",
   "HostPanelRefData",
   "GeomTable",

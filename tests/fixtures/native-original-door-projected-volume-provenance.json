@@ -1,0 +1,18 @@
+{
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "sourceSchemaSha256": "d961c44726fe7fc32bce4425639481a5d5e91acecec7b7fd897610fc369f046f",
+  "originalActualSourceReceiptSha256": "e1b0671c262d625bc3d3ab57e28ca5ce4ece3d812089aeb15126dba6e918b13d",
+  "rows": [
+    {
+      "name": "native-original-door-908922.grep.bin",
+      "sha256": "5b83e428a42d6acdb431a7e2e7a1b9c4d3f86c8b2839838c353a50b4a2f0fc82",
+      "bytes": 320
+    },
+    {
+      "name": "native-original-door-symbol-788064.grep.bin",
+      "sha256": "02ccc35652f8f5eab1db698deb942f2e7533d20fbead9f7e6958c3c785b5ce8c",
+      "bytes": 22935
+    }
+  ],
+  "fixturesGrantOriginalSourceCapability": false
+}

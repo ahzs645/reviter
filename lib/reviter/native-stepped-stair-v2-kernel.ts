@@ -1,3 +1,5 @@
+import type { OriginalCapBackedTurnOperands } from "./native-stair-cap-backed-turn.ts";
+import type { PortableOriginalRiserPartition } from "./native-stair-riser-local-partition.ts";
 /** Browser/worker-safe v2 mathematical kernel. Portable operands are not RVT authority.
  * The source adapter must reconstruct the index from actual issued source
  * contexts; a generic untrusted JSON import cannot establish source membership.
@@ -11,7 +13,11 @@ import {
 } from "./native-rational-overlay.ts";
 import {
   inspectOriginalStairTypedRiserSequence,
-  nativeAxisAlignedSegmentInExactParts,
+  nativeSegmentInExactParts,
+  nativeConservativeTwoFootStation,
+  nativeStairStationLateralDirection,
+  nativeStairStationParallelToSourceDirection,
+  type NativeStairStationLateral,
   nativeConservativeTwoFootStrip,
 } from "./native-stepped-stair-v2-stations.ts";
 import { exactClosedSourcePlanarContact } from "./native-stepped-stair-v2-closed-contact.ts";
@@ -88,6 +94,9 @@ export type PortableSteppedSourceIndex = {
   nativeRunId: number;
   nativeDefinitionId?: number;
   run: NativeStairTypedFifo;
+  riserPartition?: PortableOriginalRiserPartition;
+  capBackedTurns?: OriginalCapBackedTurnOperands[];
+  sourceFrameBindings?: Record<string, string>;
   servedLevelIds: [number, number];
   supports: SteppedSupport[];
   requiredPhysicalBodyKeys: string[];
@@ -119,8 +128,7 @@ export type PortableSteppedReceipt = {
       logicalToPhysicalHeightDeltaFeet: Q;
       floorSupportId: string;
       approachFeet: Point3[];
-      lateralAxis: "x" | "y";
-    },
+    } & NativeStairStationLateral,
     {
       originalNodeId: string;
       originalLevelId: number;
@@ -129,15 +137,13 @@ export type PortableSteppedReceipt = {
       logicalToPhysicalHeightDeltaFeet: Q;
       floorSupportId: string;
       approachFeet: Point3[];
-      lateralAxis: "x" | "y";
-    },
+    } & NativeStairStationLateral,
   ];
-  stations: {
+  stations: ({
     typedIndex: number;
     supportId: string;
     pointFeet: Point3;
-    lateralAxis: "x" | "y";
-  }[];
+  } & NativeStairStationLateral)[];
 };
 const add = (a: Q, b: Q) => new Rational(a.n * b.d + b.n * a.d, a.d * b.d);
 const sub = (a: Q, b: Q) => new Rational(a.n * b.d - b.n * a.d, a.d * b.d);
@@ -186,13 +192,14 @@ const segmentsValid = (value: Point2[][]) =>
       segment.length > 0 &&
       segment.every((p) => point(p, 2)),
   );
-function lateral(p: Point3, axis: "x" | "y"): [Point2, Point2] {
-  const a = plan(p),
-    b = plan(p),
-    i = axis === "x" ? 0 : 1;
-  a[i] = sub(a[i], rational(1));
-  b[i] = add(b[i], rational(1));
-  return [a, b];
+function lateral(
+  p: Point3,
+  orientation: NativeStairStationLateral,
+): [Point2, Point2] {
+  return nativeConservativeTwoFootStation(
+    plan(p),
+    nativeStairStationLateralDirection(orientation),
+  );
 }
 function square(p: Point3): Parts {
   const [x, y] = p,
@@ -635,9 +642,77 @@ export function replayPortableSteppedStairV2(
       )
     )
       fail("Incomplete ordered physical tread roles");
+    if (
+      index.riserPartition &&
+      (index.riserPartition.sourceModelSha256 !== index.sourceModelSha256 ||
+        index.riserPartition.sourceSchemaSha256 !== index.sourceSchemaSha256 ||
+        index.riserPartition.nativeStairId !== index.nativeStairId)
+    )
+      fail("Foreign original riser partition source binding");
+    if (index.capBackedTurns !== undefined) {
+      if (
+        !index.riserPartition ||
+        !index.sourceFrameBindings ||
+        !Array.isArray(index.capBackedTurns) ||
+        index.capBackedTurns.length === 0
+      )
+        fail("Incomplete explicit cap-backed original source binding");
+      const encodeParts = (parts: Parts) =>
+        parts.map((part) =>
+          part.map((ring) =>
+            ring.map((p) => p.map((q) => [q.n.toString(), q.d.toString()])),
+          ),
+        );
+      const exactParts = (a: Parts, b: Parts) =>
+        JSON.stringify(encodeParts(a)) === JSON.stringify(encodeParts(b));
+      for (const packet of index.capBackedTurns) {
+        const support = treads[packet.typedIndex];
+        if (
+          !support ||
+          packet.sourceModelSha256 !== index.sourceModelSha256 ||
+          packet.sourceSchemaSha256 !== index.sourceSchemaSha256 ||
+          packet.nativeStairId !== index.nativeStairId ||
+          packet.nativeRunId !== index.nativeRunId ||
+          packet.nativeDefinitionId !== index.nativeDefinitionId ||
+          packet.sourceGeometryOwnerElementId !== index.nativeDefinitionId ||
+          packet.originalRunFrameSha256 !==
+            index.sourceFrameBindings![`${index.nativeRunId}:4102`] ||
+          !index.riserPartition!.ownedRuns.some(
+            (r) =>
+              r.run.nativeRunId === index.nativeRunId &&
+              r.originalRunFrameSha256 === packet.originalRunFrameSha256,
+          ) ||
+          packet.originalDefinitionFrameSha256 !==
+            index.sourceFrameBindings![`${index.nativeDefinitionId}:2246`] ||
+          packet.cap.physicalFaceToken !== support.physicalFaceToken ||
+          !same(
+            packet.cap.originalPhysicalPlaneHeightFeet,
+            support.elevationFeet,
+          ) ||
+          !exactParts(
+            packet.cap.referenceEmbedding,
+            support.referencePartsFeet,
+          ) ||
+          !exactParts(
+            packet.cap.guaranteedInnerPlanSupport,
+            support.innerPartsFeet,
+          ) ||
+          !exactParts(
+            packet.cap.boundaryUncertainty,
+            support.uncertaintyPartsFeet,
+          ) ||
+          support.closedUncertaintyFeet.length > 0
+        )
+          fail(
+            "Foreign/stale original cap-backed support or source frame binding",
+          );
+      }
+    }
     const sequence = inspectOriginalStairTypedRiserSequence(
       index.run,
       treads.length,
+      index.riserPartition,
+      index.capBackedTurns,
     );
     if (!sequence.completeNamedSourceRiserSequence)
       fail(
@@ -654,7 +729,7 @@ export function replayPortableSteppedStairV2(
       support: SteppedSupport,
       endpoints: [Point2, Point2],
     ) =>
-      nativeAxisAlignedSegmentInExactParts(
+      nativeSegmentInExactParts(
         endpoints[0],
         endpoints[1],
         support.innerPartsFeet,
@@ -681,22 +756,37 @@ export function replayPortableSteppedStairV2(
         support.role !== "tread" ||
         support.typedIndex !== station.typedIndex ||
         !point(station.pointFeet, 3) ||
-        !["x", "y"].includes(station.lateralAxis) ||
         !same(station.pointFeet[2], support.elevationFeet) ||
         (i
           ? station.typedIndex < receipt.stations[i - 1]!.typedIndex ||
             station.typedIndex > receipt.stations[i - 1]!.typedIndex + 1
           : station.typedIndex !== 0) ||
-        !supportedLine(support, lateral(station.pointFeet, station.lateralAxis))
+        !supportedLine(support, lateral(station.pointFeet, station))
       )
         fail("Unsupported/skipped original physical tread station");
       const intent =
         sequence.treadRelations[station.typedIndex]
           ?.originalIntentPlanPartsFeet ?? [];
+      const relation = sequence.treadRelations[station.typedIndex];
+      if (
+        !relation ||
+        ![
+          relation.originalFiniteStartLine,
+          relation.originalFiniteEndLine,
+        ].some((line) =>
+          nativeStairStationParallelToSourceDirection(
+            station,
+            (line.m_dirVec as number[]).slice(0, 2) as [number, number],
+          ),
+        )
+      )
+        fail(
+          "Station lateral direction differs from its original finite riser boundaries",
+        );
       if (
         intent.length > 0 &&
-        !nativeAxisAlignedSegmentInExactParts(
-          ...lateral(station.pointFeet, station.lateralAxis),
+        !nativeSegmentInExactParts(
+          ...lateral(station.pointFeet, station),
           intent,
         )
       )
@@ -840,8 +930,15 @@ export function replayPortableSteppedStairV2(
         )
       )
         fail("Original node to named physical floor attachment differs");
+      // The explicit source-qualified local mode retains stale root scalars.
+      // Its complete original ordered boundary supplies a distinct, actual
+      // source Z reference; original graph/floor/level checks still follow.
       const nominal =
-        index.run.root[side ? "m_topElevation" : "m_bottomElevation"];
+        index.riserPartition && side === 1
+          ? (
+              sequence.orderedRisers.at(-1)!.originalCurve.m_origin as number[]
+            )[2]
+          : index.run.root[side ? "m_topElevation" : "m_bottomElevation"];
       if (
         typeof nominal !== "number" ||
         !same(rational(nominal), rational(node.pointFeet[2]))
@@ -875,7 +972,7 @@ export function replayPortableSteppedStairV2(
         ordered =
           sequence.orderedRisers[side ? sequence.orderedRisers.length - 1 : 0]!
             .originalCurve;
-      if (!supportedLine(floor, lateral(last, terminal.lateralAxis)))
+      if (!supportedLine(floor, lateral(last, terminal)))
         fail(
           "Terminal rise station lacks full-width actual named floor support",
         );
@@ -901,6 +998,15 @@ export function replayPortableSteppedStairV2(
           "Named begin/end riser differs from the original ordered source boundary",
         );
       // Additional finite refusal only; this never supplies floor/body support.
+      if (
+        !nativeStairStationParallelToSourceDirection(
+          terminal,
+          (ordered.m_dirVec as number[]).slice(0, 2) as [number, number],
+        )
+      )
+        fail(
+          "Terminal lateral direction differs from its original named riser boundary",
+        );
       const dx = original.direction[0]!,
         dy = original.direction[1]!,
         distanceNumerator = sub(
@@ -952,7 +1058,7 @@ export function replayPortableSteppedStairV2(
       receipt.stations[0]!.pointFeet,
       lowerFloor,
       stationSupports[0]!,
-      lateral(lowerApproach.at(-1)!, receipt.terminals[0].lateralAxis),
+      lateral(lowerApproach.at(-1)!, receipt.terminals[0]),
       sequence.orderedRisers[0]!.index,
       sequence.treadRelations[0]!.originalIntentPlanPartsFeet,
     );
@@ -981,7 +1087,7 @@ export function replayPortableSteppedStairV2(
           b,
           lower,
           upper,
-          lateral(a, prior.lateralAxis),
+          lateral(a, prior),
           sequence.treadRelations[prior.typedIndex]!.endRiserIndex,
           nativeRationalOverlay(
             "union",
@@ -1010,7 +1116,7 @@ export function replayPortableSteppedStairV2(
       receipt.terminals[1].approachFeet.at(-1)!,
       stationSupports.at(-1)!,
       upperFloor,
-      lateral(lastStation.pointFeet, lastStation.lateralAxis),
+      lateral(lastStation.pointFeet, lastStation),
       sequence.orderedRisers.at(-1)!.index,
       sequence.treadRelations.at(-1)!.originalIntentPlanPartsFeet,
     );

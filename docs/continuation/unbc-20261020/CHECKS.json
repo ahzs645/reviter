@@ -1,0 +1,28 @@
+{
+  "recordedUtc": "2026-10-21T02:02:29.476511+00:00",
+  "scope": "Focused source-checkpoint regression checks; not native, browser or release acceptance",
+  "argv": [
+    "node",
+    "--max-old-space-size=384",
+    "--experimental-strip-types",
+    "--import",
+    "./scripts/register-test-typescript.mjs",
+    "--test",
+    "--test-concurrency=1",
+    "tests/native-door-approach-exact-union-memo.test.ts",
+    "tests/native-filled-threshold-step.test.ts",
+    "tests/native-source-stair-base-identity-guard.test.ts"
+  ],
+  "actualExit": 0,
+  "tests": 20,
+  "passed": 20,
+  "failed": 0,
+  "skipped": 0,
+  "heapMiB": 384,
+  "logSha256": "f1cd13151f5f29eb427da1df4cbaa98a8519fb9f94d38939520d1feab6ad4778",
+  "nativeGuardOrSourceChanged": false,
+  "fullNativeAndSoftwareAcceptance": "PENDING",
+  "sourceAndCurrentDocsWhitespaceCheck": "PASS",
+  "historicalEvidenceBytesPreserved": true,
+  "historicalWhitespaceNote": "Historical CSV CRLF, raw browser contexts, logs and rejected patch retain their original evidence bytes."
+}

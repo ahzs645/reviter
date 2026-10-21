@@ -1,3 +1,5 @@
+import type { OriginalNativeStairRiserPartition } from "./native-source-stair-riser-partition.ts";
+import { originalNativeStairRunReferencePlane } from "./native-source-stair-reference-plane.ts";
 /** Unwired v2 attachment proposal. A graph's logical served-level coordinate
  * is preserved. Its distinct physical support point is bound to an actual
  * source-trimmed named floor face at exactly the same XY. This is neither an
@@ -19,15 +21,18 @@ import {
   inspectLocalFloorTwoFootStation,
 } from "./native-source-floor-local-support.ts";
 import { rational, type Rational } from "./native-rational-overlay.ts";
+import {
+  nativeStairStationLateralDirection,
+  type NativeStairStationLateral,
+} from "./native-source-stair-stepped-stations.ts";
 
 export type OriginalLogicalFloorAttachmentDemand = {
   originalLogicalGraphNodeId: string;
   originalLogicalPointFeet: readonly [number, number, number];
   nativeFloorElementId: number;
   originalTrimmedFloorFaceToken: number;
-  lateralAxis: "x" | "y";
   runTerminal: "lower" | "upper";
-};
+} & NativeStairStationLateral;
 const same = (a: Rational, b: Rational) => a.n * b.d === b.n * a.d;
 const sourceId = (v: unknown) =>
   (v as { m_id?: { m_id64?: unknown } } | undefined)?.m_id?.m_id64;
@@ -36,6 +41,7 @@ export function inspectOriginalNativeStairFloorAttachment(
   stairSource: OriginalNativeStairPhysicalContext,
   nativeRunId: number,
   demand: OriginalLogicalFloorAttachmentDemand,
+  partition?: OriginalNativeStairRiserPartition,
 ) {
   if (
     !demand.originalLogicalGraphNodeId ||
@@ -99,13 +105,15 @@ export function inspectOriginalNativeStairFloorAttachment(
   const support = inspectLocalFloorTwoFootStation(
     cap,
     [demand.originalLogicalPointFeet[0], demand.originalLogicalPointFeet[1]],
-    demand.lateralAxis,
+    nativeStairStationLateralDirection(demand),
     demand.originalLogicalPointFeet[2],
   );
-  const originalNominalRunHeight =
-    physical.run.root[
-      demand.runTerminal === "lower" ? "m_bottomElevation" : "m_topElevation"
-    ];
+  const runReference = originalNativeStairRunReferencePlane(
+      physical,
+      demand.runTerminal,
+      partition,
+    ),
+    originalNominalRunHeight = runReference.heightFeet;
   if (
     typeof originalNominalRunHeight !== "number" ||
     !Number.isFinite(originalNominalRunHeight)
@@ -114,7 +122,7 @@ export function inspectOriginalNativeStairFloorAttachment(
   const floorAndStairNamedLevelAgree =
       expectedNativeLevelId > 0 &&
       cap.originalAssociatedNativeLevelId === expectedNativeLevelId,
-    unchangedLogicalHeightMatchesOriginalNominalRunHeight = same(
+    unchangedLogicalHeightMatchesOriginalRunReferencePlane = same(
       rational(demand.originalLogicalPointFeet[2]),
       rational(originalNominalRunHeight),
     );
@@ -139,7 +147,11 @@ export function inspectOriginalNativeStairFloorAttachment(
     originalGraphNodeId: demand.originalLogicalGraphNodeId,
     originalLogicalPointFeetExact,
     originalPhysicalFootPointFeetExact: physicalFootPointFeetExact,
-    originalNominalRunTerminalHeightFeet: rational(originalNominalRunHeight),
+    originalNominalRunTerminalHeightFeet: rational(
+      runReference.originalRootNominalHeightFeet,
+    ),
+    originalRunReferenceHeightFeet: rational(originalNominalRunHeight),
+    originalRunReferencePlane: runReference,
     originalNativeServedLevelId: expectedNativeLevelId,
     originalServedLevelOffsetFeet: rational(originalServedLevelOffset),
     zeroOriginalServedLevelOffset: originalServedLevelOffset === 0,
@@ -168,12 +180,16 @@ export function inspectOriginalNativeStairFloorAttachment(
     logicalAndPhysicalPointsHaveExactlySameXY:
       same(originalLogicalPointFeetExact[0], physicalFootPointFeetExact[0]) &&
       same(originalLogicalPointFeetExact[1], physicalFootPointFeetExact[1]),
-    unchangedLogicalHeightMatchesOriginalNominalRunHeight,
+    unchangedLogicalHeightMatchesOriginalRunReferencePlane,
+    unchangedLogicalHeightMatchesOriginalNominalRunHeight: same(
+      rational(demand.originalLogicalPointFeet[2]),
+      rational(runReference.originalRootNominalHeightFeet),
+    ),
     floorAndStairNamedLevelAgree,
     requestedStationHasOriginalNamedLevelAndSupport:
       floorAndStairNamedLevelAgree &&
       originalServedLevelOffset === 0 &&
-      unchangedLogicalHeightMatchesOriginalNominalRunHeight &&
+      unchangedLogicalHeightMatchesOriginalRunReferencePlane &&
       support.fullTwoFootStationWithinGuaranteedOriginalSupport,
     originalLogicalGraphNodeIdentityVerified: false as const,
     originalSourceRunTerminalXYVerified: false as const,

@@ -1,7 +1,13 @@
 import type { SchemaStream, SchemaStreamProperty } from "./schema-reader.ts";
 
 type ObjectValue = Record<string, unknown>;
-export type NativeTypedRootClassName = "StairsRun" | "StairsTriserSymbol" | "ImportInstance" | "MasterImportSymbol" | "SlaveImportSymbol";
+export type NativeTypedRootClassName =
+  | "StairsRun"
+  | "StairsTriserSymbol"
+  | "ImportInstance"
+  | "MasterImportSymbol"
+  | "SlaveImportSymbol";
+type SupportedTypedRootClassName = NativeTypedRootClassName | "SketchGrid";
 export type NativeStairTypedDescriptor = {
   token: number;
   sourceClassSlot: number | null;
@@ -26,11 +32,13 @@ export type NativeStairTypedFifoEntry = {
   value: ObjectValue;
   fields: NativeStairTypedField[];
 };
-export type NativeStairTypedFifo = {
+export type NativeStairTypedFifo<
+  Root extends SupportedTypedRootClassName = NativeTypedRootClassName,
+> = {
   /** Retained for callers reading StairsRun; nativeElementId also names symbols. */
   nativeRunId: number;
   nativeElementId: number;
-  rootClassName: NativeTypedRootClassName;
+  rootClassName: Root;
   rootClassSlot: number;
   rootStaticEnd: number;
   endOffset: number;
@@ -40,7 +48,11 @@ export type NativeStairTypedFifo = {
   completeOriginalTypedRootAndFifoByteReplay: true;
 };
 
-const IMPORT_DYNAMIC_CLASSES = new Set(["InstanceInfo", "ImportFileData", "ImportSymbolBaseGStep"]);
+const IMPORT_DYNAMIC_CLASSES = new Set([
+  "InstanceInfo",
+  "ImportFileData",
+  "ImportSymbolBaseGStep",
+]);
 const DYNAMIC_CLASSES = new Set([
   "CellList",
   "CurveLoop",
@@ -82,7 +94,11 @@ const OMITTED_FIELDS = new Map([
   ["GeomTable.m_cacheIsCurrent", 34],
   ["GeomTabEntry.m_pGNode", 34],
 ]);
-const IMPORT_ROOT_CLASSES = new Set(["ImportInstance", "MasterImportSymbol", "SlaveImportSymbol"]);
+const IMPORT_ROOT_CLASSES = new Set([
+  "ImportInstance",
+  "MasterImportSymbol",
+  "SlaveImportSymbol",
+]);
 const IMPORT_REDECLARED_FIELDS = new Set([
   "MasterImportSymbol.m_subSymbolMapInt",
   "MasterImportSymbol.m_subSymbolMapElemId",
@@ -103,13 +119,26 @@ const MAX_DEPTH = 64;
  * the original length echo. No source-byte scanning, mesh conversion, unknown
  * field skipping or geometry approval occurs here. The caller still binds the
  * source model/schema/frame hashes and verifies walking face roles and bodies. */
+type NativeTypedFifoResult<Root extends SupportedTypedRootClassName> =
+  | { ok: true; value: NativeStairTypedFifo<Root> }
+  | { ok: false; error: string; offset: number };
 export function readNativeStairTypedFifo(
   data: Uint8Array,
   schema: SchemaStream,
-  expectedRootClassName: NativeTypedRootClassName = "StairsRun",
-):
-  | { ok: true; value: NativeStairTypedFifo }
-  | { ok: false; error: string; offset: number } {
+  expectedRootClassName?: undefined,
+): NativeTypedFifoResult<"StairsRun">;
+export function readNativeStairTypedFifo<
+  Root extends SupportedTypedRootClassName,
+>(
+  data: Uint8Array,
+  schema: SchemaStream,
+  expectedRootClassName: Root,
+): NativeTypedFifoResult<Root>;
+export function readNativeStairTypedFifo(
+  data: Uint8Array,
+  schema: SchemaStream,
+  expectedRootClassName: SupportedTypedRootClassName = "StairsRun",
+): NativeTypedFifoResult<SupportedTypedRootClassName> {
   let at = 18;
   try {
     function fail(message: string): never {
@@ -142,6 +171,7 @@ export function readNativeStairTypedFifo(
     if (
       expectedRootClassName !== "StairsRun" &&
       expectedRootClassName !== "StairsTriserSymbol" &&
+      expectedRootClassName !== "SketchGrid" &&
       !IMPORT_ROOT_CLASSES.has(expectedRootClassName)
     )
       fail("Unsupported expected source root class");
@@ -222,11 +252,15 @@ export function readNativeStairTypedFifo(
         let key = f.name;
         if (Object.hasOwn(result, key)) {
           const declared = `${c.name}.${f.name}`;
-          if (!IMPORT_ROOT_CLASSES.has(expectedRootClassName) || !IMPORT_REDECLARED_FIELDS.has(declared))
+          if (
+            !IMPORT_ROOT_CLASSES.has(expectedRootClassName) ||
+            !IMPORT_REDECLARED_FIELDS.has(declared)
+          )
             fail("Duplicate inherited source field");
           key = declared;
         }
-        if (Object.hasOwn(result, key)) fail("Duplicate same-class source field");
+        if (Object.hasOwn(result, key))
+          fail("Duplicate same-class source field");
         result[key] = readField(f, `${path}.${key}`, c.name, depth + 1);
       }
       return result;
@@ -341,7 +375,13 @@ export function readNativeStairTypedFifo(
     for (let head = 0; head < queue.length; head++) {
       const descriptor = queue[head]!,
         c = classes.get(descriptor.sourceClassSlot!)!;
-      if (!DYNAMIC_CLASSES.has(c.name) && !(IMPORT_ROOT_CLASSES.has(expectedRootClassName) && IMPORT_DYNAMIC_CLASSES.has(c.name)))
+      if (
+        !DYNAMIC_CLASSES.has(c.name) &&
+        !(
+          IMPORT_ROOT_CLASSES.has(expectedRootClassName) &&
+          IMPORT_DYNAMIC_CLASSES.has(c.name)
+        )
+      )
         fail(`Unsupported dynamic source class ${c.name}`);
       const start = at,
         descriptorCount = descriptors.length,

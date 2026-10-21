@@ -372,6 +372,29 @@ export function auditOriginalPlacedStairAboveFoot(
       sourceComponentIndex: component.sourceComponentIndex,
       physicalFaceTokens: [...component.physicalFaceTokens],
     }));
+  // Keep the complete component hull for conservative comparison, and also
+  // report the independently localized finite source domains. A side's high
+  // UV residual must not raise its whole cap-bounded interior. Conversely,
+  // closed side/edge contact and every original face remain in this query.
+  // A failed localization is unavailable, never an empty clearance result.
+  const localizedComponentContacts = original.localizationBlockers.length
+    ? undefined
+    : original.localizedCells
+        .filter(
+          (cell) =>
+            cmp(cell.maximumElevationFeet, footHeightFeet) > 0 &&
+            cmp(cell.minimumElevationFeet, high) <= 0 &&
+            exactClosedSourcePlanarContact(
+              demand,
+              cell.partsFeet,
+              cell.closedSegmentsFeet,
+            ),
+        )
+        .map((cell) => ({
+          sourceComponentIndex: cell.sourceComponentIndex,
+          role: cell.role,
+          originalFaceTokens: [...cell.originalFaceTokens],
+        }));
   // Preserve all source curve/point ownership and diagnostic contacts. These
   // non-surface records are not physical faces or obstacles. Zero-thickness
   // physical glass remains a closed-contact physical BRep operand above.
@@ -403,6 +426,9 @@ export function auditOriginalPlacedStairAboveFoot(
     sourceModelSha256: certificate.sourceModelSha256,
     nativeRunId: certificate.nativeRunId,
     componentContacts,
+    localizedComponentContacts,
+    sourceMaterialLocalizationBlockers: [...original.localizationBlockers],
+    originalLocalizedMaterialCellsChecked: original.localizedCells.length,
     nonSurfaceGraphicalContacts,
     nonSurfaceGraphicalContactsArePhysicalVetoes: false as const,
     completeOriginalPlacedMaterialCensus: true as const,

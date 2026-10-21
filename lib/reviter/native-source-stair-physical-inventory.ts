@@ -3,6 +3,7 @@
  * generator histories bind physical faces to tread indices without comparing
  * coordinates with a sketch or an independently evaluated IFC mesh. */
 import { sha256 } from "@noble/hashes/sha2.js";
+import { originalStairPlanarFaceReversal } from "./native-source-stair-face-orientation.ts";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { openRevitContainer } from "./convert-container.ts";
 import {
@@ -657,7 +658,7 @@ export function inspectOriginalNativeStairPhysicalInventory(
         plane.kind !== "plane" ||
         typeof plane.surface.orientFlag !== "boolean" ||
         face.cutType !== 0 ||
-        face.faceFlags !== 4
+        originalStairPlanarFaceReversal(face.faceFlags, plane) === undefined
       ) {
         report.unsupportedPhysicalFaceTokens.push(physicalFaceToken);
         return [];
@@ -666,7 +667,8 @@ export function inspectOriginalNativeStairPhysicalInventory(
         sub(
           mul(rational(plane.xVector[0]), rational(plane.yVector[1])),
           mul(rational(plane.xVector[1]), rational(plane.yVector[0])),
-        ).n * (plane.surface.orientFlag ? 1n : -1n);
+        ).n * (plane.surface.orientFlag ? 1n : -1n) *
+        BigInt(originalStairPlanarFaceReversal(face.faceFlags, plane)!);
       if (
         plane.xVector[2] !== 0 ||
         plane.yVector[2] !== 0 ||

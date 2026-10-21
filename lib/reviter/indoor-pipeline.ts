@@ -54,6 +54,10 @@ import { prepareNativeRampDisplay } from "./native-ramp-display.ts";
 import { recoverIndoorOpeningSpan } from "./indoor-opening-spans.ts";
 import { prepareNativeRoutingBoundaries } from "./indoor-native-prepass.ts";
 import { prepareNativeCirculationGeometry, attachNativeCirculationCellRoutes, replayNativePhysicalCellRoutes } from "./native-circulation-geometry.ts";
+import { attachOriginalDoorDerivedStanding, applyOriginalDoorDerivedStandingArrival } from "./native-door-derived-standing-integration.ts";
+import type { OriginalDoorDerivedStanding } from "./native-source-door-derived-standing.ts";
+import { attachOriginalStairBaseDerivedStanding, applyOriginalStairBaseDerivedStandingArrival } from "./native-stair-base-derived-standing-integration.ts";
+import { bindOriginalSourceStairBaseCompilerInput, assertOriginalSourceStairBaseIdentityPreserved, type OriginalSourceStairBaseStanding } from "./native-source-stair-base-standing.ts";
 import { recoverNativeWallJunctionRepairs } from "./native-room-presentation.ts";
 import {supportedSemanticDoorLinks} from "./semantic-door-links.ts";
 import {supportedIndoorConnectors} from "./indoor-connectors.ts";
@@ -95,6 +99,28 @@ import type {
   IndoorRecord,
 } from "./indoor-contract.ts";
 
+// Only prepareIndoorDataset can issue this session. A copied dataset, saved
+// checksum, source receipt or public binding helper cannot register one.
+const originalStairBaseCompilerSessions = new WeakMap<IndoorDataset, {
+  modelSha256: string;
+  compilerRoomsSha256: string;
+  allowedStandings: ReadonlySet<OriginalSourceStairBaseStanding>;
+}>();
+
+/** Assert compiler provenance only; this grants no source, cell or route proof. */
+export function assertOriginalStairBaseCompilerSession(
+  source: OriginalSourceStairBaseStanding,
+  current: IndoorDataset,
+  actualInputSha256: string,
+): void {
+  const session = originalStairBaseCompilerSessions.get(current);
+  if (!session || !session.allowedStandings.has(source) ||
+      session.modelSha256 !== current.source.modelSha256 ||
+      session.compilerRoomsSha256 !== current.source.roomsSha256 ||
+      session.compilerRoomsSha256 !== actualInputSha256)
+    throw new Error("Live same-dataset original stair base compiler session required");
+}
+
 export async function sha256Bytes(bytes: Uint8Array): Promise<string> {
   return [
     ...new Uint8Array(
@@ -115,6 +141,10 @@ export async function prepareIndoorDataset(
   progress: (message: string) => void = () => {},
   options: {
     physicalDoorSource?: IndoorDataset;
+    /** Actual current original-RVT constructor handles, never saved receipts. */
+    originalDoorDerivedStandings?: readonly OriginalDoorDerivedStanding[];
+    /** Live full source-qualified base approaches; no cell ownership or stair admission. */
+    originalStairBaseDerivedStandings?: readonly OriginalSourceStairBaseStanding[];
     /** CLI may offload independent physical planes; route decisions below
      * remain in the original order. Browser/default compilation is unchanged. */
     nativeCirculationCompiler?: (model: ConvertResult, dataset: IndoorDataset) => Promise<ReturnType<typeof prepareNativeCirculationGeometry>>;
@@ -275,6 +305,16 @@ export async function prepareIndoorDataset(
         ) ?? 0,
     },
   };
+  try {
+  if (options.originalStairBaseDerivedStandings?.length) {
+    originalStairBaseCompilerSessions.set(dataset, {
+      modelSha256,
+      compilerRoomsSha256: dataset.source.roomsSha256!,
+      allowedStandings: new Set(options.originalStairBaseDerivedStandings),
+    });
+    for (const source of options.originalStairBaseDerivedStandings)
+      bindOriginalSourceStairBaseCompilerInput(source, dataset, data);
+  }
   // Material census repair (derived, never authored): owners in the production cutter categories
   // whose retained native mesh crosses a prepared cut but which have no section row there get the
   // unchanged production cutter's sections, tagged with provenance, in a separate descriptor bound to
@@ -1352,6 +1392,11 @@ export async function prepareIndoorDataset(
     for (const z of zones.zones) issue("native-access-zone", `Reviewed ${z.zone.access} access zone ${z.zone.id} (${z.zone.decision.source}#${z.zone.decision.id}) is carved out of its shared native walking face; ${z.zone.memberRoomKeys.length} member identities keep their access; the remainder is classified independently.`, undefined, undefined, z.zone.levelId);
     for (const z of zones.issues) issue("native-access-zone-refused", `Reviewed access zone ${z.zoneId} is not applied: ${z.reason}`);
   }
+  // Full selected identity is now settled: source reviews, stair holds and
+  // access-zone metadata have completed. Fail before costly native planes;
+  // the later attachment/proposal and physical replay guards still run.
+  for (const source of options.originalStairBaseDerivedStandings ?? [])
+    assertOriginalSourceStairBaseIdentityPreserved(source, dataset);
   progress("Deriving native floor-bound circulation cells and rebuilding their walking branches…");
   const nativeCirculation = options.nativeCirculationCompiler
     ? await options.nativeCirculationCompiler(model, dataset)
@@ -1367,6 +1412,10 @@ export async function prepareIndoorDataset(
   for (const level of new Set(completedDoorClosures.map(d => d.levelId)))
     nativeDoorBoundaryClosureFootprints(dataset, level);
   const nativeBranches = attachNativeCirculationCellRoutes(dataset);
+  const sourceStandingAttachments = (options.originalDoorDerivedStandings ?? []).map(source =>
+    attachOriginalDoorDerivedStanding(dataset, source, geo));
+  const sourceStairBaseAttachments = (options.originalStairBaseDerivedStandings ?? []).map(source =>
+    attachOriginalStairBaseDerivedStanding(dataset, source, geo));
   {
     // Owner-reviewed links between existing nodes, replayed physically.
     const links = applyReviewedCirculationLinks(dataset);
@@ -1412,6 +1461,20 @@ export async function prepareIndoorDataset(
         connectedKeys.add(record.key);
       } else if (record.arrivalNodeId === id) {
         delete record.arrivalNodeId;
+      }
+      if (!record.arrivalNodeId) {
+        for (const attachment of sourceStandingAttachments) {
+          const arrival = applyOriginalDoorDerivedStandingArrival(dataset, attachment, record.key, physicalReplay);
+          if (arrival)
+            issue("native-source-door-standing-arrival", `Original-source door standing ${arrival.proposedArrivalNodeId} survived complete current owner-cell support and final native physical replay. Original seed, portal, all owners and unknown access remain preserved.`, record.key, undefined, record.levelId);
+        }
+      }
+      if (!record.arrivalNodeId) {
+        for (const attachment of sourceStairBaseAttachments) {
+          const arrival = applyOriginalStairBaseDerivedStandingArrival(dataset, attachment, record.key, physicalReplay);
+          if (arrival)
+            issue("native-source-stair-base-arrival", `Original-source stair base standing ${arrival.proposedArrivalNodeId} survived its complete finite approach, current physical corridor cell and final native walking replay. Original cell owners, held stair, nodes and access are preserved.`, record.key, undefined, record.levelId);
+        }
       }
       if (!record.arrivalNodeId && record.circulation && record.walkable && record.access !== "staff") {
         const rampArrival = applyNativeRampTerminalArrival(dataset, recipes, record.key, sourceEdgeSupported);
@@ -1461,4 +1524,9 @@ export async function prepareIndoorDataset(
   prepareNativeWindowDisplay(model, dataset);
   if(data.reviewedDoorApertures)dataset.doorAperturePatchState={regenerated:true,sourceGeometryKey:JSON.stringify(data.reviewedDoorApertures.patches.map(({notes,...p})=>p))};
   return dataset;
+  } finally {
+    // Arrival checks are compiler-local. Neither a returned project nor an
+    // interrupted compilation keeps a reusable session registration.
+    originalStairBaseCompilerSessions.delete(dataset);
+  }
 }

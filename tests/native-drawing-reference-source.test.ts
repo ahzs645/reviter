@@ -33,7 +33,7 @@ test("all 27 original import/master pairs retain exact source identity facts wit
 test("full original ImportInstance and MasterImportSymbol FIFO frames consume their source length echo", () => {
   const schema = readSchema(schemaBytes); assert.ok(schema.ok);
   for (const f of fixture.frames) {
-    const b = Uint8Array.from(Buffer.from(f.frameHex, "hex")), r = readNativeStairTypedFifo(b, schema.schema, f.sourceClass);
+    const b = Uint8Array.from(Buffer.from(f.frameHex, "hex")), r: ReturnType<typeof readNativeStairTypedFifo<"ImportInstance" | "MasterImportSymbol">> = readNativeStairTypedFifo(b, schema.schema, f.sourceClass);
     assert.ok(r.ok, r.ok ? "" : r.error); assert.equal(r.value.endOffset + 4, b.length);
     assert.equal(r.value.rootClassName, f.sourceClass); assert.equal(sha(b), f.frameSha256);
   }

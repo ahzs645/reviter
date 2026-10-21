@@ -1,0 +1,78 @@
+/** Pure source1437 obstruction operands. Source membership and the rest of a
+ * Floor material census remain the opaque consumer's separate obligations. */
+import { Rational, rational, type NativeRationalPoint, type NativeRationalParts } from "./native-rational-overlay.ts";
+import { revit2027OwnerMeshIndex, revit2027OwnerSurface } from "./revit-2027-owner-mesh-index.ts";
+import { walkRevit2027DirectedLoopEdges, revit2027DirectedEdgeUvs } from "./revit-2027-owner-mesh-trim.ts";
+import type { Revit2027GRepReplay, Revit2027GRepReplaySpan } from "./revit-2027-grep-replay.ts";
+import type { Revit2027EdgeLoopWithChainEnvelopesStatic } from "./revit-2027-edge-loop-static.ts";
+import type { Revit2027PlaneSurface } from "./revit-2027-surfaces.ts";
+import type { OriginalPlanarMaterialCell } from "./native-source-planar-slab-envelope.ts";
+const add=(a:Rational,b:Rational)=>new Rational(a.n*b.d+b.n*a.d,a.d*b.d),sub=(a:Rational,b:Rational)=>new Rational(a.n*b.d-b.n*a.d,a.d*b.d),mul=(a:Rational,b:Rational)=>new Rational(a.n*b.n,a.d*b.d),cmp=(a:Rational,b:Rational)=>a.n*b.d<b.n*a.d?-1:a.n*b.d>b.n*a.d?1:0;
+type P3=[Rational,Rational,Rational];
+const affine=(s:Revit2027PlaneSurface,uv:readonly number[]):P3=>[0,1,2].map(i=>add(add(rational(s.origin[i]!),mul(rational(s.xVector[i]!),rational(uv[0]!))),mul(rational(s.yVector[i]!),rational(uv[1]!)))) as P3;
+function hull(input:NativeRationalPoint[]){
+  const key=(p:NativeRationalPoint)=>p.map(q=>`${q.n}/${q.d}`).join(":"),a=[...new Map(input.map(p=>[key(p),p])).values()].sort((p,q)=>cmp(p[0],q[0])||cmp(p[1],q[1]));if(a.length<3)return a;
+  const cross=(p:NativeRationalPoint,q:NativeRationalPoint,r:NativeRationalPoint)=>sub(mul(sub(q[0],p[0]),sub(r[1],p[1])),mul(sub(q[1],p[1]),sub(r[0],p[0]))),half=(values:NativeRationalPoint[])=>{const out:NativeRationalPoint[]=[];for(const p of values){while(out.length>1&&cross(out.at(-2)!,out.at(-1)!,p).n<=0n)out.pop();out.push(p);}return out;};return [...half(a).slice(0,-1),...half(a.toReversed()).slice(0,-1)];
+}
+export type OriginalFloorChainMaterialCell=OriginalPlanarMaterialCell&{sourceKind:"original-chain-envelope-domain";sourceGeometryOwnerElementId:number;originalLoopToken:number;originalChainIndex:number;originalChainStartEdgeToken:number;coveredByOriginalWholePlaneParameterDomain:boolean};
+type ChainOperand={originalFaceToken:number;originalLoopToken:number;originalLoopSpan:number[];originalChainIndex:number;originalChainStartEdgeToken:number;originalChainUvMinimum:number[];originalChainUvMaximum:number[];originalPlaneUvMinimum:number[];originalPlaneUvMaximum:number[];originalWorldCornersFeet:P3[];coveredByOriginalWholePlaneParameterDomain:boolean};
+/** Slot1437 inherits the original loop and adds acceleration boxes plus static
+ * chain-start references. No chain box becomes positive support or alters a
+ * hole. All boxes remain CLOSED obstruction operands, even when the existing
+ * complete plane-parameter domain already encloses them. */
+export function inspectOriginalFloorChainEnvelopeMaterial(replay:Revit2027GRepReplay){
+  const cells:OriginalFloorChainMaterialCell[]=[],chainOperands:ChainOperand[]=[],blockers:string[]=[],originalFaceLoopChains:{originalFaceToken:number;originalLoopTokens:number[];originalDirectedEdgeTokens:number[][]}[]=[];
+  let sourceChainLoopCount=0;
+  try{
+    const owner=Number(replay.ownerElementId);if(!Number.isSafeInteger(owner)||owner<=0||!replay.spans.length||replay.spans.length>100000||replay.spans.some((s,i)=>s.ownerElementId!==replay.ownerElementId||s.replayIndex!==i))throw Error("Foreign or oversized original floor chain source");
+    const positive=replay.spans.filter(s=>s.propertyToken>0);if(new Set(positive.map(s=>s.propertyToken)).size!==positive.length)throw Error("Reused original floor chain source identity");
+    const queued=replay.descriptors.filter(d=>d.state==="queued");if(queued.length!==replay.spans.length||replay.descriptors.some(d=>d.state==="reused"))throw Error("Unconsumed/reused original floor source descriptor");
+    const exactQueue=(s:Revit2027GRepReplaySpan)=>{const ds=queued.filter(d=>d.queueSequence===s.queueSequence);if(ds.length!==1||ds[0]!.ownerElementId!==s.ownerElementId||ds[0]!.token!==s.propertyToken||ds[0]!.sourceClassSlot!==s.propertySourceClassSlot||ds[0]!.parentReplayIndex!==s.parentReplayIndex||ds[0]!.descriptorOffset!==s.descriptorOffset||ds[0]!.descriptorEndOffset!==s.descriptorEndOffset||JSON.stringify(ds[0]!.path)!==JSON.stringify(s.path))throw Error("Original floor chain FIFO ownership differs");};
+    for(const s of replay.spans)exactQueue(s);
+    const index=revit2027OwnerMeshIndex(replay),geometries=replay.spans.filter(s=>s.readerId==="Revit2027Geometry");if(geometries.length!==1||geometries[0]!.propertySourceClassSlot!==2343||geometries[0]!.parentReplayIndex!==null)throw Error("Original floor chain Geometry placement is unsupported");
+    const geometry=geometries[0]!,g=geometry.value as {flags:number;faces:{count:number;entries:{token:number;sourceClassSlot:number}[]};edges:{count:number;entries:{token:number;sourceClassSlot:number}[]};sharedSurfaceInfo:{count:number;entries:unknown[]}};
+    const declared=(field:typeof g.faces,values:ReadonlyMap<number,unknown>,slot:number,reader:string)=>field.count===field.entries.length&&field.count===values.size&&new Set(field.entries.map(d=>d.token)).size===values.size&&field.entries.every(d=>d.sourceClassSlot===slot&&values.has(d.token)&&replay.spans.some(s=>s.readerId===reader&&s.propertySourceClassSlot===slot&&s.propertyToken===d.token&&s.parentReplayIndex===geometry.replayIndex));
+    if(g.flags!==7||g.sharedSurfaceInfo.count||g.sharedSurfaceInfo.entries.length||!declared(g.faces,index.faces,1825,"Revit2027Face")||!declared(g.edges,index.edges,1423,"Revit2027GEdge"))throw Error("Original floor chain declared material census differs");
+    const targets=replay.spans.filter(s=>s.readerId==="Revit2027EdgeLoopWithChainEnvelopes"||s.propertySourceClassSlot===1437);
+    if(targets.some(s=>s.readerId!=="Revit2027EdgeLoopWithChainEnvelopes"||s.propertySourceClassSlot!==1437||s.propertyToken<=0))throw Error("Unknown original source1437 reader/identity");
+    const targetTokens=new Set(targets.map(s=>s.propertyToken)),visitedTargets=new Set<number>(),faceTokens=new Set(targets.map(s=>(s.value as Revit2027EdgeLoopWithChainEnvelopesStatic).loop?.faceReference));
+    for(const faceToken of faceTokens){
+      const face=index.faces.get(faceToken),fspan=replay.spans.find(s=>s.readerId==="Revit2027Face"&&s.propertyToken===faceToken),plane=revit2027OwnerSurface<Revit2027PlaneSurface>(index,634,faceToken);
+      if(!face||!fspan||fspan.parentReplayIndex!==geometry.replayIndex||![4,516].includes(face.faceFlags)||face.cutType!==0||face.faceRegions.count||face.firstLoop.token<=0||face.surface.sourceClassSlot!==634||!plane||plane.kind!=="plane"||plane.queuedProperties.length)throw Error("Unsupported original chain face/reference/nonplane semantics");
+      const children=replay.spans.filter(s=>s.path.length>fspan.path.length&&fspan.path.every((n,i)=>s.path[i]===n));if(children.some(s=>!["Revit2027EdgeLoop","Revit2027EdgeLoopWithChainEnvelopes","Revit2027GFilling","Revit2027AnalyticSurface:634"].includes(s.readerId)))throw Error("Unknown original chain face child");
+      const surfaces=children.filter(s=>s.readerId==="Revit2027AnalyticSurface:634");if(surfaces.length!==1||surfaces[0]!.propertySourceClassSlot!==634||surfaces[0]!.parentReplayIndex!==fspan.replayIndex||surfaces[0]!.propertyToken!==face.surface.token)throw Error("Original chain plane occurrence is missing/reused");
+      if([...plane.origin,...plane.xVector,...plane.yVector,...plane.surface.envelope.firstCorner,...plane.surface.envelope.secondCorner].some(n=>!Number.isFinite(n)))throw Error("Nonfinite original chain plane domain");
+      const x=plane.xVector.map(rational),y=plane.yVector.map(rational),normal=[sub(mul(x[1]!,y[2]!),mul(x[2]!,y[1]!)),sub(mul(x[2]!,y[0]!),mul(x[0]!,y[2]!)),sub(mul(x[0]!,y[1]!),mul(x[1]!,y[0]!))];if(normal.every(n=>n.n===0n))throw Error("Degenerate original chain plane basis");
+      const pmin=[0,1].map(i=>Math.min(plane.surface.envelope.firstCorner[i]!,plane.surface.envelope.secondCorner[i]!)),pmax=[0,1].map(i=>Math.max(plane.surface.envelope.firstCorner[i]!,plane.surface.envelope.secondCorner[i]!));
+      for(const pointer of [face.foregroundFilling,face.backgroundFilling])if(pointer.token){const fill=replay.spans.find(s=>s.propertyToken===pointer.token),v=fill?.value as {faceIdReference?:number;flags?:number;data?:{token:number;sourceClassSlot:number|null};queuedProperties?:unknown[]}|undefined;if(!fill||fill.readerId!=="Revit2027GFilling"||fill.propertySourceClassSlot!==2253||fill.parentReplayIndex!==fspan.replayIndex||v?.faceIdReference!==faceToken||v.flags!==18||v.data?.token!==0||v.data?.sourceClassSlot!==null||v.queuedProperties?.length!==0)throw Error("Unsupported original chain face filling role");}
+      const loopTokens:number[]=[],directed:number[][]=[],usedEdges=new Set<number>();let next=face.firstLoop.token,previousParent=fspan.replayIndex;
+      while(next){
+        if(loopTokens.length>=index.loops.size||loopTokens.includes(next))throw Error("Repeated original chain/classic hole loop");
+        const lspan=replay.spans.find(s=>s.propertyToken===next),record=index.loops.get(next);if(!lspan||!record||lspan.parentReplayIndex!==previousParent||record.loop.open||record.loop.faceReference!==faceToken||!["Revit2027EdgeLoop","Revit2027EdgeLoopWithChainEnvelopes"].includes(lspan.readerId)||(lspan.readerId==="Revit2027EdgeLoop"?lspan.propertySourceClassSlot!==1434:lspan.propertySourceClassSlot!==1437))throw Error("Incomplete/foreign/open original loop ownership");
+        if(JSON.stringify(record.loop.staticReferences)!==JSON.stringify([record.loop.faceReference,record.loop.nextEdgeReference,record.loop.previousEdgeReference])||JSON.stringify(record.loop.queuedProperties)!==JSON.stringify(record.loop.nextLoop.token?[record.loop.nextLoop]:[]))throw Error("Unknown original loop static/queued operands");
+        // Known bit3 arc coedges stay original curves. Only their source UV
+        // domains/boxes are enclosed; no sample polyline becomes an arc.
+        const walked=walkRevit2027DirectedLoopEdges({faceToken,loop:record,edges:index.edges,loopArity:"open"});if(!walked.ok||walked.edges.length<3)throw Error("Original chain directed coedges do not close");
+        if([...record.loop.envelope.minimum,...record.loop.envelope.maximum].some(n=>!Number.isFinite(n))||record.loop.envelope.minimum.some((n:number,i:number)=>n>record.loop.envelope.maximum[i]!))throw Error("Invalid original chain loop envelope");
+        for(const [i,use]of walked.edges.entries()){const e=use.edge,span=replay.spans.find(s=>s.readerId==="Revit2027GEdge"&&s.propertyToken===use.token),other=e.faceReferences[1-use.side];if(!span||span.parentReplayIndex!==geometry.replayIndex||usedEdges.has(use.token)||![2,6,14].includes(e.flags)||e.queuedPropertyCount||e.previousReferences[use.side]!==(!i?next:walked.edges[i-1]!.token)||e.nextReferences[use.side]!==(i===walked.edges.length-1?next:walked.edges[i+1]!.token)||(other!==0&&!index.faces.has(other))||revit2027DirectedEdgeUvs(use).some(p=>p.length!==2||p.some(n=>!Number.isFinite(n))))throw Error("Original chain coedge/twin/UV identity differs");usedEdges.add(use.token);}
+        loopTokens.push(next);directed.push(walked.edges.map(e=>e.token));
+        if(lspan.readerId==="Revit2027EdgeLoopWithChainEnvelopes"){
+          const v=lspan.value as Revit2027EdgeLoopWithChainEnvelopesStatic,chains=v.chains;
+          if(!targetTokens.has(next)||visitedTargets.has(next)||!Array.isArray(chains)||!chains.length||chains.length>walked.edges.length||chains.length>10000||v.byteOffset!==lspan.startOffset||v.endOffset!==lspan.endOffset||v.byteOffset!==v.loop.byteOffset||v.endOffset!==v.loop.endOffset+4+36*chains.length||JSON.stringify(v.staticReferences)!==JSON.stringify([...v.loop.staticReferences,...chains.map(c=>c.startEdgeReference)])||JSON.stringify(v.queuedProperties)!==JSON.stringify(v.loop.queuedProperties)||v.loop.queuedProperties.length!==(v.loop.nextLoop.token?1:0)||new Set(chains.map(c=>c.startEdgeReference)).size!==chains.length)throw Error("Malformed/unread/oversized original1437 wrapper");
+          for(const [chainIndex,c]of chains.entries()){
+            if(!Number.isSafeInteger(c.startEdgeReference)||!walked.edges.some(e=>e.token===c.startEdgeReference)||c.envelope.minimum.length!==2||c.envelope.maximum.length!==2||[...c.envelope.minimum,...c.envelope.maximum].some(n=>!Number.isFinite(n))||c.envelope.minimum.some((n:number,i:number)=>n>c.envelope.maximum[i]!))throw Error("Unsupported/foreign original chain envelope operand");
+            const covered=[0,1].every(i=>cmp(rational(c.envelope.minimum[i]!),rational(pmin[i]!))>=0&&cmp(rational(c.envelope.maximum[i]!),rational(pmax[i]!))<=0),corners=[c.envelope.minimum[0],c.envelope.maximum[0]].flatMap(u=>[c.envelope.minimum[1],c.envelope.maximum[1]].map(v=>affine(plane,[u,v]))),plan=hull(corners.map(p=>[p[0],p[1]])),partsFeet:NativeRationalParts=plan.length>=3?[[plan]]:[];
+            cells.push({role:"original-boundary-domain",sourceKind:"original-chain-envelope-domain",sourceGeometryOwnerElementId:owner,originalFaceTokens:[faceToken],originalLoopToken:next,originalChainIndex:chainIndex,originalChainStartEdgeToken:c.startEdgeReference,coveredByOriginalWholePlaneParameterDomain:covered,partsFeet,closedSegmentsFeet:plan.length<3?[plan]:[],minimumElevationFeet:corners.map(p=>p[2]).sort(cmp)[0]!,maximumElevationFeet:corners.map(p=>p[2]).sort(cmp).at(-1)!});
+            chainOperands.push({originalFaceToken:faceToken,originalLoopToken:next,originalLoopSpan:[lspan.startOffset,lspan.endOffset],originalChainIndex:chainIndex,originalChainStartEdgeToken:c.startEdgeReference,originalChainUvMinimum:[...c.envelope.minimum],originalChainUvMaximum:[...c.envelope.maximum],originalPlaneUvMinimum:pmin,originalPlaneUvMaximum:pmax,originalWorldCornersFeet:corners,coveredByOriginalWholePlaneParameterDomain:covered});
+          }
+          sourceChainLoopCount++;visitedTargets.add(next);
+        }
+        const pointer=record.loop.nextLoop;if(pointer.token){const following=replay.spans.find(s=>s.propertyToken===pointer.token);if(!following||following.propertySourceClassSlot!==pointer.sourceClassSlot||following.descriptorOffset!==pointer.byteOffset||following.descriptorEndOffset!==pointer.endOffset||following.parentReplayIndex!==lspan.replayIndex)throw Error("Original next/hole loop descriptor changed");}else if(pointer.sourceClassSlot!==null)throw Error("Unknown null original loop descriptor");
+        previousParent=lspan.replayIndex;next=pointer.token;
+      }
+      originalFaceLoopChains.push({originalFaceToken:faceToken,originalLoopTokens:loopTokens,originalDirectedEdgeTokens:directed});
+    }
+    if(visitedTargets.size!==targets.length)throw Error("An original1437 source operand is unowned/unconsumed");
+  }catch(error){blockers.push(error instanceof Error?error.message:String(error));}
+  return {cells,additionalCells:cells.filter(c=>!c.coveredByOriginalWholePlaneParameterDomain),chainOperands,originalFaceLoopChains,sourceChainLoopCount,blockers,completeSourceChainOperands:blockers.length===0,allChainBoxesCoveredByOriginalWholePlaneDomains:blockers.length===0&&cells.every(c=>c.coveredByOriginalWholePlaneParameterDomain),physicalThicknessInvented:false as const,positiveFloorSupportApproved:false as const,completeFloorBodyApproved:false as const,originalSourceAuthorityGranted:false as const,routeApproved:false as const};
+}

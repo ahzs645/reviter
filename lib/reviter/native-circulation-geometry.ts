@@ -1,4 +1,5 @@
 import * as DMath from "./deterministic-math.ts";
+import { createExactDoorApproachUnionMemo } from "./native-door-approach-exact-union-memo.ts";
 import {nativeRationalOverlay,nativeRationalScalarToIEEE,NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION,type NativeRationalParts} from "./native-rational-overlay.ts";
 import {prepareNativeContainedCellDisplay,validateNativeContainedCellDisplay} from "./native-contained-cell-display.ts";
 import {freezeNativeRationalParts,encodeNativeExactTopology,createNativeExactTopologyIndex,nativeRationalArea,nativeRationalMeasuredArea,nativeRationalAreaCompare,nativeRationalPointInParts,nativeRationalPathSupported,nativeRationalFootprintSupported,nativeRationalThresholdHalf,nativeExactPartsForProposals} from "./native-exact-planar-topology.ts";
@@ -52,6 +53,10 @@ import { nativeTerminalRepairPairs } from "./native-terminal-repair-pairs.ts";
 import { certifiedStationaryNativeAlias } from "./indoor-stationary-native-alias.ts";
 import { createNativeArrivalOwnerQuery } from "./native-arrival-owner.ts";
 import { indoorRegionBlocker } from "./indoor-region.ts";
+import { rational } from "./native-rational-overlay.ts";
+import { originalTwoFootStandingSquare } from "./native-source-standing-footprint.ts";
+import { originalSourceBaseApproachDemand } from "./native-source-stair-base-approach-demand.ts";
+import { projectStatedTwoFootWalkingVolume } from "./native-source-walking-volume.ts";
 import {
   containsRoomPoint,
   type DirectoryRoom,
@@ -763,6 +768,7 @@ type DoorApproachContext = {
   exactIndex?: ReturnType<typeof createNativeExactTopologyIndex>;
   physicalFace?: (cell: NonNullable<IndoorDataset["circulationGeometry"]>["cells"][number]) => NativeRationalParts | undefined;
   exactApproaches:Map<Rings,NativeRationalParts>;
+  exactDoorUnion: ReturnType<typeof createExactDoorApproachUnionMemo>;
   levels: Map<
     string,
     {
@@ -1069,7 +1075,7 @@ function nativeCellDoorApproach(
             if(nativeLocalFaceJoins(local,[part],node!.pointFeet))acceptNativeLocalFacePiece(local,[part]);
             continue;
           }
-          const joined=nativeRationalOverlay("union",exactParts,[part]);
+          const joined=context.exactDoorUnion.union(exactParts,[part]);
           if(joined.length===1&&nativeRationalPointInParts(node!.pointFeet,joined)){
             exactParts=freezeNativeRationalParts(joined);rings=nativeExactPartsForProposals(joined)[0];context.exactApproaches.set(rings,exactParts);
           }
@@ -1102,12 +1108,97 @@ function createDoorApproachContext(data: IndoorDataset): DoorApproachContext {
     exactBoundaries:createNativeExactBoundaryMaterialQuery(data),
     levels: new Map(),
     exactApproaches:new Map(),
+    exactDoorUnion:createExactDoorApproachUnionMemo(),
     ...(data.nativeIndoorEnvelopes?{exactIndex:createNativeExactTopologyIndex(data.circulationGeometry!.exactTopology!,{sourceModelSha256:data.source.modelSha256,sourceGeometryKey:nativeCirculationGeometryKey(data),kernelVersion:NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION})}:{}),
   };
   for (const door of data.doors ?? [])
     for (const key of door.roomKeys)
       context.doors.set(key, [...(context.doors.get(key) ?? []), door]);
   return context;
+}
+
+/** A current compiler check, never source or route authority. The complete
+ * standing square and finite approach must fit one unchanged owner cell and
+ * its independently derived physical free face. No door half, foreign owner,
+ * snapped point or alternate endpoint is added to make the demand fit. */
+export function checkedNativeStandingOwnerCell(
+  data: IndoorDataset,
+  roomKey: string,
+  levelId: number,
+  point: readonly [number, number, number],
+  originalPortal: readonly [number, number, number],
+) {
+  if (!data.nativeIndoorEnvelopes ||
+      !data.circulationGeometry?.exactTopology ||
+      data.circulationGeometry.sourceModelSha256 !== data.source.modelSha256 ||
+      data.circulationGeometry.sourceGeometryKey !== nativeCirculationGeometryKey(data) ||
+      point.some(n => !Number.isFinite(n)) || originalPortal.some(n => !Number.isFinite(n)) ||
+      originalPortal[2] !== point[2])
+    throw new Error("Standing demand requires complete current same-source native geometry.");
+  const context = createDoorApproachContext(data),
+    authority = createNativeExactRoutingAuthority(data, context.materials),
+    square = originalTwoFootStandingSquare([rational(point[0]), rational(point[1])]),
+    strip = projectStatedTwoFootWalkingVolume(originalPortal, point, rational(point[2]), rational(point[2] + 6), 6),
+    footprint = [[strip.unclippedStatedStripFeet]];
+  if (!nativeRationalFootprintSupported(footprint, square))
+    throw new Error("Complete finite approach is outside the source-qualified standing demand.");
+  const candidates = data.circulationGeometry.cells.filter(cell => {
+    if (!cell.roomKeys.includes(roomKey) || !cell.levelIds.includes(levelId) ||
+        cell.elevationFeet !== point[2] || !cell.exactFaceId) return false;
+    const pure = context.exactIndex!.parts(cell.exactFaceId);
+    if (!pure) throw new Error("Standing owner cell has no original exact face.");
+    if (!nativeRationalPointInParts(point, pure) ||
+        !nativeRationalFootprintSupported(square, pure)) return false;
+    const free = authority(cell.elevationFeet, pure);
+    return nativeRationalFootprintSupported(square, free) &&
+      nativeRationalFootprintSupported(footprint, free) &&
+      nativeRationalPathSupported([originalPortal, point], free);
+  });
+  if (candidates.length !== 1)
+    throw new Error("Standing demand has no unique complete current physical owner-cell support.");
+  const cell = candidates[0]!;
+  return { nativeCellId: cell.id, roomKeys: [...new Set(cell.roomKeys)].sort() };
+}
+
+/** Current physical support only. A source-issued finite approach may terminate
+ * outside the place's own cell, but its original corridor anchor must already
+ * own this unique cell. Keep every incumbent owner and never add the destination
+ * to the cell. Source identity, full native-body proof and final replay remain
+ * independent requirements at the integration boundary. */
+export function checkedNativeSourceTerminalApproachCell(
+  data: IndoorDataset,
+  incumbentRoomKey: string,
+  levelId: number,
+  path: readonly (readonly [number, number, number])[],
+) {
+  if (!data.nativeIndoorEnvelopes ||
+      !data.circulationGeometry?.exactTopology ||
+      data.circulationGeometry.sourceModelSha256 !== data.source.modelSha256 ||
+      data.circulationGeometry.sourceGeometryKey !== nativeCirculationGeometryKey(data) ||
+      path.length < 2 || path.length > 64 ||
+      path.some(point => point.length !== 3 || point.some(n => !Number.isFinite(n)) || point[2] !== path[0]![2]))
+    throw new Error("Terminal approach requires complete current same-source native geometry and one unchanged foot plane.");
+  const first = [...path[0]!] as [number, number, number],
+    last = [...path.at(-1)!] as [number, number, number],
+    demand = originalSourceBaseApproachDemand(first, last, path.map(point => [point[0], point[1]])),
+    context = createDoorApproachContext(data),
+    authority = createNativeExactRoutingAuthority(data, context.materials),
+    footprint = demand.completeFootprintFeet;
+  const candidates = data.circulationGeometry.cells.filter(cell => {
+    if (!cell.roomKeys.includes(incumbentRoomKey) || !cell.levelIds.includes(levelId) ||
+        cell.elevationFeet !== first[2] || !cell.exactFaceId) return false;
+    const pure = context.exactIndex!.parts(cell.exactFaceId);
+    if (!pure) throw new Error("Terminal approach cell has no original exact face.");
+    if (!nativeRationalFootprintSupported(footprint, pure) ||
+        !nativeRationalPathSupported(path, pure)) return false;
+    const free = authority(cell.elevationFeet, pure);
+    return nativeRationalFootprintSupported(footprint, free) &&
+      nativeRationalPathSupported(path, free);
+  });
+  if (candidates.length !== 1)
+    throw new Error("Terminal approach has no unique complete current physical corridor-cell support.");
+  const cell = candidates[0]!;
+  return { nativeCellId: cell.id, roomKeys: [...new Set(cell.roomKeys)].sort() };
 }
 
 /** Rebuild walk branches inside each physical cell, keeping all existing fixed
@@ -1467,6 +1558,42 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
   return added;
 }
 
+export type NativePhysicalCellReplay = { checked: number; rerouted: string[]; disabled: string[] };
+function nativePhysicalReplayOperands(data: IndoorDataset) {
+  return nativeCirculationBinding([
+    "native-physical-replay-operands-v1",
+    nativeCirculationGeometryKey(data),
+    data.circulationGeometry,
+    data.nativeLevels,
+    data.nativeMaterialSectionSupplement,
+    data.indoorExclusions,
+    data.nodes,
+    // Door state participates in original half/host/material checks. Ordinary
+    // walking accessibility/notes reviews do not change physical support.
+    data.edges.filter(edge => edge.kind === "door"),
+  ], true);
+}
+const completedPhysicalReplays = new WeakMap<NativePhysicalCellReplay, {
+  data: IndoorDataset;
+  sourceModelSha256: string;
+  geometry: IndoorDataset["circulationGeometry"];
+  exactDoorUnionMemo: ReturnType<ReturnType<typeof createExactDoorApproachUnionMemo>["stats"]>;
+  operands: string;
+  edges: Map<IndoorDataset["edges"][number], string>;
+}>();
+/** An ordinary replay result must be the actual same-process result, with
+ * this exact unchanged edge. A copied receipt, enabled flag or caller-created
+ * Set cannot claim that a new branch survived the independent physical replay. */
+export function nativeWalkSurvivedPhysicalReplay(data: IndoorDataset, replay: NativePhysicalCellReplay,
+  edge: IndoorDataset["edges"][number]) {
+  const completed = completedPhysicalReplays.get(replay);
+  return !!completed && completed.data === data && completed.sourceModelSha256 === data.source.modelSha256 &&
+    completed.geometry === data.circulationGeometry && data.edges.includes(edge) &&
+    edge.enabled && edge.kind === "walk" && !!edge.nativeCellId &&
+    completed.edges.get(edge) === JSON.stringify(edge) &&
+    completed.operands === nativePhysicalReplayOperands(data);
+}
+
 /** Final source-bound physical replay of derived branches. The analytical
  * planner may have a different conservative projection than the independent
  * visitor authority (for example a raised foreign glazing panel). Replan only
@@ -1522,5 +1649,22 @@ export function replayNativePhysicalCellRoutes(data: IndoorDataset) {
       ...(from ? {roomKey: from.roomKey, levelId: from.levelId} : {}),
     });
   }
+  completedPhysicalReplays.set(result, {
+    data, sourceModelSha256: data.source.modelSha256, geometry: data.circulationGeometry,
+    operands: nativePhysicalReplayOperands(data),
+    exactDoorUnionMemo: context.exactDoorUnion.stats(),
+    edges: new Map(data.edges.filter(edge => edge.enabled && edge.kind === "walk" && edge.nativeCellId)
+      .map(edge => [edge, JSON.stringify(edge)])),
+  });
   return result;
+}
+
+/** Detached diagnostics only; no callback runs before or after the physical
+ * stamp, and the ordinary replay result retains its existing JSON shape. */
+export function inspectNativePhysicalReplayUnionMemo(data: IndoorDataset, replay: NativePhysicalCellReplay) {
+  const completed = completedPhysicalReplays.get(replay);
+  if (!completed || completed.data !== data ||
+      completed.operands !== nativePhysicalReplayOperands(data))
+    throw new Error("Current same-process native physical replay required for memo diagnostics.");
+  return Object.freeze({ ...completed.exactDoorUnionMemo });
 }

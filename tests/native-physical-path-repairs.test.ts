@@ -141,3 +141,72 @@ test('physical replanning never flattens a tolerated original endpoint height in
  assert.equal(JSON.stringify([data.nodes,data.edges[0]!.pointsFeet]),before,'the tolerated source terminal and refused original path stay byte-identical');
  assert.equal(data.edges[0]!.enabled,false);
 });
+
+test('derived standing requires complete original owner-cell footprint and retains real holes and low material',async()=>{
+ const {prepareNativeCirculationGeometry,checkedNativeStandingOwnerCell}=await import('../lib/reviter/native-circulation-geometry.ts');
+ const {data,model}=await setup();
+ data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ const before=JSON.stringify(data);
+ const support=checkedNativeStandingOwnerCell(data,'hall',1,[3,5,0],[2.5,5,0]);
+ assert.deepEqual(support.roomKeys,['hall']);
+ assert.ok(data.circulationGeometry.cells.some(c=>c.id===support.nativeCellId));
+ assert.throws(()=>checkedNativeStandingOwnerCell(data,'hall',1,[16.5,2.5,0],[16,2.5,0]),/unique complete current physical/,'original floor hole remains a refusal');
+ assert.throws(()=>checkedNativeStandingOwnerCell(data,'hall',1,[9,5,0],[8.5,5,0]),/unique complete current physical/,'retained native low tread remains a refusal');
+ assert.throws(()=>checkedNativeStandingOwnerCell(data,'foreign-room',1,[3,5,0],[2.5,5,0]),/unique complete current physical/,'free space cannot confer another place owner');
+ assert.throws(()=>checkedNativeStandingOwnerCell(data,'hall',1,[3,5,0],[3,5,.01]),/same-source/,'original terminal elevation is never flattened');
+ assert.equal(JSON.stringify(data),before,'qualification mutates no geometry, nodes, edges or arrival pointers');
+});
+
+test('only the actual final physical replay can qualify its unchanged native walk',async()=>{
+ const {prepareNativeCirculationGeometry,attachNativeCirculationCellRoutes,replayNativePhysicalCellRoutes,nativeWalkSurvivedPhysicalReplay}=await import('../lib/reviter/native-circulation-geometry.ts');
+ const {data,model}=await setup();delete data.stairDisplay;
+ data.records[0]!.building='B';data.records[0]!.surfaceId='B:1:0';
+ data.alignment={horizontalMetresPerFoot:.3048} as never;data.report={components:0,largestComponentArrivals:0} as never;
+ data.nodes=[{id:'arrival:hall',roomKey:'hall',kind:'arrival',levelId:1,building:'B',surfaceId:'B:1:0',pointFeet:[2,5,0],geographic:[0,0]},{id:'terminal',roomKey:'hall',kind:'portal',levelId:1,building:'B',surfaceId:'B:1:0',pointFeet:[7,5,0],geographic:[0,0]}];
+ data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ assert.equal(attachNativeCirculationCellRoutes(data),1);
+ const edge=data.edges[0]!,replay=replayNativePhysicalCellRoutes(data);
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),true);
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,structuredClone(replay),edge),false,'serialized/copy receipt cannot restore the live replay');
+ assert.equal(nativeWalkSurvivedPhysicalReplay({...data},replay,edge),false,'another compiler dataset cannot reuse the receipt');
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,structuredClone(edge)),false,'cloned branch cannot inherit admission');
+ edge.pointsFeet[1]![0]+=.1;
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),false,'post-replay geometry mutation invalidates admission');
+ edge.pointsFeet[1]![0]-=.1;
+ const points=structuredClone(data.walkingSupport!.floors[0]!.ringsFeet);
+ data.walkingSupport!.floors[0]!.ringsFeet.push(rect(3,4,4,6));
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),false,'a same-object new floor hole invalidates the replay');
+ data.walkingSupport!.floors[0]!.ringsFeet=points;
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),true,'restoring the exact operands restores their original replay identity');
+ data.circulationGeometry.fixtures!.push({nativeElementId:99,elevationFeet:0,ringsFeet:[rect(3,4,4,6)]} as never);
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),false,'a same-object low physical obstacle invalidates the replay');
+ data.circulationGeometry.fixtures!.pop();
+ data.circulationGeometry.cells[0]!.roomKeys.push('foreign-owner');
+ assert.equal(nativeWalkSurvivedPhysicalReplay(data,replay,edge),false,'same-object owner-cell mutation invalidates the replay');
+});
+
+test('source terminal approach retains all incumbent owners without assigning its destination to the cell',async()=>{
+ const {prepareNativeCirculationGeometry,checkedNativeSourceTerminalApproachCell}=await import('../lib/reviter/native-circulation-geometry.ts');
+ const {data,model}=await setup();
+ data.records.push({...data.records[0]!,key:'shared',access:'unknown'});
+ data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ const before=JSON.stringify(data),path:[number,number,number][]=[[2,2,0],[6,2,0]];
+ const support=checkedNativeSourceTerminalApproachCell(data,'hall',1,path);
+ assert.deepEqual(support.roomKeys,['hall','shared'],'every original owner and its policy remain');
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'new-destination',1,path),/unique complete current physical/,'free space cannot assign the new destination as a cell owner');
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'hall',2,path),/unique complete current physical/,'a same-elevation foreign level cannot qualify');
+ assert.equal(JSON.stringify(data),before,'the physical check inserts no node, edge, pointer or owner');
+ const staff=structuredClone(data);staff.records[1]!.access='staff';
+ staff.circulationGeometry=prepareNativeCirculationGeometry(model,staff).geometry;
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(staff,'hall',1,path),/unique complete current physical/,'an overlapping staff area retains the existing physical-cell refusal');
+});
+
+test('source terminal approach requires both end squares and the whole finite footprint through real holes and low bodies',async()=>{
+ const {prepareNativeCirculationGeometry,checkedNativeSourceTerminalApproachCell}=await import('../lib/reviter/native-circulation-geometry.ts');
+ const {data,model}=await setup();
+ data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'hall',1,[[3,5,0],[15,5,0]]),/unique complete current physical/,'safe endpoint squares do not waive an obstructed middle');
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'hall',1,[[15,2.5,0],[18,2.5,0]]),/unique complete current physical/,'a real original hole cannot be bridged');
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'hall',1,[[2,2,0],[.5,2,0]]),/unique complete current physical/,'the terminal square must fit even if its center is on supported floor');
+ assert.throws(()=>checkedNativeSourceTerminalApproachCell(data,'hall',1,[[2,2,0],[6,2,.01]]),/unchanged foot plane/,'original elevations are never flattened');
+});
