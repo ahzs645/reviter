@@ -13,7 +13,8 @@
  * The native recipe is independently checked against complete original
  * nonempty system-profile source operands; it does not use a display mesh.
  */
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import type { Bounds3 } from "./types.ts";
 import { readSchema } from "./schema-reader.ts";
 import { readOriginalMullionSymbolTypedFifo } from "./native-source-mullion-symbol.ts";
@@ -33,8 +34,7 @@ import {
 } from "./element-id-width.ts";
 
 const recipe = "revit2027-sysrect-mullion-straight-host-edge-v1" as const;
-const hash = (bytes: Uint8Array) =>
-  createHash("sha256").update(bytes).digest("hex");
+const hash = (bytes: Uint8Array) => bytesToHex(sha256(bytes));
 function object(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v))
     throw Error("Missing original constructor object");
