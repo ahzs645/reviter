@@ -5,12 +5,12 @@ const binding=workerData.binding as CheckpointBinding;
 try {
  await verifyCheckpointBinding(binding);
  const context:CheckpointWorkerContext={binding,async readVerifiedInput(name){const file=binding.immutableInputs.find(f=>f.name===name);if(!file)throw Error('Unbound worker input: '+name);const bytes=await readFile(file.path);if(sha256(bytes)!==file.sha256)throw Error('Changed immutable worker input: '+name);return bytes;}};
- const module:CheckpointWorkerModule=await import(workerData.moduleURL);
- if(typeof module.runTask!=='function')throw Error('Worker module must export runTask');
- const state=await module.initialize?.(context);
+ const workerModule:CheckpointWorkerModule=await import(workerData.moduleURL);
+ if(typeof workerModule.runTask!=='function')throw Error('Worker module must export runTask');
+ const state=await workerModule.initialize?.(context);
  let busy=false;
  parentPort!.on('message',async(message:{taskId:string;inputJson:string;inputSha256:string})=>{
-  try{if(busy)throw Error('Worker already has an active task');busy=true;if(sha256(message.inputJson)!==message.inputSha256)throw Error('Changed task input');const input:unknown=JSON.parse(message.inputJson);strictJson(input);const value=await module.runTask(input as Parameters<CheckpointWorkerModule['runTask']>[0],state,context);const resultJson=strictJson(value);parentPort!.postMessage({taskId:message.taskId,resultJson});}
+  try{if(busy)throw Error('Worker already has an active task');busy=true;if(sha256(message.inputJson)!==message.inputSha256)throw Error('Changed task input');const input:unknown=JSON.parse(message.inputJson);strictJson(input);const value=await workerModule.runTask(input as Parameters<CheckpointWorkerModule['runTask']>[0],state,context);const resultJson=strictJson(value);parentPort!.postMessage({taskId:message.taskId,resultJson});}
   catch(error){parentPort!.postMessage({taskId:message.taskId,error:error instanceof Error?error.message:String(error)});}
   finally{busy=false;}
  });

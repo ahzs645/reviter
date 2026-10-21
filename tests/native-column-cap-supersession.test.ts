@@ -7,6 +7,9 @@ import {
   type NativeBoundaryPatch,
   type BoundaryWall,
 } from "../lib/reviter/native-boundary-patches.ts";
+type CurrentColumn = Parameters<typeof proposeNativeColumnCapSupersession>[1];
+type OriginalCapPatch = NativeBoundaryPatch & { continuationProof: NonNullable<NativeBoundaryPatch["continuationProof"]> };
+type CurrentCapFixture = { originalPatch: OriginalCapPatch; currentSourceSections: CurrentColumn[] };
 function actual() {
   return JSON.parse(
     readFileSync(
@@ -118,18 +121,18 @@ test("a middle notch cannot be skipped or bypassed by selecting only the two end
 });
 test("foreign identities, floors, approximate rows, holes and self-intersections refuse", () => {
   for (const change of [
-    (c: any) => c.nativeElementId++,
-    (c: any) => c.levelId++,
-    (c: any) => (c.approximate = true),
-    (c: any) => (c.reviewPatchId = "another-patch"),
-    (c: any) => (c.geometrySource = "display"),
-    (c: any) =>
+    (c: CurrentColumn) => c.nativeElementId++,
+    (c: CurrentColumn) => c.levelId++,
+    (c: CurrentColumn) => (c.approximate = true),
+    (c: CurrentColumn) => (c.reviewPatchId = "another-patch"),
+    (c: CurrentColumn) => (c.geometrySource = "display"),
+    (c: CurrentColumn) =>
       c.ringsFeet.push([
         [0, 0],
         [1, 0],
         [1, 1],
       ]),
-    (c: any) =>
+    (c: CurrentColumn) =>
       (c.ringsFeet = [
         [
           [0, 0],
@@ -137,7 +140,7 @@ test("foreign identities, floors, approximate rows, holes and self-intersections
           [2, 0],
         ],
       ]),
-    (c: any) => {
+    (c: CurrentColumn) => {
       const r = c.ringsFeet[0];
       [r[3], r[15]] = [r[15], r[3]];
     },
@@ -152,10 +155,10 @@ test("foreign identities, floors, approximate rows, holes and self-intersections
 });
 test("incomplete caps or changed original operation kinds cannot become replacement approvals", () => {
   for (const change of [
-    (p: any) => (p.continuationProof.sourceCapFeet[1][1] -= 0.1),
-    (p: any) => (p.status = "proposed"),
-    (p: any) => (p.nativeDoorIds = [10]),
-    (p: any) => (p.wallEvidence[0].kind = "column"),
+    (p: OriginalCapPatch) => (p.continuationProof.sourceCapFeet[1][1] -= 0.1),
+    (p: OriginalCapPatch) => (p.status = "proposed"),
+    (p: OriginalCapPatch) => (p.nativeDoorIds = [10]),
+    (p: OriginalCapPatch) => (p.wallEvidence[0].kind = "column"),
   ]) {
     const { originalPatch, currentColumn } = actual();
     change(originalPatch);
@@ -211,19 +214,19 @@ test("current source-cap proposals reject other owners/floors, inexact physical 
     "../lib/reviter/native-column-cap-supersession.ts"
   );
   for (const mutate of [
-    (f: any) => f.currentSourceSections[0].nativeElementId++,
-    (f: any) => f.currentSourceSections[0].levelId++,
-    (f: any) => (f.currentSourceSections[0].geometrySource = "display"),
-    (f: any) => (f.currentSourceSections[0].approximate = true),
-    (f: any) => (f.currentSourceSections[0].reviewPatchId = "previous-review"),
-    (f: any) =>
+    (f: CurrentCapFixture) => f.currentSourceSections[0].nativeElementId++,
+    (f: CurrentCapFixture) => f.currentSourceSections[0].levelId++,
+    (f: CurrentCapFixture) => (f.currentSourceSections[0].geometrySource = "display"),
+    (f: CurrentCapFixture) => (f.currentSourceSections[0].approximate = true),
+    (f: CurrentCapFixture) => (f.currentSourceSections[0].reviewPatchId = "previous-review"),
+    (f: CurrentCapFixture) =>
       f.currentSourceSections[0].ringsFeet.push([
         [0, 0],
         [1, 0],
         [1, 1],
       ]),
-    (f: any) => (f.originalPatch.continuationProof.sourceCapFeet[0][0] += 0.01),
-    (f: any) => (f.currentSourceSections = []),
+    (f: CurrentCapFixture) => (f.originalPatch.continuationProof.sourceCapFeet[0][0] += 0.01),
+    (f: CurrentCapFixture) => (f.currentSourceSections = []),
   ]) {
     const f = JSON.parse(
       readFileSync(

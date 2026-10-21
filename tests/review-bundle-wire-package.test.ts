@@ -56,7 +56,7 @@ const model = new File(["original source bytes"], "source.rvt", {
 });
 function bindFloors(
   files: Record<string, Uint8Array>,
-  manifest: Record<string, any>,
+  manifest: Awaited<ReturnType<typeof readProjectPackage>>["manifest"],
   bytes: Uint8Array,
 ) {
   files["floors/rooms.json"] = bytes;

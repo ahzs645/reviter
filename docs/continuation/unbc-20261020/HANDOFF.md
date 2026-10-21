@@ -2,7 +2,7 @@
 
 Status recorded October 20, 2026, America/Vancouver (latest engineering observation: 6:51 p.m. PDT). This is a source checkpoint handoff, with existing changes from `main` preserved during integration. Pushing these sources to `main` does not approve the native export, software candidate or a public release.
 
-Source 019 is the current paired source. Native attempt 006 has completed all nine physical floor planes and its final plane-compiler receipt; the nine checkpoints and newly generated dataset have verified Drive recovery copies. The native process had not produced its final exit/postflight result at the recorded observation. The existing private Site still serves historical version 14. No new candidate has been published.
+The immutable source 019 pair is the input to the running build. The latest development `main` also includes preserved incoming main changes, these handoff documents and CI compatibility fixes. It is a separate source epoch: reconcile actual source/dependency bindings before accepting outputs or preparing delivery; do not reuse a source-019 validation receipt as authority for newer main. Native attempt 006 has completed all nine physical floor planes and its final plane-compiler receipt; the nine checkpoints and newly generated dataset have verified Drive recovery copies. The native process had not produced its final exit/postflight result at the recorded observation. The existing private Site still serves historical version 14. No new candidate has been published.
 
 ## Repository roles and source state
 

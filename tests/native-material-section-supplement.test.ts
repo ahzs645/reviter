@@ -30,7 +30,7 @@ function material(census: number[]) {
     sections: [{ nativeElementId: 1, categoryId: -2000011, kind: "wall" as const, baseElevationFeet: 0, topElevationFeet: 10, partsFeet: [[rect(0, 0, 10, 0.5)]] }] }];
   const m = { version: 1 as const, sourceModelSha256: sha, geometrySha256: "", levels };
   m.geometrySha256 = nativeDerivedFrameHash([m.version, m.sourceModelSha256, m.levels]);
-  return m as never;
+  return m as Parameters<typeof deriveNativeMaterialSectionSupplement>[1];
 }
 
 test("audit lists native barrier owners whose mesh crosses a prepared cut without a section; the unchanged cutter supplies them", () => {
@@ -47,19 +47,19 @@ test("audit lists native barrier owners whose mesh crosses a prepared cut withou
   // section omission (owner in census, no row) is labelled separately
   assert.equal(deriveNativeMaterialSectionSupplement(model, material([1, 2])).supplement!.levels[0]!.sections[0]!.provenance.reason, "section-omission");
   // nothing missing -> no supplement
-  const complete = material([1, 2]) as any;
+  const complete = material([1, 2]);
   complete.levels[0].sections.push({ nativeElementId: 2, categoryId: -2000011, kind: "wall", baseElevationFeet: 0, topElevationFeet: 10, partsFeet: [[rect(10, 0, 10.5, 8)]] });
   complete.geometrySha256 = nativeDerivedFrameHash([complete.version, complete.sourceModelSha256, complete.levels]);
   assert.equal(deriveNativeMaterialSectionSupplement(model, complete).supplement, undefined);
 });
 
 test("the supplement is bound to the unchanged original rows and merged only where material is read", () => {
-  const mat = material([1]) as any;
+  const mat = material([1]);
   const before = JSON.stringify(mat);
   const { supplement } = deriveNativeMaterialSectionSupplement(model, mat);
   const merged = nativeMaterialSectionsWithSupplement(mat, supplement);
   assert.equal(JSON.stringify(mat), before, "original rows are not mutated");
-  assert.deepEqual(merged.levels[0].sections.map((s: any) => s.nativeElementId), [1, 2]);
+  assert.deepEqual(merged.levels[0].sections.map((s) => s.nativeElementId), [1, 2]);
   const data = { source: { modelSha256: sha }, nativeMaterialSections: mat, nativeMaterialSectionSupplement: supplement };
   const q = createNativeRoutingMaterialQuery(data as never)(0, 4);
   assert.ok(q.present.has(2) && q.known.has(2));

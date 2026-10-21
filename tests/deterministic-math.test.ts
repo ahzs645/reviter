@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import * as DMath from "../lib/reviter/deterministic-math.ts";
 import { nativeWallArcPolygon } from "../lib/reviter/architectural-plan.ts";
 
@@ -183,10 +184,31 @@ test("compiler geometry modules use no implementation-approximated Math", () => 
   ]);
   assert.ok(files.includes("lib/reviter/architectural-plan.ts") && files.includes("scripts/indoor/native-circulation-plane-worker.ts"));
   assert.ok(files.length > 100, `compiler graph has ${files.length} modules`);
-  const offenders = files.flatMap((file) =>
-    code(readFileSync(resolve(root, file), "utf8"))
+  const offenders = files.flatMap((file) => {
+    let source = readFileSync(resolve(root, file), "utf8");
+    if (file === "lib/reviter/material-palette.ts") {
+      // The import closure also includes display colors. Exempt only the IEC
+      // sRGB transfer exponent, keeping every other expression in this module
+      // subject to the same geometry scan.
+      const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+      const conversions = parsed.statements.filter((node): node is ts.FunctionDeclaration =>
+        ts.isFunctionDeclaration(node) && node.name?.text === "srgbBytesToLinear");
+      assert.equal(conversions.length, 1);
+      const transfers: ts.BinaryExpression[] = [];
+      const visit = (node: ts.Node) => {
+        if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AsteriskAsteriskToken &&
+            node.getText(parsed) === "((channel + 0.055) / 1.055) ** 2.4") transfers.push(node);
+        ts.forEachChild(node, visit);
+      };
+      visit(conversions[0]!);
+      assert.equal(transfers.length, 1, "retain the exact color-only sRGB exception");
+      const transfer = transfers[0]!;
+      source = source.slice(0, transfer.getStart(parsed)) +
+        transfer.getText(parsed).replace(/[^\n]/g, " ") + source.slice(transfer.getEnd());
+    }
+    return code(source)
       .split("\n")
-      .flatMap((line, i) => (APPROXIMATE.test(line) || APPROXIMATE_POWER.test(line) ? [`${file}:${i + 1}: ${line.trim().slice(0, 120)}`] : [])),
-  );
+      .flatMap((line, i) => (APPROXIMATE.test(line) || APPROXIMATE_POWER.test(line) ? [`${file}:${i + 1}: ${line.trim().slice(0, 120)}`] : []));
+  });
   assert.deepEqual(offenders, []);
 });

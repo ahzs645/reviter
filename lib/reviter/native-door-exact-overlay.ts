@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- This script declares ambient JSTS modules and cannot be imported as a module.
 /// <reference path="./native-room-presentation-jsts.d.ts" />
 import GeoJSONReader from "jsts/org/locationtech/jts/io/GeoJSONReader.js";
 import GeoJSONWriter from "jsts/org/locationtech/jts/io/GeoJSONWriter.js";

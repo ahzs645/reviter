@@ -27,9 +27,9 @@ test('derives exact numerical gap without moving source vertices, adding overlap
  assert.equal(nativeRationalOverlay('intersection',mask,[repair.target.ringsFeet]).length,0);
  assert.deepEqual({data,repair},before);
  const projection=nativeExactPartsForProposals(mask)[0][0];assert(projection.some(p=>p[0]===repair.source.capFeet[0][0]&&p[1]===repair.source.capFeet[0][1]));
- const applied={...data,nativeSelectionContactRepairs:{version:1 as const,sourceModelSha256:hash,repairs:[{...repair,status:'applied' as const}]}};
+ const applied:IndoorDataset & {nativeSelectionContactRepairs:NonNullable<IndoorDataset["nativeSelectionContactRepairs"]>}={...data,nativeSelectionContactRepairs:{version:1 as const,sourceModelSha256:hash,repairs:[{...repair,status:'applied' as const}]}};
  assert.equal(nativeSelectionContactRepairMasks(applied,1).length,1);assert.equal(nativeSelectionContactRepairMasks(applied,2).length,0);
- applied.nativeSelectionContactRepairs.repairs[0].status='restored' as any;assert.equal(nativeSelectionContactRepairMasks(applied,1).length,0);
+ applied.nativeSelectionContactRepairs.repairs[0].status='restored';assert.equal(nativeSelectionContactRepairMasks(applied,1).length,0);
 });
 test('rejects physical gaps, all-touch, overlap, partial-width and stale material/model/elevation/geometry',()=>{
  for(const g of [0,-(2**-45),.000001]){const{data,repair}=fixture(g);assert.throws(()=>deriveNativeSelectionContactRepair(data,repair));}
@@ -46,8 +46,8 @@ test('rejects physical gaps, all-touch, overlap, partial-width and stale materia
 test('rejects unknown states, missing provisional evidence and duplicate descriptor IDs',()=>{
  const{repair}=fixture();const value={version:1 as const,sourceModelSha256:hash,repairs:[repair]};validateNativeSelectionContactRepairs(value,hash);
  assert.throws(()=>validateNativeSelectionContactRepairs({...value,repairs:[repair,repair]},hash));
- assert.throws(()=>validateNativeSelectionContactRepairs({...value,repairs:[{...repair,status:'nonsense'} as any]},hash));
- assert.throws(()=>validateNativeSelectionContactRepairs({...value,repairs:[{...repair,assumption:{kind:'provisional-extracted-native-contact',revisitRequired:false}} as any]},hash));
+ assert.throws(()=>validateNativeSelectionContactRepairs({...value,repairs:[{...repair,status:'nonsense'} as unknown as NativeSelectionContactRepair]},hash));
+ assert.throws(()=>validateNativeSelectionContactRepairs({...value,repairs:[{...repair,assumption:{kind:'provisional-extracted-native-contact',revisitRequired:false}} as unknown as NativeSelectionContactRepair]},hash));
 });
 test('allows one touching cap endpoint when exact gap area stays positive',()=>{
  const{data,repair}=fixture();const x=2**-45;const target:P[]=[[0,0],[x,1],[3,1],[3,0]];

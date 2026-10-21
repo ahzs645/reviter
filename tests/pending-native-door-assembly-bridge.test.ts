@@ -89,7 +89,10 @@ test("the actual pending-portal compiler block refuses a failed captured proof i
   // This avoids adding a mutation callback or another authority to production.
   const source=fs.readFileSync(new URL("../lib/reviter/indoor-pipeline.ts",import.meta.url),"utf8"),file=ts.createSourceFile("indoor-pipeline.ts",source,ts.ScriptTarget.Latest,true);
   const prepare=file.statements.find((node):node is ts.FunctionDeclaration=>ts.isFunctionDeclaration(node)&&node.name?.text==="prepareIndoorDataset")!;
-  const statements=prepare.body!.statements,start=statements.findIndex(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>ts.isIdentifier(d.name)&&d.name.text==="portalFloorVoids"));
+  // Compilation now lives inside the session-cleanup try/finally scope.
+  const compilation=prepare.body!.statements.find(ts.isTryStatement);
+  assert(compilation?.finallyBlock,"extract the real guarded compiler body");
+  const statements=compilation.tryBlock.statements,start=statements.findIndex(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>ts.isIdentifier(d.name)&&d.name.text==="portalFloorVoids"));
   assert(start>=0);const loop=statements[start+1]!;assert(ts.isForOfStatement(loop)&&loop.expression.getText(file)==="pending");
   const code=transformSync(source.slice(statements[start]!.getStart(file),loop.getEnd()),{loader:"ts",format:"esm"}).code;
   const execute=new Function("scope",`const {dataset,nodes,pending,issue,sourceRooms,createNativePortalFloorVoidQuery,nativeRouteBlocker,physicalPortalBarrierScope,pendingPhysicalLevels,geometries,openings,pendingAssemblyBridges,pendingNativeDoorAssemblyGeometry,modelSha256,fit,DMath,connectedTerminals}=scope;\n${code}`);

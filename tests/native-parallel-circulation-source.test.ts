@@ -20,9 +20,9 @@ test('native worker carrier canonicalizes only negative zero and rejects lossy v
  const{nativePlaneJsonCarrier}=await import('../scripts/indoor/native-circulation-plane-worker.ts');
  const original={x:-0,nested:[-0,1,'exact rational',true,null]};assert.equal(JSON.stringify(nativePlaneJsonCarrier(original)),JSON.stringify(original));assert.ok(Object.is(original.x,-0));
  let hooks=0;const getter=Object.defineProperty({},'x',{enumerable:true,get(){hooks++;return 3;}}),arrayGetter=Object.defineProperty([],'0',{enumerable:true,get(){hooks++;return 3;}}),toJSON={toJSON(){hooks++;return{};}};
- const cyclic:any={};cyclic.self=cyclic;
+ const cyclic:Record<string,unknown>={};cyclic.self=cyclic;
  for(const bad of[NaN,Infinity,-Infinity,1n,undefined,new Date(),new Map(),getter,arrayGetter,toJSON,cyclic,[,],Object.assign([],{extra:3}),Object.assign([],{'4294967295':3}),Object.assign([],{'9007199254740991':3}),{[Symbol('opaque')]:1}])assert.throws(()=>nativePlaneJsonCarrier(bad));
  assert.equal(hooks,0);
  const prior=Object.getOwnPropertyDescriptor(Object.prototype,'toJSON');
- try{Object.defineProperty(Object.prototype,'toJSON',{configurable:true,value(){hooks++;return{};}});assert.throws(()=>nativePlaneJsonCarrier({physical:true}));assert.equal(hooks,0);}finally{if(prior)Object.defineProperty(Object.prototype,'toJSON',prior);else delete(Object.prototype as any).toJSON;}
+ try{Object.defineProperty(Object.prototype,'toJSON',{configurable:true,value(){hooks++;return{};}});assert.throws(()=>nativePlaneJsonCarrier({physical:true}));assert.equal(hooks,0);}finally{if(prior)Object.defineProperty(Object.prototype,'toJSON',prior);else delete(Object.prototype as {toJSON?:unknown}).toJSON;}
 });

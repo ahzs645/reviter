@@ -31,8 +31,8 @@ test("an original turning landing supplies a fully supported dogleg, retaining a
 test("missing landing geometry cannot be replaced by a diagonal, bounding box or another height", () => {
   for (const change of [
     (f: ReturnType<typeof fixture>) => [],
-    (f: ReturnType<typeof fixture>) => f.flight.landings.map((l: any) => ({ ...l, elevationFeet: l.elevationFeet + 2 })),
-    (f: ReturnType<typeof fixture>) => f.flight.landings.map((l: any) => ({ ...l, ringsFeet: l.ringsFeet.map((r: any) => r.map(([x, y]: number[]) => [x + 20, y])) })),
+    (f: ReturnType<typeof fixture>) => f.flight.landings.map((l: Parameters<typeof nativeSourceStairTreadPath>[1][number]) => ({ ...l, elevationFeet: l.elevationFeet + 2 })),
+    (f: ReturnType<typeof fixture>) => f.flight.landings.map((l: Parameters<typeof nativeSourceStairTreadPath>[1][number]) => ({ ...l, ringsFeet: l.ringsFeet.map((r: Parameters<typeof nativeSourceStairTreadPath>[1][number]["ringsFeet"][number]) => r.map(([x, y]: number[]) => [x + 20, y])) })),
   ]) {
     const f = fixture(), proposed = make(f, change(f));
     assert.equal(validateNativeSourceStairWidth(proposed, f.floors, true), false);
@@ -60,7 +60,7 @@ test("unsupported within-run seams do not acquire a landing detour", () => {
 });
 
 const typedFixture = () => JSON.parse(readFileSync(new URL("./fixtures/native-turning-typed-tread-path.json", import.meta.url), "utf8"));
-function internalGaps(treads: any[], points: number[][], projections: NonNullable<ReturnType<typeof nativeSourceStairRiserProjections>>) {
+function internalGaps(treads: Parameters<typeof nativeSourceStairTreadPath>[0], points: number[][], projections: NonNullable<ReturnType<typeof nativeSourceStairRiserProjections>>) {
   return points.slice(1).flatMap((b, i) => {
     const a = points[i]!, dx = b[0]! - a[0]!, dy = b[1]! - a[1]!, length = DMath.hypot(dx, dy);
     const nx = -dy / length, ny = dx / length;
@@ -79,7 +79,7 @@ test("the original Library typed turning tread supports an internal dogleg witho
   // concave platform. Its real original top must carry those two contacts.
   assert.equal(f.carrier.seamIndexes.includes(11), false);
   assert.equal(f.carrier.seamIndexes.includes(12), false);
-  const original = f.receipt.treads.map((t: any) => [
+  const original = f.receipt.treads.map((t: Parameters<typeof nativeSourceStairTreadPath>[0][number]) => [
     ...t.ringFeet.reduce((p: number[], q: number[]) => [p[0]! + q[0]! / t.ringFeet.length, p[1]! + q[1]! / t.ringFeet.length], [0, 0]), t.elevationFeet,
   ]);
   assert.deepEqual(internalGaps(f.receipt.treads, original, projections), [10, 11]);

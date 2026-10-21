@@ -73,7 +73,7 @@ export function reviewedDoorWallSourceEvidence<T extends {levelId:number;nativeE
  validateReviewedDoorApertures(value,sha);if(!value?.patches.length)return walls;
  const groups=new Map<string,{levelId:number;id:number;parts:RoomPoint[][];apertures:RoomPoint[][]}>();
  for(const p of value.patches.filter(activeDoorAperturePatch))for(const w of p.wallEvidence){const key=p.levelId+':'+w.nativeElementId,old=groups.get(key);if(old){if(JSON.stringify(old.parts)!==JSON.stringify(w.partsFeet))throw new Error('Conflicting original doorway host evidence.');old.apertures.push(p.apertureFeet);}else groups.set(key,{levelId:p.levelId,id:w.nativeElementId,parts:w.partsFeet,apertures:[p.apertureFeet]});}
- let result=[...walls];
+ const result=[...walls];
  for(const g of groups.values()){
   // A saved continuation can already bind retained post-cut pieces. Restore
   // only referenced full original faces; current-piece evidence stays checked

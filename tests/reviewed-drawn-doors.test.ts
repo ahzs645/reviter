@@ -154,17 +154,17 @@ test("proposed and restored drawing-backed doors are inert", () => {
 test("record shape: no native door id, complete swing, evidence, assumption and state", () => {
   assert.doesNotThrow(() => validateReviewedDoorApertures(value()));
   for (const edit of [
-    (p: any) => (p.nativeDoorId = 5),
-    (p: any) => (p.frameEvidence = [{ nativeElementId: 1, orientedBox: [] }]),
-    (p: any) => delete p.swing,
-    (p: any) => (p.swing.intoRoomKey = "elsewhere"),
-    (p: any) => (p.roomKeys = ["west", "west"]),
-    (p: any) => delete p.dwgEvidence.arc,
-    (p: any) => (p.dwgEvidence.segments = p.dwgEvidence.segments.filter((g: any) => g.role !== "leaf")),
-    (p: any) => (p.dwgEvidence.toleranceFeet = 0.5),
-    (p: any) => (p.assumption.authorizationRecorded = false),
-    (p: any) => (p.state = "pending"),
-    (p: any) => (p.wallEvidence[0].nativeElementId = 11),
+    (p: ReturnType<typeof record>) => ((p as typeof p & {nativeDoorId?:number}).nativeDoorId = 5),
+    (p: ReturnType<typeof record>) => (p.frameEvidence = [{ nativeElementId: 1, orientedBox: [] }] as unknown as typeof p.frameEvidence),
+    (p: ReturnType<typeof record>) => delete (p as Partial<typeof p>).swing,
+    (p: ReturnType<typeof record>) => (p.swing.intoRoomKey = "elsewhere"),
+    (p: ReturnType<typeof record>) => (p.roomKeys = ["west", "west"]),
+    (p: ReturnType<typeof record>) => delete (p.dwgEvidence as Partial<typeof p.dwgEvidence>).arc,
+    (p: ReturnType<typeof record>) => (p.dwgEvidence.segments = p.dwgEvidence.segments.filter((g) => g.role !== "leaf")),
+    (p: ReturnType<typeof record>) => (p.dwgEvidence.toleranceFeet = 0.5),
+    (p: ReturnType<typeof record>) => (p.assumption.authorizationRecorded = false as unknown as typeof p.assumption.authorizationRecorded),
+    (p: ReturnType<typeof record>) => (p.state = "pending" as unknown as typeof p.state),
+    (p: ReturnType<typeof record>) => (p.wallEvidence[0].nativeElementId = 11),
   ]) {
     const p = record();
     edit(p);
@@ -174,10 +174,10 @@ test("record shape: no native door id, complete swing, evidence, assumption and 
 
 test("refuses a record whose host wall is not at that position", () => {
   for (const edit of [
-    (p: any, m: any) => p.apertureFeet.forEach((q: P2) => (q[0] += 0.2)),
-    (p: any, m: any) => (m.elementBounds[0].wallKind = "curtain"),
-    (p: any, m: any) => (m.elementBounds[0].solid.thickness = 0.5),
-    (p: any, m: any) => (p.hostWallNativeElementId = p.wallEvidence[0].nativeElementId = 11),
+    (p: ReturnType<typeof record>, m: ReturnType<typeof model>) => p.apertureFeet.forEach((q: P2) => (q[0] += 0.2)),
+    (p: ReturnType<typeof record>, m: ReturnType<typeof model>) => (m.elementBounds[0].wallKind = "curtain"),
+    (p: ReturnType<typeof record>, m: ReturnType<typeof model>) => (m.elementBounds[0].solid!.thickness = 0.5),
+    (p: ReturnType<typeof record>, m: ReturnType<typeof model>) => (p.hostWallNativeElementId = p.wallEvidence[0].nativeElementId = 11),
   ]) {
     const p = record(),
       m = model();
@@ -212,20 +212,20 @@ test("refuses an aperture wider than the drawn rough opening", () => {
 test("refuses missing or tampered DWG arc and leaf evidence", () => {
   const dw = drawing();
   assert.doesNotThrow(() => verifyDwgDrawnDoorDrawing(record(dw), dw.boundaryReference, dw.derived));
-  const cases: [string, (p: any, d: { boundaryReference: any; derived: DwgDerivedOutlines }) => void, RegExp][] = [
+  const cases: [string, (p: ReturnType<typeof record>, d: { boundaryReference: ReturnType<typeof drawing>["boundaryReference"]; derived: DwgDerivedOutlines }) => void, RegExp][] = [
     ["moved arc", (p) => (p.dwgEvidence.arc.centerRaw[0] += 0.2), /recorded swing differs from raw ARC/],
     ["moved swing", (p) => (p.swing.hingeFeet[1] += 0.01), /recorded swing differs from raw ARC/],
     ["half-circle arc", (p) => (p.dwgEvidence.arc.anglesRadians[1] += Math.PI / 2), /not a door swing/],
-    ["changed leaf segment", (p) => (p.dwgEvidence.segments.find((g: any) => g.role === "leaf").segmentFeet[1][0] += 0.01), /was changed/],
-    ["changed raw LINE", (p) => (p.dwgEvidence.segments.find((g: any) => g.role === "leaf").rawLine.pointsRaw[1][0] += 0.01), /does not register/],
+    ["changed leaf segment", (p) => (p.dwgEvidence.segments.find((g) => g.role === "leaf")!.segmentFeet[1][0] += 0.01), /was changed/],
+    ["changed raw LINE", (p) => (p.dwgEvidence.segments.find((g) => g.role === "leaf")!.rawLine.pointsRaw[1][0] += 0.01), /does not register/],
     ["leaf replaced by an unrelated line", (p) => {
-      const leaf = p.dwgEvidence.segments.filter((g: any) => g.role === "leaf");
+      const leaf = p.dwgEvidence.segments.filter((g) => g.role === "leaf");
       for (const [k, g] of leaf.entries()) Object.assign(g, { index: drawn.length + k, segmentFeet: dw.wallSegments[drawn.length + k], rawLine: { handle: dw.entities[drawn.length + k]!.h, layer: "1_Wall_Exist", pointsRaw: dw.raw[drawn.length + k] } });
     }, /not on the drawn leaf/],
-    ["leaf missing", (p) => (p.dwgEvidence.segments = p.dwgEvidence.segments.filter((g: any) => g.role !== "leaf")), /invalid record/],
-    ["arc missing", (p) => delete p.dwgEvidence.arc, /invalid record/],
+    ["leaf missing", (p) => (p.dwgEvidence.segments = p.dwgEvidence.segments.filter((g) => g.role !== "leaf")), /invalid record/],
+    ["arc missing", (p) => delete (p.dwgEvidence as Partial<typeof p.dwgEvidence>).arc, /invalid record/],
     ["other drawing", (p) => (p.dwgEvidence.sourceDwgSha256 = "f".repeat(64)), /registered drawing/],
-    ["no registration receipt", (_p, d) => ((d as any).derived = undefined), /registration receipt/],
+    ["no registration receipt", (_p, d) => ((d as Partial<typeof d>).derived = undefined), /registration receipt/],
     ["tampered registration receipt", (_p, d) => {
       const s = d.derived.sections[0]!;
       s.registration = { ...s.registration, t: [s.registration.t[0] + 0.01, s.registration.t[1]] };
@@ -315,10 +315,10 @@ test("the compiled graph has the synthetic door and one drawing-backed door edge
   assert.doesNotThrow(() => validateDoorApertureBinding(data.reviewedDoorApertures, dataset));
   assert.equal(preparedReviewedDoorApertures(dataset)?.patches.length, 1);
   for (const edit of [
-    (d: any) => (d.edges.find((e: any) => e.id === id).evidence = "native-door"),
-    (d: any) => (d.edges.find((e: any) => e.id === id).accessible = "yes"),
-    (d: any) => (d.doors = d.doors.filter((x: any) => x.id !== id)),
-    (d: any) => (d.doors.find((x: any) => x.id === id).nativeElementId = 77),
+    (d: Parameters<typeof validateDoorApertureBinding>[1]) => (d.edges.find((e) => e.id === id)!.evidence = "native-door"),
+    (d: Parameters<typeof validateDoorApertureBinding>[1]) => (d.edges.find((e) => e.id === id)!.accessible = "yes"),
+    (d: Parameters<typeof validateDoorApertureBinding>[1]) => (d.doors = d.doors!.filter((x) => x.id !== id)),
+    (d: Parameters<typeof validateDoorApertureBinding>[1]) => (d.doors!.find((x) => x.id === id)!.nativeElementId = 77),
   ]) {
     const changed = structuredClone(dataset);
     edit(changed);

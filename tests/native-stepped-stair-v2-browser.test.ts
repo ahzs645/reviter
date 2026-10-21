@@ -708,7 +708,7 @@ test("plain lossless JSON wire hydrates local browser Rational and rejects lossy
       receipt: f.receipt,
     }),
     decoded = decodeSteppedStairV2WireValue(
-      // eslint-disable-next-line unicorn/prefer-structured-clone -- Exercise real JSON transport.
+      // Exercise real JSON transport.
       JSON.parse(JSON.stringify(wire)),
     ) as { index: PortableSteppedSourceIndex; receipt: PortableSteppedReceipt };
   assert(decoded.index.supports[0]!.elevationFeet instanceof Rational);

@@ -16,7 +16,7 @@ export function DwgBuildingModel({buildings,initialBuildingCode,pathPreview}:{bu
  const building=buildings.find(b=>b.code===code)!;
  useEffect(()=>{
   const element=host.current;if(!element||!building)return;
-  let renderer:THREE.WebGLRenderer;try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});}catch{setDetail('WebGL is unavailable. Floor plans remain available.');return;}
+  let renderer:THREE.WebGLRenderer;try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});}catch{let cancelled=false;queueMicrotask(()=>{if(!cancelled)setDetail('WebGL is unavailable. Floor plans remain available.');});return()=>{cancelled=true;};}
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));element.appendChild(renderer.domElement);
   renderer.domElement.setAttribute('aria-label','3D schematic of Building '+code);
   const scene=new THREE.Scene();scene.background=new THREE.Color('#eef3f6');

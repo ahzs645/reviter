@@ -176,7 +176,9 @@ test("a complete original curved boundary enclosure touching a station vetoes it
       (s) => s.readerId === "Revit2027AnalyticSurface:1144",
     )!,
     cylinder = span.value as { center: number[]; radius: number };
-  cylinder.center[0] = 0.5148043399884723;
+  // The retained angular domain contains the west-facing arc (including pi).
+  // Put that arc on the station; the circle center itself is not its boundary.
+  cylinder.center[0] = 0.5148043399884723 + 2;
   cylinder.center[1] = -323.3025630530456;
   cylinder.radius = 2;
   const cap = inspectOriginalNamedFloorCapSupport(source, 249),
@@ -210,7 +212,10 @@ test("rational Taylor bounds enclose independent high precision sin(1)/cos(1) va
   const zero = originalCylinderTrigEnclosure(0);
   assert.equal(cmp(zero.sine[0], rational(0)), 0);
   assert.equal(cmp(zero.cosine[1], rational(1)), 0);
-  assert.throws(() => originalCylinderTrigEnclosure(9), /angle/);
+  // The separate exact degree64 reader now supports literal angles up to16.
+  assert.equal(originalCylinderTrigEnclosure(9).degree, 64);
+  for (const angle of [16.01, -16.01, Infinity, -Infinity])
+    assert.throws(() => originalCylinderTrigEnclosure(angle), /angle/);
   assert.throws(() => originalCylinderTrigEnclosure(NaN), /angle/);
 });
 test("copied census data cannot create actual original floor support operands", () => {

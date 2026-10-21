@@ -29,13 +29,13 @@ async function load(identifier, bytes = wasm) {
       return { ok: true, arrayBuffer: async () => bytes.slice().buffer };
     },
   });
-  const module = new SourceTextModule(text, {
+  const evaluatedModule = new SourceTextModule(text, {
     context, identifier,
     initializeImportMeta: meta => { meta.url = identifier; },
   });
-  await module.link(() => { throw new Error("Unexpected external browser bundle dependency"); });
-  await module.evaluate();
-  return { api: module.namespace, requests };
+  await evaluatedModule.link(() => { throw new Error("Unexpected external browser bundle dependency"); });
+  await evaluatedModule.evaluate();
+  return { api: evaluatedModule.namespace, requests };
 }
 
 test("web bootstrap loads unchanged checked WASM from main, worker and lazy chunk subpaths", async () => {

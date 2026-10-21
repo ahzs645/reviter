@@ -35,10 +35,10 @@ test('JSON indexed arrays are accepted without substituting an element box',()=>
  assert.equal(architecturalPlanGeometry(m,1).walls[0]!.approximate,false);
 });
 test('double precision corners require matching closed native evidence; a mismatching box cannot replace the mesh',()=>{
- const matching=model();matching.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x!+.00002,y!,0]) as any;
+ const matching=model();matching.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x!+.00002,y!,0]) as ConvertResult["elementBounds"][number]["orientedBox"];
  assert.deepEqual(architecturalPlanGeometry(matching,1).walls[0]!.polygon,rectangle.map(([x,y])=>[x!+.00002,y!]));
- const bad=model();bad.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x!+1,y!,0]) as any;
+ const bad=model();bad.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x!+1,y!,0]) as ConvertResult["elementBounds"][number]["orientedBox"];
  assert.deepEqual(new Set(architecturalPlanGeometry(bad,1).walls[0]!.polygon.map(p=>JSON.stringify(p))),new Set(rectangle.map(p=>JSON.stringify(p))));
- const proxy=model('proxy');proxy.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x,y,0]) as any;
+ const proxy=model('proxy');proxy.elementBounds[0]!.orientedBox=rectangle.map(([x,y])=>[x,y,0]) as ConvertResult["elementBounds"][number]["orientedBox"];
  assert.equal(architecturalPlanGeometry(proxy,1).walls[0]!.approximate,true);
 });
