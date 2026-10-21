@@ -147,6 +147,20 @@ import type {
   WalkStartRequest,
 } from "./studio/types.ts";
 
+import { CommandPalette } from "./studio/CommandPalette.tsx";
+import { executeCommand, isEditingTarget, type StudioCommand } from "./studio/commands.ts";
+import { ReviewWorkbench } from "./studio/ReviewWorkbench.tsx";
+import { DockResize } from "./studio/DockResize.tsx";
+import { useReviewSession } from "./studio/use-review-session.ts";
+import { similarElementIds } from "./studio/selection-tools.ts";
+import { sourceHash, sourceBytesHash, type CapturedView, type SavedReviewView, type ReviewDimension } from "./studio/review-session.ts";
+import { CAMERA_PRESETS } from "../lib/reviter/viewer.ts";
+import type { CSSProperties } from "react";
+
+const EMPTY_DIMENSIONS: readonly ReviewDimension[] = [];
+
+type VisibilitySnapshot = { categories: string[]; ids: number[]; isolate: boolean; levelId: number | null };
+
 type StudioFileInfo = Omit<FileInfo, "fileVersion"> & { fileVersion: number };
 
 /** The layout below this width is the phone shell, not a narrowed desktop. */
@@ -285,7 +299,34 @@ export default function ReviterStudio() {
     sequence: 0,
   });
   const [hoveredElementId, setHoveredElementId] = useState<number | null>(null);
-  const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
+  const [selection, setSelection] = useState<{ active: number | null; ids: ReadonlySet<number> }>({ active: null, ids: new Set() });
+  const selectedElementId = selection.active, selectedIds = selection.ids;
+  const setSelectedElementId = useCallback((id: number | null, additive = false) => {
+    setSelection(current => {
+      if (id == null) return additive ? current : { active: null, ids: new Set() };
+      const ids = additive ? new Set(current.ids) : new Set<number>();
+      if (!additive || !ids.delete(id)) ids.add(id);
+      return { active: ids.has(id) ? id : ids.values().next().value ?? null, ids };
+    });
+  }, []);
+  const selectElements = useCallback((ids: readonly number[]) => {
+    setSelection(current => ({ active: ids.at(-1) ?? current.active, ids: new Set([...current.ids, ...ids]) }));
+  }, []);
+  const [manuallyHiddenIds, setManuallyHiddenIds] = useState<ReadonlySet<number>>(new Set());
+  const [visibilityHistory, setVisibilityHistory] = useState<VisibilitySnapshot[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [commandMessage, setCommandMessage] = useState("");
+  const review = useReviewSession(file);
+  const [captureRequest, setCaptureRequest] = useState({ name: "", sequence: 0 });
+  const [restoreViewRequest, setRestoreViewRequest] = useState<{ view: SavedReviewView | null; sequence: number }>({ view: null, sequence: 0 });
+  const viewRestored = useCallback((sequence: number) => {
+    setRestoreViewRequest(current => current.sequence === sequence ? { ...current, view: null } : current);
+  }, []);
+  const [dimensionUndo, setDimensionUndo] = useState<ReviewDimension[][]>([]);
+  const [dimensionRedo, setDimensionRedo] = useState<ReviewDimension[][]>([]);
+  const [layoutPreset, setLayoutPreset] = useState("inspection");
+  const [panelWidths, setPanelWidths] = useState({ left: 280, right: 296 });
+  const [layoutLoaded, setLayoutLoaded] = useState(false);
   const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<string>>(new Set());
   const [canvasMenu, setCanvasMenu] = useState<CanvasMenuRequest | null>(null);
   const [walkStartRequest, setWalkStartRequest] = useState<WalkStartRequest>({
@@ -304,6 +345,30 @@ export default function ReviterStudio() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [dockOpen, setDockOpen] = useState(false);
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("reviter.workspace-layout.v1") ?? "null");
+      if (stored && [stored.left, stored.right].every(value => Number.isFinite(value) && value >= 210 && value <= 420)) {
+        queueMicrotask(() => {
+          setPanelWidths({ left: stored.left, right: stored.right });
+          if (typeof stored.leftOpen === "boolean") setLeftOpen(stored.leftOpen);
+          if (typeof stored.rightOpen === "boolean") setRightOpen(stored.rightOpen);
+          if (["inspection", "floor", "drawing", "focus"].includes(stored.preset)) setLayoutPreset(stored.preset);
+        });
+      }
+    } catch { /* Unavailable preferences do not prevent opening the model. */ }
+    queueMicrotask(() => setLayoutLoaded(true));
+  }, []);
+  useEffect(() => {
+    if (!layoutLoaded) return;
+    try { localStorage.setItem("reviter.workspace-layout.v1", JSON.stringify({ ...panelWidths, leftOpen, rightOpen, preset: layoutPreset })); } catch { /* Session preferences still work. */ }
+  }, [layoutLoaded, panelWidths, leftOpen, rightOpen, layoutPreset]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setDimensionUndo([]); setDimensionRedo([]); setVisibilityHistory([]); setManuallyHiddenIds(new Set());
+      setSelectedElementId(null); setRestoreViewRequest(current => ({ view: null, sequence: current.sequence + 1 }));
+    });
+  }, [file, setSelectedElementId]);
   const [cadReviewOpen, setCadReviewOpen] = useState(false);
   const [cadReviewFile, setCadReviewFile] = useState<File | null>(null);
   const [workspace, setWorkspace] = useState<StudioWorkspace>("model");
@@ -335,6 +400,15 @@ export default function ReviterStudio() {
   const [roomReview, setRoomReview] = useState<RoomReviewState>({ rooms: [], gaps: [] });
   const [reviewImportMessage, setReviewImportMessage] = useState<string | null>(null);
 
+  const [ifcSourceHash, setIfcSourceHash] = useState<string | null>(null);
+  const [glbSourceHash, setGlbSourceHash] = useState<string | null>(null);
+  const [pairedReferenceFile, setPairedReferenceFile] = useState<File | null>(null);
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => { if (active) setGlbSourceHash(null); });
+    if (pairedReferenceFile) void sourceHash(pairedReferenceFile).then(hash => { if (active) setGlbSourceHash(hash); }).catch(() => { if (active) setCommandMessage("Reference identity could not be checked; saved views are unavailable for this reference."); });
+    return () => { active = false; };
+  }, [pairedReferenceFile]);
   const [referenceModelUrl, setReferenceModelUrl] = useState<string | null>(null);
   const [referenceModelName, setReferenceModelName] = useState<string | null>(null);
   const [referencePhase, setReferencePhase] = useState<ReferencePhase>("idle");
@@ -456,6 +530,7 @@ export default function ReviterStudio() {
    */
   const retireReferencePairing = useCallback(() => {
     ifcClient.cancel();
+    setIfcSourceHash(null);
     referenceRequestIdRef.current += 1;
     return referenceRequestIdRef.current;
   }, [ifcClient]);
@@ -693,7 +768,7 @@ export default function ReviterStudio() {
       setError(caught instanceof Error ? caught.message : String(caught));
       setPhase("error");
     }
-  }, [beginConversionAttempt, rememberFile, retireReferencePairing, rvtClient]);
+  }, [beginConversionAttempt, rememberFile, retireReferencePairing, rvtClient, setSelectedElementId]);
 
   const closeModel = useCallback(() => {
     setDrawingFiles([]);
@@ -734,7 +809,7 @@ export default function ReviterStudio() {
     setReviewImportMessage(null);
     setPhase("idle");
     setProgress(0);
-  }, [beginConversionAttempt, retireReferencePairing]);
+  }, [beginConversionAttempt, retireReferencePairing, setSelectedElementId]);
 
   const processIfcFile = useCallback(async (referenceFile: File) => {
     if (!result?.elementIndex) {
@@ -755,6 +830,8 @@ export default function ReviterStudio() {
     setReferenceMessage("Reading IFC reference in this browser");
     try {
       const buffer = await referenceFile.arrayBuffer();
+      const pairedHash = await sourceBytesHash(buffer);
+      if (requestId !== referenceRequestIdRef.current) return;
       const packedDisplayBounds: number[] = [];
       for (const [elementId, bounds] of meshBoundsByElement(result.meshes, result.origin)) {
         if (!bounds.every(Number.isFinite)) continue;
@@ -786,6 +863,7 @@ export default function ReviterStudio() {
           setReferenceMessage(progress.message);
         },
         onResult: (paired) => {
+          setIfcSourceHash(pairedHash);
           setComparison(paired);
           setGeometrySource("reference-assisted");
           setReferenceProgress(1);
@@ -817,6 +895,7 @@ export default function ReviterStudio() {
    */
   const pairReferenceModel = (selected: File | null | undefined) => {
     if (!selected) return;
+    setPairedReferenceFile(selected);
     setReferenceModelUrl((previous) => {
       if (previous) URL.revokeObjectURL(previous);
       return URL.createObjectURL(selected);
@@ -872,7 +951,7 @@ export default function ReviterStudio() {
   );
   const hiddenElementIds = useMemo(() => {
     if (!result) return new Set<number>();
-    const hidden = new Set<number>();
+    const hidden = new Set<number>(manuallyHiddenIds);
     for (const record of result.elementBounds) {
       if (hiddenCategories.has(record.categoryName ?? "Uncategorised")) hidden.add(record.elementId);
     }
@@ -909,7 +988,7 @@ export default function ReviterStudio() {
       }
     }
     return hidden;
-  }, [hiddenCategories, isolateMapLevel, planLevelId, result]);
+  }, [hiddenCategories, manuallyHiddenIds, isolateMapLevel, planLevelId, result]);
 
   const activeGeometryResult = geometrySource === "reference-assisted"
     ? referenceAssistedResult ?? result
@@ -966,13 +1045,17 @@ export default function ReviterStudio() {
     setFocusRequest((current) => ({ elementId: selectedElementId, sequence: current.sequence + 1 }));
   }, [selectedElementId]);
 
+  const rememberVisibility = useCallback(() => {
+    setVisibilityHistory(current => [...current.slice(-29), { categories: [...hiddenCategories], ids: [...manuallyHiddenIds], isolate: isolateMapLevel, levelId: planLevelId }]);
+  }, [hiddenCategories, manuallyHiddenIds, isolateMapLevel, planLevelId]);
   const toggleCategory = useCallback((name: string) => {
+    rememberVisibility();
     setHiddenCategories((current) => {
       const next = new Set(current);
       if (!next.delete(name)) next.add(name);
       return next;
     });
-  }, []);
+  }, [rememberVisibility]);
 
   const canvasMenuCategory = useMemo(() => {
     if (canvasMenu?.elementId == null) return null;
@@ -1203,12 +1286,18 @@ export default function ReviterStudio() {
   }), [actionTool, markupColor, markupText, markupTool, markupWeight]);
 
   const importReviewFile = useCallback(async (reviewFile: File) => {
+    setCommandMessage("");
     if (!result) {
       setReviewImportMessage("Open the matching Revit source file before importing review data.");
       return;
     }
     try {
-      const sidecar = parseReviewSidecar(await reviewFile.text());
+      if (reviewFile.size > 8 * 1024 * 1024) throw new Error("Review exceeds the 8 MB limit.");
+      const text = await reviewFile.text();
+      if (JSON.parse(text)?.format === "reviter-workspace-review") {
+        review.importReview(text); setReviewImportMessage("Imported saved views and dimensions for this source revision."); return;
+      }
+      const sidecar = parseReviewSidecar(text);
       assertSidecarMatchesModel(sidecar, result);
       // Canonical anchors are in the RVT's model feet, so reveal the recovery
       // rather than leaving an imported review hidden on an unrelated source.
@@ -1252,7 +1341,7 @@ export default function ReviterStudio() {
     } catch (caught) {
       setReviewImportMessage(caught instanceof Error ? caught.message : String(caught));
     }
-  }, [result]);
+  }, [result, review]);
 
   // The canvas menu closes on the next press anywhere outside it, or on Escape.
   // Containment is tested rather than relying on the press not reaching the
@@ -1714,7 +1803,7 @@ export default function ReviterStudio() {
     if (source !== "recovered" && source !== "reference-assisted") {
       setSelectedElementId(null);
     }
-  }, []);
+  }, [setSelectedElementId]);
 
   useEffect(() => {
     if (!walking) return;
@@ -1880,6 +1969,144 @@ export default function ReviterStudio() {
     void clearCachedRecentModels();
   }, []);
 
+  const changeDimensions = useCallback((next: ReviewDimension[]) => {
+    if (!review.session) return;
+    try {
+      review.update(value => ({ ...value, dimensions: next }));
+      setDimensionUndo(current => [...current.slice(-29), review.session!.dimensions]); setDimensionRedo([]);
+    } catch (caught) { setCommandMessage(caught instanceof Error ? caught.message : String(caught)); }
+  }, [review]);
+  const addDimension = useCallback((dimension: ReviewDimension) => {
+    if (!review.session) { setCommandMessage("Source identity is still being checked; try the measurement again."); return; }
+    const referenceHash = dimension.source === "recovered" ? null : dimension.source === "reference-model" ? glbSourceHash : ifcSourceHash;
+    if (dimension.source === "reference-model" && !referenceHash) { setCommandMessage("Wait for reference identity checking before measuring this reference."); return; }
+    changeDimensions([...review.session.dimensions, { ...dimension, referenceHash }]);
+  }, [review.session, changeDimensions, glbSourceHash, ifcSourceHash]);
+  const capturedReviewView = useCallback((name: string, captured: CapturedView) => {
+    const referenceHash = captured.camera.source === "recovered" ? null : captured.camera.source === "reference-model" ? glbSourceHash : ifcSourceHash;
+    if (captured.camera.source !== "recovered" && !referenceHash) { setCommandMessage("Wait for reference identity checking before saving this view."); return; }
+    try { review.update(value => ({ ...value, views: [...value.views, {
+      ...captured, referenceHash, id: crypto.randomUUID(), name, hiddenCategories: [...hiddenCategories], hiddenIds: [...manuallyHiddenIds],
+      levelId: planLevelId, isolateLevel: isolateMapLevel, renderMode,
+    }] })); setCommandMessage(`Saved view “${name}”.`); }
+    catch (caught) { setCommandMessage(caught instanceof Error ? caught.message : String(caught)); }
+  }, [review, hiddenCategories, manuallyHiddenIds, planLevelId, isolateMapLevel, renderMode, glbSourceHash, ifcSourceHash]);
+  const restoreSavedView = (id: string) => {
+    const view = review.session?.views.find(entry => entry.id === id);
+    if (!view) return;
+    const available = sources.find(entry => entry.id === view.camera.source);
+    if (available?.reason || (view.camera.source === "reference-model" && !referenceModelUrl) || ((view.camera.source === "reference" || view.camera.source === "overlay" || view.camera.source === "reference-assisted") && !comparison)) {
+      setCommandMessage("Pair the saved view's reference source before restoring it."); return;
+    }
+    if (view.camera.source !== "recovered" && (!view.referenceHash || view.referenceHash !== (view.camera.source === "reference-model" ? glbSourceHash : ifcSourceHash))) {
+      setCommandMessage("Pair the exact reference file revision used by this saved view."); return;
+    }
+    rememberVisibility(); setDirectoryModel(null); setNavTool("orbit"); setWorkspace("model");
+    setGeometrySource(view.camera.source); setRenderMode(view.renderMode);
+    setHiddenCategories(new Set(view.hiddenCategories)); setManuallyHiddenIds(new Set(view.hiddenIds));
+    setPlanLevelId(view.levelId); setIsolateMapLevel(view.isolateLevel);
+    setActionTool(view.section.enabled ? "section" : null);
+    setRestoreViewRequest(current => ({ view, sequence: current.sequence + 1 }));
+    setCommandMessage(`Restored view “${view.name}”.`);
+  };
+  const applyLayout = (preset: string) => {
+    setLayoutPreset(preset);
+    setPanelWidths(preset === "floor" ? { left: 240, right: 264 } : preset === "drawing" ? { left: 300, right: 280 } : { left: 280, right: 296 });
+    setLeftOpen(preset !== "focus"); setRightOpen(preset === "inspection"); setDockOpen(false);
+    setBrowserTab(preset === "drawing" ? "categories" : "objects");
+    setFloorSideMapOpen(preset === "floor");
+  };
+  const noModel = result ? null : "Open a model first";
+  const noSelection = !result ? noModel : selectedIds.size ? null : "Select an object first";
+  const commands: StudioCommand[] = [
+    { id: "file.open", label: "Open model or drawing", keywords: "load import", run: openPicker },
+    { id: "view.fit", label: "Zoom extents", keywords: "fit home", reason: noModel, run: () => setCameraRequest(current => ({ ...current, fit: true, sequence: current.sequence + 1 })) },
+    { id: "selection.focus", label: "Zoom to selection", reason: noSelection, run: requestZoomToSelection },
+    { id: "selection.clear", label: "Clear selection", reason: noSelection, run: () => setSelectedElementId(null) },
+    { id: "element.select", label: "Select object by ID", reason: noModel, argument: { label: "Object ID", placeholder: "e.g. 1495202" }, run: text => {
+      if (!/^\d+$/.test(text)) throw new Error("Enter a numeric object ID.");
+      const id = Number(text);
+      if (!result?.elementBounds.some(record => record.elementId === id)) throw new Error("Object ID was not found in this model.");
+      if (hiddenElementIds.has(id)) throw new Error("This object is hidden. Show all before selecting it.");
+      setSelectedElementId(id); setWorkspace("model"); setRightOpen(true);
+    } },
+    { id: "floor.select", label: "Switch floor by level ID", reason: noModel || (result?.levels.some(level => level.levelId != null) ? null : "This model has no native level IDs"), argument: { label: "Level ID", placeholder: result?.levels.map(level => level.levelId).filter(id => id != null).join(", ") || "Native level ID" }, run: text => {
+      if (!/^\d+$/.test(text) || !result?.levels.some(level => level.levelId === Number(text))) throw new Error("Level ID was not found in this model.");
+      setPlanLevelId(Number(text)); setWorkspace("floors");
+    } },
+    { id: "selection.similar", label: "Select similar objects", keywords: "category type batch", reason: noSelection, run: () => {
+      const ids = similarElementIds(solidRecords, selectedIds, hiddenElementIds);
+      setSelection({ ids, active: ids.values().next().value ?? null });
+    } },
+    { id: "selection.hide", label: "Hide selection", reason: geometrySource === "reference-model" ? "Reference GLB has no registered object identities" : noSelection, run: () => {
+      rememberVisibility(); setManuallyHiddenIds(current => new Set([...current, ...selectedIds])); setSelectedElementId(null);
+    } },
+    { id: "selection.isolate", label: "Isolate selection", reason: geometrySource === "reference-model" ? "Reference GLB has no registered object identities" : noSelection, run: () => {
+      rememberVisibility(); setManuallyHiddenIds(new Set(solidRecords.filter(record => !selectedIds.has(record.elementId)).map(record => record.elementId)));
+    } },
+    { id: "visibility.restore", label: "Restore previous visibility", reason: visibilityHistory.length ? null : "No previous visibility state", run: () => {
+      const previous = visibilityHistory.at(-1)!;
+      setVisibilityHistory(current => current.slice(0, -1)); setHiddenCategories(new Set(previous.categories)); setManuallyHiddenIds(new Set(previous.ids));
+      setIsolateMapLevel(previous.isolate); setPlanLevelId(previous.levelId);
+    } },
+    { id: "visibility.all", label: "Show all objects", reason: noModel, run: () => {
+      rememberVisibility(); setHiddenCategories(new Set()); setManuallyHiddenIds(new Set()); setIsolateMapLevel(false);
+    } },
+    ...(["orbit", "pan", "zoom", "firstPerson", "measure", "section", "explode", "comment", "markup"] as ViewerTool[]).map(tool => ({
+      id: `tool.${tool}`, label: `${tool === "firstPerson" ? "First person" : tool.charAt(0).toUpperCase() + tool.slice(1)} tool`, reason: noModel, run: () => selectViewerTool(tool),
+    })),
+    ...CAMERA_PRESETS.map(entry => ({ id: `view.${entry.preset}`, label: `${entry.label} view`, reason: noModel, run: () => requestCamera(entry.preset) })),
+    { id: "panel.browser", label: "Toggle model browser", reason: noModel, run: () => setLeftOpen(value => !value) },
+    { id: "panel.properties", label: "Toggle properties", reason: noModel, run: () => setRightOpen(value => !value) },
+    { id: "panel.report", label: "Toggle report", reason: noModel, run: () => setDockOpen(value => !value) },
+    { id: "workspace.floors", label: "Open floor workspace", reason: noModel, run: () => { setWorkspace("floors"); setSheet(null); } },
+    { id: "workspace.model", label: "Open model workspace", reason: noModel, run: () => setWorkspace("model") },
+    { id: "review.export", label: "Export saved views and dimensions", reason: review.session ? null : "Source identity is still being checked", run: () => {
+      downloadBlob(new Blob([JSON.stringify(review.session, null, 2)], { type: "application/json" }), `${result?.fileName ?? "model"}.review.json`);
+    } },
+    ...exportActions.map(action => ({ id: `export.${action.id}`, label: `Export ${action.format}`, reason: noModel, run: action.run })),
+  ];
+  const commandRef = useRef(commands);
+  useEffect(() => { commandRef.current = commands; });
+  const runCommand = useCallback(async (id: string, argument = "") => {
+    setReviewImportMessage(null);
+    try { const label = await executeCommand(commandRef.current, id, argument); setCommandMessage(`${label} complete.`); setCanvasMenu(null); return true; }
+    catch (caught) { setCommandMessage(caught instanceof Error ? caught.message : String(caught)); return false; }
+  }, []);
+  useEffect(() => {
+    if (drawingFiles.length) return;
+    const key = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && !event.altKey && !isEditingTarget(event.target)) {
+        event.preventDefault(); setPaletteOpen(value => !value);
+      }
+    };
+    window.addEventListener("keydown", key); return () => window.removeEventListener("keydown", key);
+  }, [drawingFiles.length]);
+  const reviewWorkbench = result ? <ReviewWorkbench session={review.session} selectedCount={selectedIds.size} hiddenCount={hiddenElementIds.size}
+    canRestore={Boolean(visibilityHistory.length)} categoryNames={categoryRows.map(row => row.name)} hiddenCategories={hiddenCategories} layout={layoutPreset}
+    onCommand={id => { void runCommand(id); }} onPalette={() => setPaletteOpen(true)}
+    onCategory={(name, isolate) => {
+      if (geometrySource === "reference-model") { setCommandMessage("Switch to RVT or IFC for category visibility."); return; }
+      if (isolate) { rememberVisibility(); setHiddenCategories(new Set(categoryRows.filter(row => row.name !== name).map(row => row.name))); }
+      else toggleCategory(name);
+    }}
+    onSaveView={name => {
+      if (workspace !== "model") { setCommandMessage("Open the Model workspace before saving a camera view."); return; }
+      setCaptureRequest(current => ({ name: name.trim(), sequence: current.sequence + 1 }));
+    }}
+    onRestoreView={restoreSavedView} onDeleteView={id => review.update(value => ({ ...value, views: value.views.filter(view => view.id !== id) }))}
+    onDeleteDimension={id => changeDimensions(review.session!.dimensions.filter(d => d.id !== id))} onClearDimensions={() => changeDimensions([])}
+    onUndoDimensions={() => {
+      const previous = dimensionUndo.at(-1); if (!previous || !review.session) return;
+      setDimensionUndo(current => current.slice(0, -1)); setDimensionRedo(current => [...current, review.session!.dimensions]);
+      review.update(value => ({ ...value, dimensions: previous }));
+    }} onRedoDimensions={() => {
+      const next = dimensionRedo.at(-1); if (!next || !review.session) return;
+      setDimensionRedo(current => current.slice(0, -1)); setDimensionUndo(current => [...current, review.session!.dimensions]);
+      review.update(value => ({ ...value, dimensions: next }));
+    }} canUndoDimensions={Boolean(dimensionUndo.length)} canRedoDimensions={Boolean(dimensionRedo.length)}
+    onLayout={applyLayout} onImport={reviewFile => { void importReviewFile(reviewFile); }} message={review.message || commandMessage || reviewImportMessage || ""} /> : null;
+
   const canvas = result ? (
     <ModelCanvas
       result={geometrySource === "reference-assisted"
@@ -1892,6 +2119,7 @@ export default function ReviterStudio() {
       navigationMode={navigationMode}
       orbitDrag={orbitDrag}
       cameraRequest={cameraRequest}
+      onCameraPreset={requestCamera}
       measuring={actionTool === "measure"}
       sectioning={actionTool === "section"}
       onSectionClear={() => setActionTool(null)}
@@ -1911,6 +2139,16 @@ export default function ReviterStudio() {
       onWalkingChange={handleWalkingChange}
       walkStartRequest={walkStartRequest}
       selectedElementId={selectedElementId}
+      selectedElementIds={selectedIds}
+      onSelectElements={selectElements}
+      captureViewRequest={captureRequest}
+      onCaptureView={capturedReviewView}
+      restoreViewRequest={restoreViewRequest}
+      onViewRestored={viewRestored}
+      dimensions={review.session?.dimensions ?? EMPTY_DIMENSIONS}
+      referenceHash={geometrySource === "reference-model" ? glbSourceHash : ifcSourceHash}
+      onAddDimension={addDimension}
+      onChangeDimensions={changeDimensions}
       onSelectElement={setSelectedElementId}
       hiddenElementIds={hiddenElementIds}
       onHoverElement={setHoveredElementId}
@@ -2075,6 +2313,7 @@ export default function ReviterStudio() {
       if (event.dataTransfer.files.length) void processSelectedFiles(Array.from(event.dataTransfer.files));
     }}>
       {fileInputs}
+      {paletteOpen && <CommandPalette message={commandMessage} commands={commands} onRun={runCommand} onClose={() => setPaletteOpen(false)} />}
       {cadReviewOpen && <DwgFloorReview initialFile={cadReviewFile} onClose={() => {setCadReviewOpen(false);setCadReviewFile(null);}} />}
       {mobile && <button type="button" className="rv-button cad-mobile-entry" onClick={() => setCadReviewOpen(true)}>DWG floor review</button>}
       <DwgWorkspace key={drawingSession} files={drawingFiles} onOpen={openPicker} onClose={closeModel}
@@ -2102,6 +2341,7 @@ export default function ReviterStudio() {
       }}
     >
       {fileInputs}
+      {paletteOpen && <CommandPalette message={commandMessage} commands={commands} onRun={runCommand} onClose={() => setPaletteOpen(false)} />}
       {cadReviewOpen && <DwgFloorReview initialFile={cadReviewFile} onClose={() => {setCadReviewOpen(false);setCadReviewFile(null);}} />}
       {mobile && <button type="button" className="rv-button cad-mobile-entry" onClick={() => setCadReviewOpen(true)}>DWG floor review</button>}
 
@@ -2142,6 +2382,8 @@ export default function ReviterStudio() {
       </header>
       )}
 
+      {!result && <button type="button" className="rv-button home-command-button" onClick={() => setPaletteOpen(true)}>Commands</button>}
+      {reviewWorkbench}
       {result && <div className="floor-workspace-host" hidden={workspace !== "floors"}>
             <FloorWorkspace
               key={directoryImport?.sequence ?? "manual-directory"}
@@ -2186,7 +2428,7 @@ export default function ReviterStudio() {
           }
           activeTool={navTool}
           actionTool={actionTool}
-          onTool={selectViewerTool}
+          onTool={tool => { void runCommand(`tool.${tool}`); }}
           sheet={sheet}
           onSheet={setSheet}
           selectedTitle={selectedTitle}
@@ -2234,9 +2476,9 @@ export default function ReviterStudio() {
               onSource={selectGeometrySource}
               activeTool={navTool}
               actionTool={actionTool}
-              onTool={selectViewerTool}
+              onTool={tool => { void runCommand(`tool.${tool}`); }}
               cameraPreset={cameraRequest.preset}
-              onCameraPreset={requestCamera}
+              onCameraPreset={preset => { void runCommand(`view.${preset}`); }}
               orbitDrag={orbitDrag}
               onOrbitDrag={changeOrbitDrag}
               renderMode={renderMode}
@@ -2244,9 +2486,9 @@ export default function ReviterStudio() {
               leftOpen={leftOpen}
               rightOpen={rightOpen}
               dockOpen={dockOpen}
-              onLeft={() => setLeftOpen((open) => !open)}
-              onRight={() => setRightOpen((open) => !open)}
-              onDock={() => setDockOpen((open) => !open)}
+              onLeft={() => { void runCommand("panel.browser"); }}
+              onRight={() => { void runCommand("panel.properties"); }}
+              onDock={() => { void runCommand("panel.report"); }}
               onOpen={openPicker}
               onPairIfc={() => ifcInputRef.current?.click()}
               onPairReferenceModel={() => referenceModelInputRef.current?.click()}
@@ -2255,7 +2497,7 @@ export default function ReviterStudio() {
           )}
 
           {(!result || workspace === "model") && (
-          <div className="workarea">
+          <div className="workarea" style={{ "--browser-width": `${panelWidths.left}px`, "--properties-width": `${panelWidths.right}px` } as CSSProperties}>
             {result && leftOpen && (
               <BrowserDock
                 tab={browserTab}
@@ -2270,16 +2512,18 @@ export default function ReviterStudio() {
                 onSearch={setBrowserSearch}
                 records={visibleModelRecords}
                 selectedElementId={selectedElementId}
+                selectedElementIds={selectedIds}
                 onSelect={setSelectedElementId}
                 categories={visibleCategoryRows}
                 emptyNote={browserEmptyNote}
                 hiddenCategories={hiddenCategories}
                 onToggleCategory={toggleCategory}
-                onShowAllCategories={() => setHiddenCategories(new Set())}
+                onShowAllCategories={() => { void runCommand("visibility.all"); }}
                 {...commentPanelProps}
               />
             )}
 
+            {result && leftOpen && <DockResize side="left" value={panelWidths.left} onChange={left => setPanelWidths(current => ({ ...current, left }))} />}
             <div className="stage">
               {result ? (
                 <div className={`viewport ${renderMode === "technical" ? "shaded" : "xray"}`}>
@@ -2369,7 +2613,7 @@ export default function ReviterStudio() {
                       ref={canvasMenuRef}
                       role="menu"
                       aria-label="Canvas actions"
-                      style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 3 : 5)}
+                      style={canvasMenuPosition(canvasMenu, canvasMenu.elementId == null ? 3 : 8)}
                     >
                       <ToolButton
                         role="menuitem"
@@ -2429,6 +2673,9 @@ export default function ReviterStudio() {
                               if (canvasMenuCategory) toggleCategory(canvasMenuCategory);
                             }}
                           >Hide this category<em>{canvasMenuCategory}</em></ToolButton>
+                          <button type="button" role="menuitem" onClick={() => { void runCommand("selection.isolate"); }}>Isolate selection</button>
+                          <button type="button" role="menuitem" onClick={() => { void runCommand("selection.similar"); }}>Select similar</button>
+                          <button type="button" role="menuitem" disabled={!visibilityHistory.length} onClick={() => { void runCommand("visibility.restore"); }}>Restore visibility</button>
                         </>
                       )}
                     </div>
@@ -2470,6 +2717,7 @@ export default function ReviterStudio() {
               )}
             </div>
 
+            {result && rightOpen && <DockResize side="right" value={panelWidths.right} onChange={right => setPanelWidths(current => ({ ...current, right }))} />}
             {result && rightOpen && (
               <PropertiesDock
                 title={selectedTitle}

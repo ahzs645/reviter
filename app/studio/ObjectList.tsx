@@ -25,12 +25,14 @@ const OVERSCAN = 6;
 export function ObjectList({
   records,
   selectedElementId,
+  selectedElementIds,
   onSelect,
   rowHeight = ROW_HEIGHT,
 }: {
   records: ElementBoundsRecord[];
   selectedElementId: number | null;
-  onSelect: (elementId: number) => void;
+  onSelect: (elementId: number, additive?: boolean) => void;
+  selectedElementIds?: ReadonlySet<number>;
   rowHeight?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -84,19 +86,20 @@ export function ObjectList({
       className="object-list"
       role="listbox"
       aria-label="Recovered Revit objects"
+      aria-multiselectable={Boolean(selectedElementIds)}
       ref={scrollRef}
       onScroll={measure}
     >
       <div style={{ height: first * rowHeight }} />
       {visible.map((record) => {
         const dimensions = boundsDimensions(record.boundsFeet);
-        const selected = selectedElementId === record.elementId;
+        const selected = selectedElementIds?.has(record.elementId) ?? selectedElementId === record.elementId;
         return (
           <button
             key={record.elementId}
             type="button"
             className={`object-row${selected ? " selected" : ""}`}
-            onClick={() => onSelect(record.elementId)}
+            onClick={event => onSelect(record.elementId, event.shiftKey || event.ctrlKey || event.metaKey)}
             role="option"
             aria-selected={selected}
           >

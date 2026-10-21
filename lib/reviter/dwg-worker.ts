@@ -49,6 +49,8 @@ export type DwgWorkerSheet = {
 };
 
 export type DwgWorkerResult = {
+  /** Flattened model geometry, with original drawing coordinates and layers. */
+  entities: DwgEntity[];
   bounds: DwgBounds;
   inspection: DwgInspectionGroup[];
   svg: string;
@@ -211,6 +213,7 @@ context.onmessage = async (event: MessageEvent<DwgWorkerRequest>) => {
       id: request.id,
       type: "result",
       result: {
+        entities,
         bounds,
         inspection,
         svg,

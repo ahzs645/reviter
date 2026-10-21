@@ -657,12 +657,15 @@ export function meshGroup(
   return group;
 }
 
-export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: RenderMode): THREE.Group {
+export function referenceMeshGroup(meshes: ReferenceMeshData[], renderMode: RenderMode, hidden: ReadonlySet<number> = new Set()): THREE.Group {
   const group = new THREE.Group();
   const technical = renderMode === "technical";
   group.name = "IFC reference geometry";
   group.userData = { source: "paired-ifc", fidelity: "reference" };
-  for (const data of meshes) {
+  for (const original of meshes) {
+    const visible = visibleTriangles(original.indices, original.elementIds, hidden);
+    if (!visible.indices.length) continue;
+    const data = { ...original, ...visible };
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));
@@ -742,6 +745,7 @@ export function overlayMeshGroup(
   meshes: ReferenceMeshData[],
   renderMode: RenderMode,
   reverseDepthBuffer = false,
+  hidden: ReadonlySet<number> = new Set(),
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = "Recovery over export";
@@ -760,7 +764,7 @@ export function overlayMeshGroup(
   const recovered = meshGroup(
     result,
     renderMode,
-    new Set(),
+    hidden,
     reverseDepthBuffer,
     alignedRecoveredElementIds,
   );
@@ -786,7 +790,10 @@ export function overlayMeshGroup(
   reference.scale.setScalar(registration.scale);
   reference.position.set(registration.offset.x, registration.offset.y, registration.offset.z);
 
-  for (const data of meshes) {
+  for (const original of meshes) {
+    const visible = visibleTriangles(original.indices, original.elementIds, hidden);
+    if (!visible.indices.length) continue;
+    const data = { ...original, ...visible };
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(data.positions, 3));
     geometry.setIndex(new THREE.BufferAttribute(data.indices, 1));

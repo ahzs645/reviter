@@ -33,6 +33,8 @@ export type DwgEntity = {
   text?: string;
   height?: number;
   closed?: boolean;
+  /** Points approximate a curve; do not treat samples as native endpoints. */
+  sampled?: boolean;
 };
 
 export type DwgBounds = { minX: number; minY: number; maxX: number; maxY: number };
@@ -388,7 +390,7 @@ export function dwgSectionSvg(
     if (options.includeText !== false && entity.text && entity.centre) {
       const size = entity.height && entity.height > 0 ? entity.height : Math.max(width, height) / 260;
       texts.push(
-        `<text x="${round(entity.centre[0])}" y="${round(-entity.centre[1])}" font-size="${round(size)}">` +
+        `<text data-dwg-layer="${escapeXml(layer)}" x="${round(entity.centre[0])}" y="${round(-entity.centre[1])}" font-size="${round(size)}">` +
         `${escapeXml(entity.text)}</text>`,
       );
     }

@@ -17,11 +17,12 @@ import type {
 import { WorkerClient } from "../../lib/reviter/worker-client.ts";
 import { staticWorkerUrl } from "./reference-model.ts";
 import type { DwgInspectionGroup } from "../../lib/reviter/dwg-inspection.ts";
-import type { DwgBounds } from "../../lib/reviter/dwg-plan.ts";
+import type { DwgBounds, DwgEntity } from "../../lib/reviter/dwg-plan.ts";
 
 export type DecodedDwgSheet = DwgWorkerSheet;
 
 export type DecodedDwg = {
+  entities: DwgEntity[];
   bounds: DwgBounds;
   inspection: DwgInspectionGroup[];
   svg: string;
@@ -69,6 +70,7 @@ export function decodeDwg(
     client.send({ type: "dwg", bytes }, {
       onProgress: (progress) => onProgress?.(progress.message),
       onResult: (result) => settle(() => resolve({
+        entities: result.entities,
         bounds: result.bounds,
         inspection: result.inspection,
         svg: result.svg,

@@ -269,10 +269,11 @@ export function createSectionHelper(
 }
 
 export function applyClippingPlanes(root: THREE.Object3D, planes: readonly THREE.Plane[]): void {
+  root.userData.reviewClippingPlanes = planes;
   const styled = new Set<THREE.Material>();
   root.traverse((object) => {
-    const flags = object as THREE.Object3D & { isMesh?: boolean; isLineSegments?: boolean };
-    if (!flags.isMesh && !flags.isLineSegments) return;
+    const flags = object as THREE.Object3D & { isMesh?: boolean; isLineSegments?: boolean; isLine?: boolean };
+    if (!flags.isMesh && !flags.isLineSegments && !flags.isLine) return;
     const renderable = object as THREE.Mesh | THREE.LineSegments;
     const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
     for (const material of materials) {

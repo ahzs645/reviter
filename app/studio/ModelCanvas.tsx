@@ -99,6 +99,7 @@ import {
   createElementSelection,
   createFaceSelection,
   createRecoveredElementSelection,
+  createRecoveredElementsSelection,
   elementIdAtIntersection,
   firstTriangleHit,
   hitWorldNormal,
@@ -121,6 +122,12 @@ import {
   type Point3Tuple,
   type SectionMode,
 } from "./viewer-tools.ts";
+
+import { ModelDimensionLayer } from "./ModelDimensionLayer.tsx";
+import { OrientationWidget } from "./OrientationWidget.tsx";
+import type { CameraPreset } from "../../lib/reviter/viewer.ts";
+import { rectangleSelects } from "./selection-tools.ts";
+import { dimensionLabel, type CapturedView, type SavedReviewView, type ReviewDimension } from "./review-session.ts";
 
 function tuple(point: THREE.Vector3): Point3Tuple {
   return [point.x, point.y, point.z];
@@ -288,6 +295,7 @@ export function ModelCanvas({
   navigationMode,
   orbitDrag,
   cameraRequest,
+  onCameraPreset,
   measuring,
   sectioning,
   onSectionClear,
@@ -307,6 +315,16 @@ export function ModelCanvas({
   onWalkingChange,
   walkStartRequest,
   selectedElementId,
+  selectedElementIds,
+  onSelectElements,
+  captureViewRequest,
+  onCaptureView,
+  restoreViewRequest,
+  onViewRestored,
+  dimensions,
+  referenceHash,
+  onAddDimension,
+  onChangeDimensions,
   onSelectElement,
   hiddenElementIds,
   onHoverElement,
@@ -328,6 +346,7 @@ export function ModelCanvas({
   /** Which end of an orbit drag the reviewer is holding. */
   orbitDrag: OrbitDragConvention;
   cameraRequest: CameraRequest;
+  onCameraPreset: (preset: CameraPreset) => void;
   measuring: boolean;
   sectioning: boolean;
   onSectionClear: () => void;
@@ -354,7 +373,17 @@ export function ModelCanvas({
   onWalkingChange: (walking: boolean) => void;
   walkStartRequest: WalkStartRequest;
   selectedElementId: number | null;
-  onSelectElement: (elementId: number | null) => void;
+  onSelectElement: (elementId: number | null, additive?: boolean) => void;
+  selectedElementIds: ReadonlySet<number>;
+  onSelectElements: (elementIds: readonly number[]) => void;
+  captureViewRequest: { name: string; sequence: number };
+  onCaptureView: (name: string, view: CapturedView) => void;
+  restoreViewRequest: { view: SavedReviewView | null; sequence: number };
+  onViewRestored: (sequence: number) => void;
+  dimensions: readonly ReviewDimension[];
+  referenceHash: string | null;
+  onAddDimension: (dimension: ReviewDimension) => void;
+  onChangeDimensions: (dimensions: ReviewDimension[]) => void;
   hiddenElementIds: ReadonlySet<number>;
   onHoverElement: (elementId: number | null) => void;
   onCanvasMenu: (request: CanvasMenuRequest | null) => void;
@@ -464,6 +493,13 @@ export function ModelCanvas({
   const [knownCalibrationLength, setKnownCalibrationLength] = useState("10");
   const [measurementReadings, setMeasurementReadings] = useState<Array<{ id: number; label: string }>>([]);
   const [measureSettingsOpen, setMeasureSettingsOpen] = useState(false);
+  const [measureSnap, setMeasureSnap] = useState(false);
+  const [snapLabel, setSnapLabel] = useState("Surface pick");
+  const [selectionRectangle, setSelectionRectangle] = useState<{ x: number; y: number; width: number; height: number; crossing: boolean } | null>(null);
+  const addDimensionRef = useRef(onAddDimension);
+  const selectElementsRef = useRef(onSelectElements);
+  const measureSnapRef = useRef(measureSnap);
+  useEffect(() => { addDimensionRef.current = onAddDimension; selectElementsRef.current = onSelectElements; measureSnapRef.current = measureSnap; });
   const [sectionMode, setSectionMode] = useState<SectionMode>("z");
   const [sectionOffset, setSectionOffset] = useState(0.5);
   const [sectionReverse, setSectionReverse] = useState(false);
@@ -600,14 +636,14 @@ export function ModelCanvas({
       ? [result, hiddenElementIds]
       : source === "reference-model"
         ? [result, referenceModelUrl]
-        : [result, comparison];
+        : [result, comparison, hiddenElementIds];
     const walkCacheOwners = source === "recovered" || source === "reference-assisted"
       ? [result, hiddenElementIds]
       : source === "reference-model"
         ? [referenceModelUrl]
         : source === "reference"
-          ? [comparison]
-          : [result, comparison];
+          ? [comparison, hiddenElementIds]
+          : [result, comparison, hiddenElementIds];
     const cachedWalkAssets = walkAssetCache.acquire(source, walkCacheOwners, () => ({
       walkSurface: null,
       walkCollision: null,
@@ -628,9 +664,10 @@ export function ModelCanvas({
               comparison.referenceMeshes,
               renderMode,
               reverseDepthBuffer,
+              hiddenElementIds,
             )
           : useReference
-            ? referenceMeshGroup(comparison.referenceMeshes, renderMode)
+            ? referenceMeshGroup(comparison.referenceMeshes, renderMode, hiddenElementIds)
             : meshGroup(result, renderMode, hiddenElementIds, reverseDepthBuffer),
       disposed: false,
       referenceBounds: null,
@@ -818,10 +855,14 @@ export function ModelCanvas({
     controls.addEventListener("start", handleControlsStart);
     controls.addEventListener("end", handleControlsEnd);
     let interactionMeshes: THREE.Object3D[] = [];
+    const visibleOwners = new Set<number>();
     const refreshInteractionMeshes = () => {
-      interactionMeshes = [];
+      interactionMeshes = []; visibleOwners.clear();
       root.traverse((object) => {
-        if ((object as THREE.Mesh).isMesh) interactionMeshes.push(object);
+        if ((object as THREE.Mesh).isMesh) {
+          interactionMeshes.push(object);
+          for (const id of object.userData.elementIds as Uint32Array ?? []) if (id > 0) visibleOwners.add(id);
+        }
       });
     };
     refreshInteractionMeshes();
@@ -842,6 +883,23 @@ export function ModelCanvas({
         const planes = (Array.isArray(material) ? material[0] : material)?.clippingPlanes;
         return !planes?.some(plane=>plane.distanceToPoint(intersection.point)<0);
       });
+    };
+    const measurementPoint = (hit: ViewerIntersection, clientX: number, clientY: number, bypass: boolean) => {
+      if (!measureSnapRef.current || bypass || !hit.face) { setSnapLabel("Surface pick"); return hit.point; }
+      const mesh = hit.object as THREE.Mesh;
+      const positions = mesh.geometry.getAttribute("position");
+      const matrix = mesh.matrixWorld.clone();
+      const batch = mesh as THREE.BatchedMesh;
+      if (batch.isBatchedMesh && hit.batchId != null) matrix.multiply(batch.getMatrixAt(hit.batchId, new THREE.Matrix4()));
+      const vertices = [hit.face.a, hit.face.b, hit.face.c].map(index => new THREE.Vector3().fromBufferAttribute(positions, index).applyMatrix4(matrix));
+      const candidates = [...vertices.map(point => ({ point, label: "Mesh vertex" })), ...vertices.map((point, index) => ({ point: point.clone().lerp(vertices[(index + 1) % 3]!, 0.5), label: "Mesh edge midpoint" }))];
+      const rect = canvas.getBoundingClientRect();
+      const ranked = candidates.map(candidate => {
+        const projected = candidate.point.clone().project(camera);
+        return { ...candidate, distance: projected.z < -1 || projected.z > 1 ? Infinity : Math.hypot(rect.left + (projected.x + 1) * rect.width / 2 - clientX, rect.top + (1 - projected.y) * rect.height / 2 - clientY) };
+      }).filter(candidate => candidate.distance <= 12).sort((a, b) => a.distance - b.distance);
+      setSnapLabel(ranked[0]?.label ?? "Surface pick");
+      return ranked[0]?.point ?? hit.point;
     };
     // glTF declares +Y up, so a reference normally is; but ask the geometry
     // rather than assume, so a z-up reference is not drawn on its side.
@@ -1159,6 +1217,19 @@ export function ModelCanvas({
         }`;
       }
       setMeasurementReadings((current) => [...current, { id, label }]);
+      if (mode !== "calibrate") {
+        const measured = mode === "laser" ? [camera.position.clone(), points[0]!] : points;
+        const origin: Point3Tuple = [result.origin.x, result.origin.y, result.origin.z];
+        const canonical = measured.map(point => scenePointToModelFeet(tuple(point), source, origin));
+        const registered = canonical.every(point => point != null);
+        addDimensionRef.current({
+          id: crypto.randomUUID(), mode, points: registered ? canonical as Point3Tuple[] : measured.map(tuple),
+          space: registered ? "model-feet" : "source-scene", source, unit: measureUnitRef.current,
+          feetPerUnit: registered ? 1 : 1 / sceneUnitsPerFoot, calibration: measureCalibrationRef.current,
+          provenance: `${measureSnapRef.current ? "Mesh triangle snap" : "Mesh surface"} · fixed anchors${measureCalibrationRef.current !== 1 ? " · calibrated review" : ""}`,
+          createdAt: new Date().toISOString(),
+        });
+      }
     };
     let pointerStart: { x: number; y: number } | null = null;
     let lastSurfaceHit: ViewerIntersection | undefined;
@@ -1323,15 +1394,45 @@ export function ModelCanvas({
       return { pointsFeet: feet };
     };
 
+    let boxStart: [number, number] | null = null;
+    const cancelBox = () => { boxStart = null; setSelectionRectangle(null); restoreOrbit(); };
     const handlePointerDown = (event: PointerEvent) => {
       // Only the primary button picks. The right button used to run the same
       // pick on release, which cleared the selection under the menu that was
       // about to offer "Clear selection".
       if (event.button !== 0) return;
+      if (event.shiftKey && !measuringRef.current && !commentingRef.current && !markupSettingsRef.current.tool && !walkRef.current && !isReferenceModel) {
+        boxStart = [event.clientX, event.clientY]; controls.enabled = false; canvas.setPointerCapture(event.pointerId); return;
+      }
       if (beginMarkup(event)) return;
       pointerStart = { x: event.clientX, y: event.clientY };
     };
     const handlePointerUp = (event: PointerEvent) => {
+      if (boxStart) {
+        const start = boxStart, end: [number, number] = [event.clientX, event.clientY];
+        if (Math.hypot(end[0] - start[0], end[1] - start[1]) <= 5) {
+          const hit = geometryHitAt(event.clientX, event.clientY); onSelectElement(elementIdAtIntersection(hit), true);
+        } else {
+          camera.updateMatrixWorld();
+          const rect = canvas.getBoundingClientRect();
+          const selected: number[] = [];
+          const planes = runtimeRef.current?.root.userData.reviewClippingPlanes as THREE.Plane[] ?? [];
+          for (const record of result.elementBounds) {
+            if (hiddenElementIds.has(record.elementId) || !visibleOwners.has(record.elementId)) continue;
+            const projected: THREE.Vector3[] = [], world: THREE.Vector3[] = [];
+            for (const x of [record.boundsFeet.min.x, record.boundsFeet.max.x]) for (const y of [record.boundsFeet.min.y, record.boundsFeet.max.y]) for (const z of [record.boundsFeet.min.z, record.boundsFeet.max.z]) {
+              const converted = modelFeetToScenePoint([x, y, z], source, [result.origin.x, result.origin.y, result.origin.z]);
+              if (converted) { const point = new THREE.Vector3(...converted); world.push(point); projected.push(point.clone().project(camera)); }
+            }
+            if (!projected.length || projected.some(point => point.z < -1 || point.z > 1) || planes.some(plane => world.every(point => plane.distanceToPoint(point) < 0))) continue;
+            const xs = projected.map(point => rect.left + (point.x + 1) * rect.width / 2), ys = projected.map(point => rect.top + (1 - point.y) * rect.height / 2);
+            if (rectangleSelects({ minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }, start, end)) selected.push(record.elementId);
+          }
+          selectElementsRef.current(selected);
+        }
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        cancelBox(); return;
+      }
       if (markupPoints) {
         finishMarkup(event);
         return;
@@ -1369,7 +1470,7 @@ export function ModelCanvas({
       }
       if (measuringRef.current) {
         const hit = geometryHitAt(event.clientX, event.clientY);
-        if (hit) addMeasurementHit(hit.point);
+        if (hit) addMeasurementHit(measurementPoint(hit, event.clientX, event.clientY, event.altKey));
         return;
       }
       if (directoryOverlayRef.current) {
@@ -1477,6 +1578,12 @@ export function ModelCanvas({
       reportHover(elementIdAtIntersection(hit));
     };
     const handlePointerMove = (event: PointerEvent) => {
+      if (boxStart) {
+        const rect = canvas.getBoundingClientRect();
+        setSelectionRectangle({ x: Math.min(boxStart[0], event.clientX) - rect.left, y: Math.min(boxStart[1], event.clientY) - rect.top,
+          width: Math.abs(event.clientX - boxStart[0]), height: Math.abs(event.clientY - boxStart[1]), crossing: event.clientX < boxStart[0] });
+        return;
+      }
       if (markupPoints) {
         extendMarkup(event);
         return;
@@ -1490,7 +1597,7 @@ export function ModelCanvas({
           const previewEvent = measurementPreviewEvent;
           if (!previewEvent || !measuringRef.current) return;
           const hit = geometryHitAt(previewEvent.clientX, previewEvent.clientY);
-          updateMeasurementPreview(measurement, hit?.point ?? null);
+          updateMeasurementPreview(measurement, hit ? measurementPoint(hit, event.clientX, event.clientY, event.altKey) : null);
         });
         return;
       }
@@ -1533,6 +1640,7 @@ export function ModelCanvas({
     window.addEventListener("pointerdown", handleNavigationButtons, { capture: true });
     canvas.addEventListener("pointerdown", handlePointerDown);
     canvas.addEventListener("pointerup", handlePointerUp);
+    canvas.addEventListener("pointercancel", cancelBox);
     canvas.addEventListener("pointermove", handlePointerMove);
     canvas.addEventListener("pointercancel", handlePointerUp);
     canvas.addEventListener("pointerleave", handlePointerLeave);
@@ -1847,6 +1955,7 @@ export function ModelCanvas({
       window.removeEventListener("pointerdown", handleNavigationButtons, { capture: true });
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointerup", handlePointerUp);
+      canvas.removeEventListener("pointercancel", cancelBox);
       canvas.removeEventListener("pointercancel", handlePointerUp);
       canvas.removeEventListener("pointermove", handlePointerMove);
       canvas.removeEventListener("pointerleave", handlePointerLeave);
@@ -2344,6 +2453,8 @@ export function ModelCanvas({
       : [];
     runtime.renderer.localClippingEnabled = Boolean(planes.length);
     applyClippingPlanes(runtime.root, planes);
+    applyClippingPlanes(runtime.measurement.root, planes);
+    if (runtime.selectionOverlay) applyClippingPlanes(runtime.selectionOverlay, planes);
     if (sectioning && !directoryFloor) {
       runtime.sectionHelper = createSectionHelper(runtime.bounds, sectionMode, sectionOffset);
       runtime.scene.add(runtime.sectionHelper);
@@ -2391,51 +2502,30 @@ export function ModelCanvas({
       runtime.selectionOverlay = null;
       runtime.invalidate();
     }
-    if ((source !== "recovered" && source !== "reference-assisted") || selectedElementId == null) return;
-    const record = result.elementBounds.find((candidate) => candidate.elementId === selectedElementId);
-    if (!record) return;
+    if (source === "reference-model" || !selectedElementIds.size) return;
     const overlay = new THREE.Group();
-    // Highlight the triangles the element actually draws. The filled
-    // record-bounds box that used to stand in for this swallowed sparse
-    // elements whole — an 83-baluster native railing read as a solid crate.
     runtime.root.updateMatrixWorld(true);
-    const triangles = createRecoveredElementSelection(
-      runtime.root,
-      selectedElementId,
-      runtime.sceneUnitsPerFoot,
-    );
+    const visibleSelection = new Set([...selectedElementIds].filter(id => !hiddenElementIds.has(id)));
+    const triangles = createRecoveredElementsSelection(runtime.root, visibleSelection, runtime.sceneUnitsPerFoot);
     if (triangles) overlay.add(triangles);
-    // The record-bounds wireframe stays as a locator — it is what makes a
-    // small element findable from across the model — but it no longer fills.
-    const dimensions = boundsDimensions(record.boundsFeet);
-    const selectedCenter = new THREE.Vector3(
-      (record.boundsFeet.min.x + record.boundsFeet.max.x) / 2 - result.origin.x,
-      (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2 - result.origin.y,
-      (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2 - result.origin.z,
-    );
-    const selectedGeometry = new THREE.BoxGeometry(dimensions.x, dimensions.y, dimensions.z);
-    const outline = new THREE.LineSegments(
-      new THREE.EdgesGeometry(selectedGeometry),
-      new THREE.LineBasicMaterial({ color: 0xff9f1c, linewidth: 2, depthTest: false }),
-    );
-    outline.position.copy(selectedCenter);
-    outline.renderOrder = 20;
-    overlay.add(outline);
-    // An element whose triangles are hidden or held back still shows a fill,
-    // so "selected but not drawn" stays visible — as the envelope, which in
-    // that case is all there is.
-    if (!triangles) {
-      const fill = new THREE.Mesh(
-        selectedGeometry,
-        new THREE.MeshBasicMaterial({ color: 0xffc441, transparent: true, opacity: 0.22, depthWrite: false }),
-      );
-      fill.position.copy(selectedCenter);
-      overlay.add(fill);
+    for (const id of visibleSelection) {
+      if (hiddenElementIds.has(id)) continue;
+      const record = result.elementBounds.find(candidate => candidate.elementId === id);
+      if (!record) continue;
+      if (!triangles) {
+        const size = boundsDimensions(record.boundsFeet);
+        const geometry = new THREE.BoxGeometry(size.x * runtime.sceneUnitsPerFoot, size.y * runtime.sceneUnitsPerFoot, size.z * runtime.sceneUnitsPerFoot);
+        const outline = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xff9f1c, depthTest: false }));
+        geometry.dispose();
+        const centre = modelFeetToScenePoint([(record.boundsFeet.min.x + record.boundsFeet.max.x) / 2, (record.boundsFeet.min.y + record.boundsFeet.max.y) / 2, (record.boundsFeet.min.z + record.boundsFeet.max.z) / 2], source, [result.origin.x, result.origin.y, result.origin.z]);
+        if (centre) outline.position.set(...centre);
+        overlay.add(outline);
+      }
     }
-    runtime.selectionOverlay = overlay;
-    runtime.scene.add(overlay);
-    runtime.invalidate();
-  }, [comparison, renderMode, result, selectedElementId, source]);
+    const planes = runtime.root.userData.reviewClippingPlanes as THREE.Plane[] ?? [];
+    applyClippingPlanes(overlay, planes);
+    runtime.selectionOverlay = overlay; runtime.scene.add(overlay); runtime.invalidate();
+  }, [comparison, renderMode, result, selectedElementIds, hiddenElementIds, source, sceneEpoch]);
 
   /**
    * The keyboard's copy of the pointer's navigation.
@@ -2553,6 +2643,7 @@ export function ModelCanvas({
   const clearAllMeasurements = () => {
     const runtime = runtimeRef.current;
     if (runtime) clearMeasurements(runtime.measurement);
+    onChangeDimensions([]);
     setMeasurementReadings([]);
     setCalibrationSample(null);
   };
@@ -2560,6 +2651,9 @@ export function ModelCanvas({
   const removeLastMeasurement = () => {
     const runtime = runtimeRef.current;
     if (!runtime || !deleteLastMeasurement(runtime.measurement)) return;
+    const visible = dimensions.filter(d => d.space === "model-feet" ? source !== "reference-model" : d.source === source);
+    const last = visible.at(-1);
+    if (last) onChangeDimensions(dimensions.filter(d => d.id !== last.id));
     setMeasurementReadings((current) => current.slice(0, -1));
   };
 
@@ -2693,8 +2787,60 @@ export function ModelCanvas({
     if (comment) restoreCommentViewpoint(comment);
   }, [comments, restoreCommentViewpoint, viewpointRequest]);
 
+  const projectDimension = useCallback((dimension: ReviewDimension): CommentProjection | null => {
+    const runtime = runtimeRef.current, canvas = canvasRef.current;
+    if (!runtime || !canvas || dimension.space === "drawing-units" || (dimension.space === "model-feet" ? source === "reference-model" : dimension.source !== source || dimension.referenceHash !== referenceHash)) return null;
+    const points = dimension.points.map(point => dimension.space === "model-feet" ? modelFeetToScenePoint(point, source, [result.origin.x, result.origin.y, result.origin.z]) : point);
+    if (points.some(point => !point)) return null;
+    const centre = new THREE.Vector3();
+    for (const point of points) centre.add(new THREE.Vector3(...point!));
+    centre.divideScalar(points.length);
+    const planes = runtime.root.userData.reviewClippingPlanes as THREE.Plane[] ?? [];
+    const clipped = planes.some(plane => plane.distanceToPoint(centre) < 0);
+    const projected = centre.project(runtime.camera);
+    return { x: (projected.x + 1) * canvas.clientWidth / 2, y: (1 - projected.y) * canvas.clientHeight / 2,
+      visible: !clipped && projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1 && Math.abs(projected.y) <= 1 };
+  }, [result, source, referenceHash]);
+  const capturedSequence = useRef(captureViewRequest.sequence);
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime || capturedSequence.current === captureViewRequest.sequence || !captureViewRequest.name) return;
+    capturedSequence.current = captureViewRequest.sequence;
+    const target = walkingRef.current ? runtime.camera.position.clone().add(runtime.camera.getWorldDirection(new THREE.Vector3())) : runtime.controls.target;
+    onCaptureView(captureViewRequest.name, { camera: { source, position: tuple(runtime.camera.position), target: tuple(target), up: tuple(runtime.camera.up), fov: runtime.camera.fov },
+      section: { enabled: sectioning, mode: sectionMode, offset: sectionOffset, reverse: sectionReverse } });
+  }, [captureViewRequest, onCaptureView, sectioning, sectionMode, sectionOffset, sectionReverse, source]);
+  const restoredSequence = useRef(-1);
+  useEffect(() => {
+    const runtime = runtimeRef.current, view = restoreViewRequest.view;
+    if (!runtime || !view || source !== view.camera.source || (source === "reference-model" && referenceLoadState !== "ready") || restoredSequence.current === restoreViewRequest.sequence) return;
+    restoredSequence.current = restoreViewRequest.sequence;
+    runtime.camera.position.set(...view.camera.position); runtime.camera.up.set(...view.camera.up); runtime.camera.fov = view.camera.fov;
+    runtime.controls.target.set(...view.camera.target); runtime.camera.lookAt(runtime.controls.target); runtime.camera.updateProjectionMatrix(); runtime.controls.update(); runtime.invalidate();
+    queueMicrotask(() => { setSectionMode(view.section.mode); setSectionOffset(view.section.offset); setSectionReverse(view.section.reverse); });
+    onViewRestored(restoreViewRequest.sequence);
+  }, [restoreViewRequest, onViewRestored, source, referenceLoadState, sceneEpoch]);
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    clearMeasurements(runtime.measurement);
+    const readings: Array<{ id: number; label: string }> = [];
+    for (const d of dimensions) {
+      if (d.space === "drawing-units" || (d.space === "model-feet" ? source === "reference-model" : d.source !== source || d.referenceHash !== referenceHash)) continue;
+      const points = d.points.map(point => d.space === "model-feet" ? modelFeetToScenePoint(point, source, [result.origin.x, result.origin.y, result.origin.z]) : point);
+      if (points.some(point => !point)) continue;
+      for (const point of points) addPendingMeasurementPoint(runtime.measurement, new THREE.Vector3(...point!), runtime.radius);
+      commitMeasurement(runtime.measurement, runtime.radius);
+      readings.push({ id: readings.length + 1, label: dimensionLabel(d) });
+    }
+    applyClippingPlanes(runtime.measurement.root, runtime.root.userData.reviewClippingPlanes as THREE.Plane[] ?? []);
+    queueMicrotask(() => setMeasurementReadings(readings)); runtime.invalidate();
+  }, [dimensions, result, source, referenceHash, sceneEpoch]);
+
   return (
     <>
+      {selectionRectangle && <div className={`selection-rectangle${selectionRectangle.crossing ? " crossing" : ""}`} style={{ left: selectionRectangle.x, top: selectionRectangle.y, width: selectionRectangle.width, height: selectionRectangle.height }} />}
+      {measuring && <div className="model-snap-controls"><label><input type="checkbox" checked={measureSnap} onChange={event => setMeasureSnap(event.target.checked)} />Mesh snaps</label><span>{snapLabel} · Alt bypass · fixed review anchors</span></div>}
       {/* A bare <canvas> has no implicit role, so its aria-label is not
           reliably surfaced; "application" both names it and tells assistive
           technology to hand the keys below straight to the viewport. The
@@ -2719,6 +2865,8 @@ export function ModelCanvas({
           ? "First person: W A S D to move, arrow keys to turn, Q and E for down and up, Space to drop to the nearest surface, minus and plus for speed, Escape to leave."
           : "Arrow keys orbit, Shift with an arrow key pans, plus and minus zoom, and Shift+F10 or the Menu key opens the viewport menu for the object at the centre."}
       </p>
+      {!walking && <OrientationWidget onView={onCameraPreset} />}
+      <ModelDimensionLayer dimensions={dimensions} project={projectDimension} />
       <MarkupLayer
         strokes={markup}
         draft={markupDraft}
