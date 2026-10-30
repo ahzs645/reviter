@@ -1,0 +1,50 @@
+{
+  "format": "reviter-gateway-source-replay-checks-v1",
+  "createdAt": "2026-10-30T21:25:13.917959+00:00",
+  "replays": [
+    {
+      "name": "UNBC-gateways",
+      "request": "UNBC-gateways.request.json",
+      "report": "UNBC-gateways.report.json",
+      "reportSha256": "3f2127a9334624572d1f4cd06aa88992731d903a306f252123f60656d83bf948",
+      "requestSha256": "c0242a9521a1879a7f58d591f4e696288dbc8724d88e63777a7448b2463fde03",
+      "counts": {
+        "sourceDoorRecords": 1899,
+        "originalNodes": 5493,
+        "originalEdges": 7337,
+        "explicitRequests": 10,
+        "autoCrossBuildingRequests": 0,
+        "checkedDoorIdentities": 10,
+        "localBidirectionalWitnesses": 9,
+        "incomplete": 1
+      },
+      "observedExitCode": 2,
+      "exitMeaning": "--require-local-topology preserves incomplete checkpoints and returns 2 after writing the report.",
+      "sourceUnchanged": true,
+      "implementationUnchanged": true
+    },
+    {
+      "name": "UNBC-cross-building",
+      "request": "UNBC-cross-building.request.json",
+      "report": "UNBC-cross-building.report.json",
+      "reportSha256": "a7a51577abb340c6bbe158c0c9315629cf86491296713aef98fcf87862e0cd83",
+      "requestSha256": "73d1f9e9ea0bc2e39bfb4c48d2de36607ffd390e473836028394b48d2814e66e",
+      "counts": {
+        "sourceDoorRecords": 1899,
+        "originalNodes": 5493,
+        "originalEdges": 7337,
+        "explicitRequests": 10,
+        "autoCrossBuildingRequests": 21,
+        "checkedDoorIdentities": 31,
+        "localBidirectionalWitnesses": 25,
+        "incomplete": 6
+      },
+      "observedExitCode": 2,
+      "exitMeaning": "--require-local-topology preserves incomplete checkpoints and returns 2 after writing the report.",
+      "sourceUnchanged": true,
+      "implementationUnchanged": true
+    }
+  ],
+  "authorityGranted": false,
+  "campusConnectivityProven": false
+}

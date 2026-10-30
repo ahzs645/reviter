@@ -5,6 +5,8 @@ import { deflateSync, zipSync, unzipSync, strToU8, strFromU8 } from "fflate";
 import {
   serializeRoomsForArchive,
   REVIEW_BUNDLE_ARCHIVE_PATH,
+  packReviewBundle,
+  unpackReviewBundle,
 } from "../lib/reviter/review-bundle-wire.ts";
 import {
   createProjectPackage,
@@ -183,5 +185,40 @@ test("legacy companion SHA, truncation and dishonest expansion fail reader and w
       manifest = JSON.parse(strFromU8(files["manifest.json"]));
     bindFloors(files, manifest, strToU8(JSON.stringify(invalid)));
     await assert.rejects(readProjectPackage(zipSync(files)), /packed review/);
+  }
+});
+
+test("packed companion decoding preserves every byte value and rejects malformed base64", async () => {
+  // Literal/stored compression exercises the full byte alphabet in the decoder,
+  // including NUL/high bytes and all three base64 remainder lengths.
+  for (const length of [65536, 65537, 65538]) {
+    const content = Uint8Array.from({ length }, (_, i) => i % 256);
+    const original = {
+      version: 1 as const,
+      masterSha256: bundle.masterSha256,
+      files: [
+        {
+          path: "review/all-byte-values.png",
+          bytes: content.length,
+          sha256: digest(content),
+          compressedBase64: Buffer.from(
+            deflateSync(content, { level: 0 }),
+          ).toString("base64"),
+        },
+      ],
+    };
+    const packed = await packReviewBundle(original);
+    assert.deepEqual(await unpackReviewBundle(packed), original);
+    await assert.rejects(
+      unpackReviewBundle({
+        ...packed,
+        compressedBase64: `!${packed.compressedBase64}`,
+      }),
+      /packed review/,
+    );
+    await assert.rejects(
+      unpackReviewBundle({ ...packed, bytes: packed.bytes - 1 }),
+      /packed review/,
+    );
   }
 });

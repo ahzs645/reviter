@@ -1,0 +1,25 @@
+✔ an original crossing and both directed approaches give only a local topology witness (4.808333ms)
+✔ changed complete-source, model and room bindings are rejected (0.801291ms)
+✔ an unmatched single owner remains unresolved even when a nearby crossing exists (0.717466ms)
+✔ duplicate source doors and multiple saved crossing aliases are refused (0.420081ms)
+✔ a lone alias or changed native identity cannot replace the original crossing (0.724547ms)
+✔ held crossings and another native plane remain refused (0.383055ms)
+✔ crossing owners, exact endpoint positions and portal identity must agree (0.25372ms)
+✔ disabled and wrong-plane walks cannot qualify an approach (0.191408ms)
+✔ a portal bypass or self-loop is not an independent walking approach (0.368553ms)
+✔ directional approaches and crossings report each local direction separately (0.31975ms)
+✔ cross-building tag expansion retains unsupported/staff identities without double counting (0.231417ms)
+✔ explicit expectations and duplicate resolved requests cannot change source identity (0.358328ms)
+✔ cross-building expansion retains three-way ambiguous ownership candidates (0.39354ms)
+✔ binary review evidence reopens as exact standalone rooms and preserves source wire bytes (349.243691ms)
+✔ review container serialization is deterministic and legacy archives remain unchanged (137.69279ms)
+✔ legacy companion SHA, truncation and dishonest expansion fail reader and writer (245.549057ms)
+✔ packed companion decoding preserves every byte value and rejects malformed base64 (103.800102ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1894.911987

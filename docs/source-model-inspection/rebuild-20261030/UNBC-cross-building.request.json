@@ -1,0 +1,60 @@
+{
+  "format": "reviter-native-gateway-audit-request",
+  "version": 1,
+  "sourceIndoorSha256": "efd7efad5e8bc332e2a5eb68348d55241eb8c74bf386256f65b14bb40de07798",
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "sourceRoomsSha256": "5291e1148cc27130b9239b6de26b2f7623c308f227f5dfc2b3e64b17f55e593c",
+  "gateways": [
+    {
+      "id": "link-4-8-floor2",
+      "label": "Building 04–08 Floor 2, door checkpoint",
+      "nativeDoorElementId": 2311764
+    },
+    {
+      "id": "link-4-8-floor3-building08",
+      "label": "Building 04–08 Floor 3, unresolved Building 08 end",
+      "nativeDoorElementId": 2315416
+    },
+    {
+      "id": "link-4-8-floor3-building04",
+      "label": "Building 04–08 Floor 3, Building 04 end",
+      "nativeDoorElementId": 2112703
+    },
+    {
+      "id": "link-8-10-floor1-a",
+      "label": "Building 08–10 Floor 1, first doorway",
+      "nativeDoorElementId": 1501580
+    },
+    {
+      "id": "link-8-10-floor1-b",
+      "label": "Building 08–10 Floor 1, second doorway",
+      "nativeDoorElementId": 1501582
+    },
+    {
+      "id": "link-8-10-floor2-a",
+      "label": "Building 08–10 Floor 2, first doorway",
+      "nativeDoorElementId": 1499620
+    },
+    {
+      "id": "link-8-10-floor2-b",
+      "label": "Building 08–10 Floor 2, second doorway",
+      "nativeDoorElementId": 1499619
+    },
+    {
+      "id": "link-7-8-ramp-door",
+      "label": "Building 07–08 ramp landing doorway; ramp travel is a separate check",
+      "nativeDoorElementId": 1630256
+    },
+    {
+      "id": "link-7-8-stair-alcove",
+      "label": "Building 07–08 stair alcove doorway; flight travel is a separate check",
+      "nativeDoorElementId": 2018182
+    },
+    {
+      "id": "link-9-7-agora-door",
+      "label": "Building 09–07 Agora doorway; local steps are a separate check",
+      "nativeDoorElementId": 1951047
+    }
+  ],
+  "includeCrossBuildingOwners": true
+}

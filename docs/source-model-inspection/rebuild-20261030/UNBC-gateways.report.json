@@ -1,0 +1,1442 @@
+{
+  "format": "reviter-native-gateway-audit",
+  "version": 1,
+  "sourceIndoorSha256": "efd7efad5e8bc332e2a5eb68348d55241eb8c74bf386256f65b14bb40de07798",
+  "source": {
+    "modelFileName": "UNBC Model - 2026-06-30 - FINAL (Fixed Library) (1).rvt",
+    "modelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "roomsSha256": "5291e1148cc27130b9239b6de26b2f7623c308f227f5dfc2b3e64b17f55e593c"
+  },
+  "scope": "Original saved doorway ownership, same-plane crossing and directed local walk incidence only; no physical/public/step-free or complete-journey approval.",
+  "counts": {
+    "sourceDoorRecords": 1899,
+    "originalNodes": 5493,
+    "originalEdges": 7337,
+    "explicitRequests": 10,
+    "autoCrossBuildingRequests": 0,
+    "checkedDoorIdentities": 10,
+    "localBidirectionalWitnesses": 9,
+    "incomplete": 1
+  },
+  "results": [
+    {
+      "request": {
+        "id": "link-4-8-floor2",
+        "label": "Building 04–08 Floor 2, door checkpoint",
+        "nativeDoorElementId": 2311764
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:694:2311764",
+          "nativeElementId": 2311764,
+          "levelId": 694,
+          "state": "connected",
+          "pointFeet": [
+            30.612502027737193,
+            528.5495338272797
+          ],
+          "roomKeys": [
+            "rm-694-3eff6106de76",
+            "rm-694-fa60cb06b7c9"
+          ],
+          "hostWallNativeElementId": 2311758
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-694-3eff6106de76",
+          "number": "08-216",
+          "name": "Vestibule",
+          "building": "08",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-694-fa60cb06b7c9",
+          "number": "08-260",
+          "name": "Link",
+          "building": "08",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:694:2311764",
+        "nativeElementId": 2311764,
+        "from": "door:694:2311764:0",
+        "to": "door:694:2311764:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-694-3eff6106de76",
+          "rm-694-fa60cb06b7c9"
+        ],
+        "pointsFeet": [
+          [
+            32.24906123802165,
+            528.5495338272797,
+            14.435695538057743
+          ],
+          [
+            28.9721,
+            528.5495338272797,
+            14.435695538057743
+          ]
+        ],
+        "lengthMetres": 0.9988177853489997,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:694:2311764:0",
+          "roomKey": "rm-694-3eff6106de76",
+          "pointFeet": [
+            32.24906123802165,
+            528.5495338272797,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:616:walk:arrival:rm-694-3eff6106de76|door:694:2311764:0",
+              "otherNodeId": "arrival:rm-694-3eff6106de76",
+              "otherRoomKey": "rm-694-3eff6106de76",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:14.435696:616:walk:door:694:1513787:0|door:694:2311764:0",
+              "otherNodeId": "door:694:1513787:0",
+              "otherRoomKey": "rm-694-3eff6106de76",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:694:2311764:1",
+          "roomKey": "rm-694-fa60cb06b7c9",
+          "pointFeet": [
+            28.9721,
+            528.5495338272797,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:589:walk:arrival:rm-694-fa60cb06b7c9|door:694:2311764:1",
+              "otherNodeId": "arrival:rm-694-fa60cb06b7c9",
+              "otherRoomKey": "rm-694-fa60cb06b7c9",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-4-8-floor3-building08",
+        "label": "Building 04–08 Floor 3, unresolved Building 08 end",
+        "nativeDoorElementId": 2315416
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:400176:2315416",
+          "nativeElementId": 2315416,
+          "levelId": 400176,
+          "state": "unmatched",
+          "pointFeet": [
+            30.612502027737193,
+            528.5495338272797
+          ],
+          "roomKeys": [
+            "rm-400176-a4b94b10b2f8"
+          ],
+          "hostWallNativeElementId": 2315413
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-400176-a4b94b10b2f8",
+          "number": "08-360",
+          "name": "Link",
+          "building": "08",
+          "levelId": 400176,
+          "elevationFeet": 24.278215223097114,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "sides": [],
+      "directedLocalWitness": {
+        "fromTo": false,
+        "toFrom": false
+      },
+      "localBidirectionalWitness": false,
+      "status": "INCOMPLETE",
+      "issues": [
+        {
+          "code": "SOURCE_OWNERSHIP_UNRESOLVED",
+          "message": "The original doorway state remains unmatched."
+        },
+        {
+          "code": "SOURCE_OWNER_PAIR_MISSING",
+          "message": "Two distinct original owner keys are required."
+        },
+        {
+          "code": "SAVED_CROSSING_MISSING",
+          "message": "No saved crossing exists for this original native door."
+        }
+      ],
+      "sourceIssues": [
+        {
+          "id": "door-unmatched:2315416:400176",
+          "code": "door-unmatched",
+          "severity": "review",
+          "message": "unmatched native door: 1 candidate areas (rm-400176-a4b94b10b2f8). Review the native threshold, floor, room boundaries and explicit door link; proximity alone does not authorize a connection.",
+          "nativeElementId": 2315416,
+          "levelId": 400176
+        }
+      ],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-4-8-floor3-building04",
+        "label": "Building 04–08 Floor 3, Building 04 end",
+        "nativeDoorElementId": 2112703
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:400176:2112703",
+          "nativeElementId": 2112703,
+          "levelId": 400176,
+          "state": "connected",
+          "pointFeet": [
+            -44.41083277647499,
+            521.5046640527777
+          ],
+          "roomKeys": [
+            "rm-400176-79fc94dd782c",
+            "rm-400176-a4b94b10b2f8"
+          ],
+          "hostWallNativeElementId": 439603
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-400176-79fc94dd782c",
+          "number": "04-302",
+          "name": "Corridor",
+          "building": "04",
+          "levelId": 400176,
+          "elevationFeet": 24.278215223097114,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-400176-a4b94b10b2f8",
+          "number": "08-360",
+          "name": "Link",
+          "building": "08",
+          "levelId": 400176,
+          "elevationFeet": 24.278215223097114,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:400176:2112703",
+        "nativeElementId": 2112703,
+        "from": "door:400176:2112703:0",
+        "to": "door:400176:2112703:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-400176-79fc94dd782c",
+          "rm-400176-a4b94b10b2f8"
+        ],
+        "pointsFeet": [
+          [
+            -44.467730946011336,
+            519.5025172486495,
+            24.278215223097114
+          ],
+          [
+            -44.535303427963505,
+            522.0450628843496,
+            24.278215223097114
+          ]
+        ],
+        "lengthMetres": 0.7752415495741725,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:400176:2112703:0",
+          "roomKey": "rm-400176-79fc94dd782c",
+          "pointFeet": [
+            -44.467730946011336,
+            519.5025172486495,
+            24.278215223097114
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:24.278215:796:walk:door:400176:2111747:1|door:400176:2112703:0",
+              "otherNodeId": "door:400176:2111747:1",
+              "otherRoomKey": "rm-400176-79fc94dd782c",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:400176:2112703:1",
+          "roomKey": "rm-400176-a4b94b10b2f8",
+          "pointFeet": [
+            -44.535303427963505,
+            522.0450628843496,
+            24.278215223097114
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:24.278215:816:walk:arrival:rm-400176-a4b94b10b2f8|door:400176:2112703:1",
+              "otherNodeId": "arrival:rm-400176-a4b94b10b2f8",
+              "otherRoomKey": "rm-400176-a4b94b10b2f8",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [
+        {
+          "id": "recovered-native-door-ownership:2112703:400176",
+          "code": "recovered-native-door-ownership",
+          "severity": "review",
+          "message": "Native door-side ownership recovered with continuous floor, jamb, wall/column and third-room checks: {\"widthFeet\":2,\"approachDepthFeet\":1.5,\"floorCoveredSquareFeet\":5.340419947504415}. Access and accessibility remain unverified.",
+          "nativeElementId": 2112703,
+          "levelId": 400176
+        }
+      ],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-8-10-floor1-a",
+        "label": "Building 08–10 Floor 1, first doorway",
+        "nativeDoorElementId": 1501580
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:1487816:1501580",
+          "nativeElementId": 1501580,
+          "levelId": 1487816,
+          "state": "connected",
+          "pointFeet": [
+            75.68041212398612,
+            761.4393717856383
+          ],
+          "roomKeys": [
+            "rm-1487816-93135f5b541a",
+            "rm-1487816-959fe1d830e0"
+          ],
+          "hostWallNativeElementId": 1501538
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-1487816-93135f5b541a",
+          "number": "10-1080",
+          "name": "Vestibule",
+          "building": "10",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "public",
+          "walkable": true
+        },
+        {
+          "key": "rm-1487816-959fe1d830e0",
+          "number": "08-159",
+          "name": "Alcove",
+          "building": "08",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "public",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:1487816:1501580",
+        "nativeElementId": 1501580,
+        "from": "door:1487816:1501580:0",
+        "to": "door:1487816:1501580:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-1487816-93135f5b541a",
+          "rm-1487816-959fe1d830e0"
+        ],
+        "pointsFeet": [
+          [
+            76.35378250937987,
+            761.6442634687032,
+            3.2808398950131235
+          ],
+          [
+            75.09244877260029,
+            761.1561300284045,
+            3.2808398950131235
+          ]
+        ],
+        "lengthMetres": 0.41223983665533115,
+        "accessible": "unknown",
+        "evidence": "reviewed-native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:1487816:1501580:0",
+          "roomKey": "rm-1487816-93135f5b541a",
+          "pointFeet": [
+            76.35378250937987,
+            761.6442634687032,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:414:walk:arrival:rm-1487816-93135f5b541a|door:1487816:1501580:0",
+              "otherNodeId": "arrival:rm-1487816-93135f5b541a",
+              "otherRoomKey": "rm-1487816-93135f5b541a",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:1487816:1501580:1",
+          "roomKey": "rm-1487816-959fe1d830e0",
+          "pointFeet": [
+            75.09244877260029,
+            761.1561300284045,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:407:walk:arrival:rm-1487816-959fe1d830e0|door:1487816:1501580:1",
+              "otherNodeId": "arrival:rm-1487816-959fe1d830e0",
+              "otherRoomKey": "rm-1487816-959fe1d830e0",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:407:walk:door:1487816:1501580:1|opening:recovered-circulation-seam:rm-1487816-800e4ffde566:rm-1487816-959fe1d830e0:21:28:1",
+              "otherNodeId": "opening:recovered-circulation-seam:rm-1487816-800e4ffde566:rm-1487816-959fe1d830e0:21:28:1",
+              "otherRoomKey": "rm-1487816-959fe1d830e0",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-8-10-floor1-b",
+        "label": "Building 08–10 Floor 1, second doorway",
+        "nativeDoorElementId": 1501582
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:1487816:1501582",
+          "nativeElementId": 1501582,
+          "levelId": 1487816,
+          "state": "connected",
+          "pointFeet": [
+            77.77331890114414,
+            771.3369567471284
+          ],
+          "roomKeys": [
+            "rm-1487816-1949cc41e164",
+            "rm-1487816-93135f5b541a"
+          ],
+          "hostWallNativeElementId": 1501581
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-1487816-1949cc41e164",
+          "number": "10-1060",
+          "name": "Corridor",
+          "building": "10",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "public",
+          "walkable": true
+        },
+        {
+          "key": "rm-1487816-93135f5b541a",
+          "number": "10-1080",
+          "name": "Vestibule",
+          "building": "10",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "public",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:1487816:1501582",
+        "nativeElementId": 1501582,
+        "from": "door:1487816:1501582:0",
+        "to": "door:1487816:1501582:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-1487816-1949cc41e164",
+          "rm-1487816-93135f5b541a"
+        ],
+        "pointsFeet": [
+          [
+            77.88935115376279,
+            771.7280142063199,
+            3.2808398950131235
+          ],
+          [
+            77.20586177835105,
+            771.2251799655415,
+            3.2808398950131235
+          ]
+        ],
+        "lengthMetres": 0.25863137628677413,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:1487816:1501582:0",
+          "roomKey": "rm-1487816-1949cc41e164",
+          "pointFeet": [
+            77.88935115376279,
+            771.7280142063199,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:413:walk:door:1487816:1501582:0|door:1487816:2169243:0",
+              "otherNodeId": "door:1487816:2169243:0",
+              "otherRoomKey": "rm-1487816-1949cc41e164",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:1487816:1501582:1",
+          "roomKey": "rm-1487816-93135f5b541a",
+          "pointFeet": [
+            77.20586177835105,
+            771.2251799655415,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:414:walk:arrival:rm-1487816-93135f5b541a|door:1487816:1501582:1",
+              "otherNodeId": "arrival:rm-1487816-93135f5b541a",
+              "otherRoomKey": "rm-1487816-93135f5b541a",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-8-10-floor2-a",
+        "label": "Building 08–10 Floor 2, first doorway",
+        "nativeDoorElementId": 1499620
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:694:1499620",
+          "nativeElementId": 1499620,
+          "levelId": 694,
+          "state": "connected",
+          "pointFeet": [
+            75.88620434364199,
+            761.7471876650632
+          ],
+          "roomKeys": [
+            "rm-694-43988ffdc334",
+            "rm-694-7ecf02632b2a"
+          ],
+          "hostWallNativeElementId": 1498824
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-694-43988ffdc334",
+          "number": "08-267",
+          "name": "Corridor",
+          "building": "08",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-694-7ecf02632b2a",
+          "number": "10-2070",
+          "name": "Vestibule",
+          "building": "10",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:694:1499620",
+        "nativeElementId": 1499620,
+        "from": "door:694:1499620:0",
+        "to": "door:694:1499620:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-694-43988ffdc334",
+          "rm-694-7ecf02632b2a"
+        ],
+        "pointsFeet": [
+          [
+            75.02538192474373,
+            760.247799871926,
+            14.435695538057743
+          ],
+          [
+            76.46979484241191,
+            762.9118113550811,
+            14.435695538057743
+          ]
+        ],
+        "lengthMetres": 0.9236639938312305,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:694:1499620:0",
+          "roomKey": "rm-694-43988ffdc334",
+          "pointFeet": [
+            75.02538192474373,
+            760.247799871926,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:616:walk:door:694:1499620:0|door:694:2000729:1",
+              "otherNodeId": "door:694:2000729:1",
+              "otherRoomKey": "rm-694-43988ffdc334",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:694:1499620:1",
+          "roomKey": "rm-694-7ecf02632b2a",
+          "pointFeet": [
+            76.46979484241191,
+            762.9118113550811,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:651:walk:arrival:rm-694-7ecf02632b2a|door:694:1499620:1",
+              "otherNodeId": "arrival:rm-694-7ecf02632b2a",
+              "otherRoomKey": "rm-694-7ecf02632b2a",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-8-10-floor2-b",
+        "label": "Building 08–10 Floor 2, second doorway",
+        "nativeDoorElementId": 1499619
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:694:1499619",
+          "nativeElementId": 1499619,
+          "levelId": 694,
+          "state": "connected",
+          "pointFeet": [
+            80.94432466173538,
+            769.3987435631285
+          ],
+          "roomKeys": [
+            "rm-694-7ecf02632b2a",
+            "rm-694-d30ff45a3d81"
+          ],
+          "hostWallNativeElementId": 1499388
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-694-7ecf02632b2a",
+          "number": "10-2070",
+          "name": "Vestibule",
+          "building": "10",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-694-d30ff45a3d81",
+          "number": "10-2066",
+          "name": "Corridor",
+          "building": "10",
+          "levelId": 694,
+          "elevationFeet": 14.435695538057743,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:694:1499619",
+        "nativeElementId": 1499619,
+        "from": "door:694:1499619:0",
+        "to": "door:694:1499619:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-694-7ecf02632b2a",
+          "rm-694-d30ff45a3d81"
+        ],
+        "pointsFeet": [
+          [
+            80.71339659294537,
+            768.7898930304976,
+            14.435695538057743
+          ],
+          [
+            80.95023509813421,
+            769.9662890192957,
+            14.435695538057743
+          ]
+        ],
+        "lengthMetres": 0.36576000000002856,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:694:1499619:0",
+          "roomKey": "rm-694-7ecf02632b2a",
+          "pointFeet": [
+            80.71339659294537,
+            768.7898930304976,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:651:walk:arrival:rm-694-7ecf02632b2a|door:694:1499619:0",
+              "otherNodeId": "arrival:rm-694-7ecf02632b2a",
+              "otherRoomKey": "rm-694-7ecf02632b2a",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:694:1499619:1",
+          "roomKey": "rm-694-d30ff45a3d81",
+          "pointFeet": [
+            80.95023509813421,
+            769.9662890192957,
+            14.435695538057743
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:14.435696:647:walk:arrival:rm-694-d30ff45a3d81|door:694:1499619:1",
+              "otherNodeId": "arrival:rm-694-d30ff45a3d81",
+              "otherRoomKey": "rm-694-d30ff45a3d81",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-7-8-ramp-door",
+        "label": "Building 07–08 ramp landing doorway; ramp travel is a separate check",
+        "nativeDoorElementId": 1630256
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:1487816:1630256",
+          "nativeElementId": 1630256,
+          "levelId": 1487816,
+          "state": "connected",
+          "pointFeet": [
+            61.923949354357646,
+            464.6121409139829
+          ],
+          "roomKeys": [
+            "landing:ramp:1622190:upper",
+            "rm-1487816-1a09473066a2"
+          ],
+          "hostWallNativeElementId": 1629345
+        }
+      ],
+      "owners": [
+        {
+          "key": "landing:ramp:1622190:upper",
+          "number": "",
+          "name": "Native ramp upper landing",
+          "building": "08",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-1487816-1a09473066a2",
+          "number": "08-S101",
+          "name": "Stair",
+          "building": "08",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": true,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:1487816:1630256",
+        "nativeElementId": 1630256,
+        "from": "door:1487816:1630256:0",
+        "to": "door:1487816:1630256:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "landing:ramp:1622190:upper",
+          "rm-1487816-1a09473066a2"
+        ],
+        "pointsFeet": [
+          [
+            61.47631155908203,
+            463.83680950917744,
+            3.2808398950131235
+          ],
+          [
+            62.01654534914505,
+            464.75764890579165,
+            3.2808398950131235
+          ]
+        ],
+        "lengthMetres": 0.3254084744489574,
+        "accessible": "unknown",
+        "evidence": "reviewed-native-door; generated ramp landing association resolved after the reviewed ramp built its landing"
+      },
+      "sides": [
+        {
+          "nodeId": "door:1487816:1630256:0",
+          "roomKey": "landing:ramp:1622190:upper",
+          "pointFeet": [
+            61.47631155908203,
+            463.83680950917744,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:384:walk:door:1487816:1630256:0|local:local:07:311:08:1487816:1620957:1",
+              "otherNodeId": "local:local:07:311:08:1487816:1620957:1",
+              "otherRoomKey": "landing:local:07:311:08:1487816:1620957:1",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:384:walk:door:1487816:1630256:0|ramp:1622190:upper",
+              "otherNodeId": "ramp:1622190:upper",
+              "otherRoomKey": "landing:ramp:1622190:upper",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:1487816:1630256:1",
+          "roomKey": "rm-1487816-1a09473066a2",
+          "pointFeet": [
+            62.01654534914505,
+            464.75764890579165,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:410:walk:door:1487816:1630256:1|door:1487816:2018182:1",
+              "otherNodeId": "door:1487816:2018182:1",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:410:walk:arrival:rm-1487816-1a09473066a2|door:1487816:1630256:1",
+              "otherNodeId": "arrival:rm-1487816-1a09473066a2",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "reviewed-link:door:1487816:1630256:1|door:1487816:2018182:1",
+              "otherNodeId": "door:1487816:2018182:1",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [
+        {
+          "id": "reviewed-landing-door-link:1630256:1487816",
+          "code": "reviewed-landing-door-link",
+          "severity": "review",
+          "message": "Reviewed physical door connects landing:ramp:1622190:upper and rm-1487816-1a09473066a2 (generated ramp landing). Access and accessibility remain unverified.",
+          "nativeElementId": 1630256,
+          "levelId": 1487816
+        }
+      ],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-7-8-stair-alcove",
+        "label": "Building 07–08 stair alcove doorway; flight travel is a separate check",
+        "nativeDoorElementId": 2018182
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:1487816:2018182",
+          "nativeElementId": 2018182,
+          "levelId": 1487816,
+          "state": "connected",
+          "pointFeet": [
+            66.9008469067525,
+            481.03460697277995
+          ],
+          "roomKeys": [
+            "rm-1487816-1a0ccf3066a5",
+            "rm-1487816-1a09473066a2"
+          ],
+          "hostWallNativeElementId": 2018178
+        }
+      ],
+      "owners": [
+        {
+          "key": "rm-1487816-1a0ccf3066a5",
+          "number": "08-102",
+          "name": "Corridor",
+          "building": "08",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-1487816-1a09473066a2",
+          "number": "08-S101",
+          "name": "Stair",
+          "building": "08",
+          "levelId": 1487816,
+          "elevationFeet": 3.2808398950131235,
+          "circulation": true,
+          "stair": true,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:1487816:2018182",
+        "nativeElementId": 2018182,
+        "from": "door:1487816:2018182:0",
+        "to": "door:1487816:2018182:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "rm-1487816-1a0ccf3066a5",
+          "rm-1487816-1a09473066a2"
+        ],
+        "pointsFeet": [
+          [
+            66.90311609295473,
+            482.8604332771575,
+            3.2808398950131235
+          ],
+          [
+            66.81363585165549,
+            478.0612673822944,
+            3.2808398950131235
+          ]
+        ],
+        "lengthMetres": 1.4630400000000063,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:1487816:2018182:0",
+          "roomKey": "rm-1487816-1a0ccf3066a5",
+          "pointFeet": [
+            66.90311609295473,
+            482.8604332771575,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:407:walk:door:1487816:2015750:0|door:1487816:2018182:0",
+              "otherNodeId": "door:1487816:2015750:0",
+              "otherRoomKey": "rm-1487816-1a0ccf3066a5",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:407:walk:door:1487816:2016693:0|door:1487816:2018182:0",
+              "otherNodeId": "door:1487816:2016693:0",
+              "otherRoomKey": "rm-1487816-1a0ccf3066a5",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:407:walk:arrival:rm-1487816-1a0ccf3066a5|door:1487816:2018182:0",
+              "otherNodeId": "arrival:rm-1487816-1a0ccf3066a5",
+              "otherRoomKey": "rm-1487816-1a0ccf3066a5",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:1487816:2018182:1",
+          "roomKey": "rm-1487816-1a09473066a2",
+          "pointFeet": [
+            66.81363585165549,
+            478.0612673822944,
+            3.2808398950131235
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:3.280840:410:walk:arrival:rm-1487816-1a09473066a2|door:1487816:2018182:1",
+              "otherNodeId": "arrival:rm-1487816-1a09473066a2",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:3.280840:410:walk:door:1487816:1630256:1|door:1487816:2018182:1",
+              "otherNodeId": "door:1487816:1630256:1",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "reviewed-link:door:1487816:1630256:1|door:1487816:2018182:1",
+              "otherNodeId": "door:1487816:1630256:1",
+              "otherRoomKey": "rm-1487816-1a09473066a2",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [
+        {
+          "id": "recovered-native-door-ownership:2018182:1487816",
+          "code": "recovered-native-door-ownership",
+          "severity": "review",
+          "message": "Native door-side ownership recovered with continuous floor, jamb, wall/column and third-room checks: {\"widthFeet\":2,\"approachDepthFeet\":2.8429060387618375,\"floorCoveredSquareFeet\":9.670064046029438,\"sourceDoorSymbolSegmentIndices\":[3556,3557,3558,3559,3560,3561,3562,3563,3564,3565,3566,3567,3568,3569,3570,3571,3572,3573,3574,3575,3576,3577,3578,3579,3580,3581,3582,3583,3584,3585,3586,3591,3592,3593,3594,3595,3596,3597,3598,3599,3600,3601,3602,3603,3604,3605,3606,3607,3608,3609,3610,3611,3612,3613,3614,3615,3616,3617,3618,3619,3620,3621],\"sourceSha256\":\"5f2b1b7a91dab72d0a39528116cbbc1a1d74706bd7f9e41e9b7bcc7d7a8cbd44\",\"sourceSectionId\":\"08 Tea Lab LVL 1\",\"sourceRegistrationErrorFeet\":9.393149224286357e-13}. Access and accessibility remain unverified.",
+          "nativeElementId": 2018182,
+          "levelId": 1487816
+        }
+      ],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    },
+    {
+      "request": {
+        "id": "link-9-7-agora-door",
+        "label": "Building 09–07 Agora doorway; local steps are a separate check",
+        "nativeDoorElementId": 1951047
+      },
+      "sourceDoorMatches": [
+        {
+          "id": "door:311:1951047",
+          "nativeElementId": 1951047,
+          "levelId": 311,
+          "state": "connected",
+          "pointFeet": [
+            99.27142312903621,
+            453.34649386773754
+          ],
+          "roomKeys": [
+            "reviewed-native:pin-9",
+            "rm-311-86e02816d8fe"
+          ],
+          "hostWallNativeElementId": 1951041
+        }
+      ],
+      "owners": [
+        {
+          "key": "reviewed-native:pin-9",
+          "number": "",
+          "name": "Reviewed Agora circulation",
+          "building": "07",
+          "levelId": 311,
+          "elevationFeet": 0,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        },
+        {
+          "key": "rm-311-86e02816d8fe",
+          "number": "07-180",
+          "name": "Multi Purpose Circulation Space and Hall",
+          "building": "07",
+          "levelId": 311,
+          "elevationFeet": 0,
+          "circulation": true,
+          "stair": false,
+          "access": "unknown",
+          "walkable": true
+        }
+      ],
+      "crossing": {
+        "id": "door:311:1951047",
+        "nativeElementId": 1951047,
+        "from": "door:311:1951047:0",
+        "to": "door:311:1951047:1",
+        "enabled": true,
+        "direction": "both",
+        "roomKeys": [
+          "reviewed-native:pin-9",
+          "rm-311-86e02816d8fe"
+        ],
+        "pointsFeet": [
+          [
+            99.52885818475762,
+            453.4427046358255,
+            0
+          ],
+          [
+            97.73011029676445,
+            453.5098316455913,
+            0
+          ]
+        ],
+        "lengthMetres": 0.5486399999999997,
+        "accessible": "unknown",
+        "evidence": "native-door"
+      },
+      "sides": [
+        {
+          "nodeId": "door:311:1951047:0",
+          "roomKey": "reviewed-native:pin-9",
+          "pointFeet": [
+            99.52885818475762,
+            453.4427046358255,
+            0
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:0.000000:269:walk:arrival:reviewed-native:pin-9|door:311:1951047:0",
+              "otherNodeId": "arrival:reviewed-native:pin-9",
+              "otherRoomKey": "reviewed-native:pin-9",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "native-cell:0.000000:269:walk:door:311:1951047:0|ramp:1643796:upper",
+              "otherNodeId": "ramp:1643796:upper",
+              "otherRoomKey": "landing:ramp:1643796:upper",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            },
+            {
+              "edgeId": "reviewed-link:ramp:1643796:upper|door:311:1951047:0",
+              "otherNodeId": "ramp:1643796:upper",
+              "otherRoomKey": "landing:ramp:1643796:upper",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        },
+        {
+          "nodeId": "door:311:1951047:1",
+          "roomKey": "rm-311-86e02816d8fe",
+          "pointFeet": [
+            97.73011029676445,
+            453.5098316455913,
+            0
+          ],
+          "incoming": true,
+          "outgoing": true,
+          "approaches": [
+            {
+              "edgeId": "native-cell:0.000000:71:walk:door:311:1951047:1|ramp:1622190:lower",
+              "otherNodeId": "ramp:1622190:lower",
+              "otherRoomKey": "landing:ramp:1622190:lower",
+              "incoming": true,
+              "outgoing": true,
+              "accessible": "unknown"
+            }
+          ],
+          "rejectedApproaches": []
+        }
+      ],
+      "directedLocalWitness": {
+        "fromTo": true,
+        "toFrom": true
+      },
+      "localBidirectionalWitness": true,
+      "status": "LOCAL_TOPOLOGY_PRESENT",
+      "issues": [],
+      "sourceIssues": [
+        {
+          "id": "recovered-native-door-ownership:1951047:311",
+          "code": "recovered-native-door-ownership",
+          "severity": "review",
+          "message": "Native door-side ownership recovered with continuous floor, jamb, wall/column and third-room checks: {\"widthFeet\":2,\"approachDepthFeet\":1.5,\"floorCoveredSquareFeet\":4.116666666668607}. Access and accessibility remain unverified.",
+          "nativeElementId": 1951047,
+          "levelId": 311
+        }
+      ],
+      "publicRouteApproved": false,
+      "stepFreeApproved": false
+    }
+  ],
+  "inventoryComplete": false,
+  "campusConnectivityProven": false,
+  "authorityGranted": false,
+  "requestSha256": "c0242a9521a1879a7f58d591f4e696288dbc8724d88e63777a7448b2463fde03",
+  "sourceParsedValueSha256": "efd7efad5e8bc332e2a5eb68348d55241eb8c74bf386256f65b14bb40de07798",
+  "sourceFileUnchanged": true,
+  "sourceParsedValueUnchanged": true,
+  "requestUnchanged": true,
+  "implementation": {
+    "sha256": "738f85921a4c871bb9c043a8893aaa0106b01805a7cd2e5d6f340e530f0f8231",
+    "files": [
+      {
+        "path": "scripts/indoor/audit-native-gateways.ts",
+        "sha256": "e17552feba63753001497eb5fca01ae34b306e307397143706dcbb5211643730"
+      },
+      {
+        "path": "lib/reviter/native-gateway-audit.ts",
+        "sha256": "98b87b9849be17b17baa839c77d4a7e2b94884e7a167d500c8831754539725c9"
+      },
+      {
+        "path": "lib/reviter/indoor-contract.ts",
+        "sha256": "9db34e1e9d0b3b33bdd3ca79ea8106772cd3f2929def41654236534adc7081b5"
+      }
+    ],
+    "unchanged": true
+  },
+  "auditSeconds": 0.387336671,
+  "createdAt": "2026-10-30T21:22:28.213Z"
+}

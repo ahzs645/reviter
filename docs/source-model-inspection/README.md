@@ -74,6 +74,10 @@ build. Keep settings in the receipt; do not claim cross-version pixel identity.
   the complete unchanged dataset. For saved connectivity, use the sibling
   `audit-saved-pathway-connectivity.ts`. A positive graph witness or attractive
   render is not physical/public/step-free route approval.
+- For exact original doorway identities and directed local walking approaches,
+  use the [native gateway audit](native-gateway-audit.md). It binds the complete
+  source file and preserves missing/ambiguous owners and held crossings as
+  unresolved results; its local witnesses do not certify full journeys.
 - For stair/ramp changes, check both native planes and the full source flight,
   surface, terminal and clearance demand. Keep held links and unknown access
   intact until the existing production qualification passes.

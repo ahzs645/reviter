@@ -37,7 +37,14 @@ const base64 = (bytes: Uint8Array) => {
 const unbase64 = (value: string) => {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(value)) return fail();
   try {
-    return Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+    // Avoid the iterable's intermediate per-character array for large authoring
+    // companions. The decoded bytes and all validation below remain unchanged.
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.codePointAt(i) ?? 0;
+    }
+    return bytes;
   } catch {
     return fail();
   }

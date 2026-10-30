@@ -1,0 +1,107 @@
+{
+  "format": "reviter-gateway-rebuild-checks-v1",
+  "createdAt": "2026-10-30T21:24:54.509604+00:00",
+  "baseCommit": "80177ed21becc91c02df48bb27cd1d24f5fbf297",
+  "node": "v24.22.1",
+  "sourceFiles": [
+    {
+      "path": "lib/reviter/native-gateway-audit.ts",
+      "sha256": "98b87b9849be17b17baa839c77d4a7e2b94884e7a167d500c8831754539725c9"
+    },
+    {
+      "path": "scripts/indoor/audit-native-gateways.ts",
+      "sha256": "e17552feba63753001497eb5fca01ae34b306e307397143706dcbb5211643730"
+    },
+    {
+      "path": "tests/native-gateway-audit.test.ts",
+      "sha256": "f4c7c127cc036560deefdb66610f12e6c459b478c105f15b403d6117b9a435e8"
+    },
+    {
+      "path": "lib/reviter/review-bundle-wire.ts",
+      "sha256": "01de53fb3ea81a70a857ddd40c3063802d6ee23408837f6903d8cc1a9bb39c51"
+    },
+    {
+      "path": "tests/review-bundle-wire-package.test.ts",
+      "sha256": "253ab989449cabde8b99ae4078a28f08770a6b5e6468d598353c196932f8ca61"
+    }
+  ],
+  "checks": [
+    {
+      "name": "gateway-and-package-tests",
+      "command": [
+        "node",
+        "--experimental-strip-types",
+        "--import",
+        "./scripts/register-test-typescript.mjs",
+        "--test",
+        "--test-isolation=none",
+        "tests/native-gateway-audit.test.ts",
+        "tests/review-bundle-wire-package.test.ts"
+      ],
+      "exitCode": 0,
+      "seconds": 1.981140174999382,
+      "log": "gateway-and-package-tests.log",
+      "logSha256": "fc4ce5af02f5504b2e968b83b581a1a7ea41b77c9421d2cbd839e819759560f1"
+    },
+    {
+      "name": "scoped-typescript",
+      "command": [
+        "node",
+        "--max-old-space-size=2048",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--skipLibCheck",
+        "--target",
+        "es2022",
+        "--lib",
+        "esnext,dom,dom.iterable",
+        "--module",
+        "esnext",
+        "--moduleResolution",
+        "bundler",
+        "--allowImportingTsExtensions",
+        "--types",
+        "node",
+        "--strict",
+        "lib/reviter/native-gateway-audit.ts",
+        "scripts/indoor/audit-native-gateways.ts",
+        "tests/native-gateway-audit.test.ts",
+        "lib/reviter/review-bundle-wire.ts",
+        "tests/review-bundle-wire-package.test.ts"
+      ],
+      "exitCode": 0,
+      "seconds": 14.180362463000165,
+      "log": "scoped-typescript.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "scoped-eslint",
+      "command": [
+        "node",
+        "node_modules/eslint/bin/eslint.js",
+        "lib/reviter/native-gateway-audit.ts",
+        "scripts/indoor/audit-native-gateways.ts",
+        "tests/native-gateway-audit.test.ts",
+        "lib/reviter/review-bundle-wire.ts",
+        "tests/review-bundle-wire-package.test.ts"
+      ],
+      "exitCode": 0,
+      "seconds": 3.2375863179995577,
+      "log": "scoped-eslint.log",
+      "logSha256": "8becccda2644b26d377c14ac7ad1211c74e5d449bfa4778a5a74ad4baa82babe"
+    }
+  ],
+  "notes": [
+    "Initial test invocation omitted the existing extension-resolution loader; package import failed before its assertions. The final command uses the repository loader.",
+    "Initial ad-hoc TypeScript flags omitted the repository ESNext library; existing toSorted/toReversed usages failed. The final scoped command matches that library.",
+    "Lint retains the pre-existing unused destructuring variable warning in review-bundle-wire.ts.",
+    "Fixture and package checks are not complete UNBC import, route, browser or campus acceptance.",
+    "A fresh source sweep retained ambiguous three-way doorway 754072. Its new candidate-inclusion regression assertion is included in this final check run."
+  ],
+  "testSummary": {
+    "gatewayTests": 13,
+    "packageTests": 4,
+    "totalNamedTests": 17,
+    "failures": 0
+  }
+}
