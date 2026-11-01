@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   directoryDoorReviews,
   doorCandidates,
+  NATIVE_DOOR_OWNER_MAX_GAP_FEET,
   nativeCellDoorOwners,
   type DoorOwnerMatcher,
   type NativeDoorCell,
@@ -160,4 +161,19 @@ test("default behaviour is unchanged: same output, no native fields", () => {
   const before = directoryDoorReviews(rooms, doors);
   assert.deepEqual(directoryDoorReviews(rooms, doors, [], [], { mode: "legacy" }), before);
   assert.ok(before.every((r) => !("nativeOwners" in r)));
+});
+
+test("the default owner gap is fail-closed at the legacy 2 ft reach", () => {
+  // The office outline starts 2.4 ft past the probe: native cells pair the
+  // sides, but the default bound refuses to decide rather than widen reach.
+  const rooms = [room("corridor", rect(0, 0, 9.9, 10)), room("office", rect(12.75, 0, 20, 10))];
+  const cells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office"], rect(10.1, 0, 20, 10))];
+  assert.equal(NATIVE_DOOR_OWNER_MAX_GAP_FEET, 2);
+  const bounded = nativeCellDoorOwners(rooms, door(), cells);
+  assert.equal(bounded.rooms, undefined);
+  assert.match(bounded.sides[1].reason!, /limit 2 ft/);
+  const [review] = directoryDoorReviews(rooms, [door()], [], [], native(cells));
+  assert.equal(review!.state, "unmatched");
+  const widened = nativeCellDoorOwners(rooms, door(), cells, { maxOwnerGapFeet: 3 });
+  assert.deepEqual(widened.rooms, ["corridor", "office"]);
 });

@@ -252,7 +252,9 @@ export type NativeDoorCell = {
 export type NativeCellOwnerOptions = {
   /** Feet beyond each footprint face; first step that lands in a cell wins. */
   stepsFeet?: readonly number[];
-  /** Optional bound on the probe-to-owner-outline gap; unbounded by default. */
+  /** Bound on the probe-to-owner-outline gap. Defaults to the legacy 2 ft
+   * candidate reach so enabling the mode never widens ownership; raise it only
+   * with per-door review. */
   maxOwnerGapFeet?: number;
 };
 export type DoorOwnerMatcher =
@@ -264,6 +266,7 @@ export type DoorOwnerMatcher =
       overrideLegacy?: boolean;
     } & NativeCellOwnerOptions);
 export const NATIVE_DOOR_SIDE_STEPS_FEET = [0.25, 0.5, 1, 1.5] as const;
+export const NATIVE_DOOR_OWNER_MAX_GAP_FEET = 2;
 export type NativeDoorSide = {
   cellId?: string;
   stepFeet?: number;
@@ -333,7 +336,7 @@ export function nativeCellDoorOwners(
   rooms: readonly DirectoryRoom[],
   door: DirectoryDoor,
   cells: readonly NativeDoorCell[],
-  { stepsFeet = NATIVE_DOOR_SIDE_STEPS_FEET, maxOwnerGapFeet = Infinity }: NativeCellOwnerOptions = {},
+  { stepsFeet = NATIVE_DOOR_SIDE_STEPS_FEET, maxOwnerGapFeet = NATIVE_DOOR_OWNER_MAX_GAP_FEET }: NativeCellOwnerOptions = {},
 ): NativeCellDoorOwners {
   const none: [NativeDoorSide, NativeDoorSide] = [{}, {}];
   if (!door.footprint?.length || !door.normal)
