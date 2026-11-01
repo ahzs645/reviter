@@ -8,6 +8,7 @@ import type { ConvertResult } from "./types.ts";
 import { architecturalPlanGeometry } from "./architectural-plan.ts";
 import {
   containsDirectoryRoomPoint,
+  containsRoomPoint,
   isWalkable,
   findDirectoryRoute,
   nearestRoomBoundary,
@@ -70,6 +71,14 @@ export type DoorReview = {
   state: "connected" | "unmatched" | "ambiguous";
   portal?: RoomPortal;
   hasExplicitReview?: boolean;
+  /** Only with the opt-in native-cell matcher: its evidence and whether it
+   * decided this door (false when a reviewed link or the legacy match stood). */
+  nativeOwners?: NativeCellDoorOwners & {
+    decided: boolean;
+    /** Native owners disagree with the legacy automatic match. */
+    conflict: boolean;
+    legacyRooms?: [string, string];
+  };
 };
 
 /** Door bounds locate the opening; a recovered oriented footprint constrains its bridge. */
@@ -223,7 +232,235 @@ export function directoryDoors(
       };
     });
 }
+/** One native wall-bounded cell (an exact native face) on the doors' level:
+ * outer ring first, then holes. Room keys are the source identities the cell
+ * carries; the cell supplies the wall boundary, the room outlines only names. */
+export type NativeDoorCell = {
+  id: string;
+  roomKeys: readonly string[];
+  ringsFeet: readonly (readonly RoomPoint[])[];
+};
+/** Opt-in door owner matcher. "legacy" (the default) is the unchanged
+ * outline-proximity matcher. "native-cell" assigns each door side to the
+ * nearest room (by outline) inside the native cell found just past that face
+ * of the door footprint along its normal. It only decides when it finds two
+ * different cells with two different, walkable, untied owners. Explicit
+ * reviewed links always take precedence. By default it only fills doors the
+ * legacy matcher left without a portal; a disagreement with an existing legacy
+ * portal is reported as a conflict and the legacy owners stand, because a
+ * merged native cell can omit the real room (audit: doors 1513453, 1630256). */
+export type NativeCellOwnerOptions = {
+  /** Feet beyond each footprint face; first step that lands in a cell wins. */
+  stepsFeet?: readonly number[];
+  /** Optional bound on the probe-to-owner-outline gap; unbounded by default. */
+  maxOwnerGapFeet?: number;
+};
+export type DoorOwnerMatcher =
+  | { mode: "legacy" }
+  | ({
+      mode: "native-cell";
+      cells: readonly NativeDoorCell[];
+      /** Replace a disagreeing legacy portal. Off by default. */
+      overrideLegacy?: boolean;
+    } & NativeCellOwnerOptions);
+export const NATIVE_DOOR_SIDE_STEPS_FEET = [0.25, 0.5, 1, 1.5] as const;
+export type NativeDoorSide = {
+  cellId?: string;
+  stepFeet?: number;
+  probeFeet?: RoomPoint;
+  owner?: string;
+  ownerGapFeet?: number;
+  reason?: string;
+};
+export type NativeCellDoorOwners = {
+  kind: "native-pair" | "same-cell" | "one-side" | "no-cell" | "missing-threshold";
+  /** Side against the normal first, then along it. */
+  sides: [NativeDoorSide, NativeDoorSide];
+  /** Present only when the native rule decides ownership. */
+  rooms?: [string, string];
+  reason?: string;
+};
+const ringBounds = (ring: readonly RoomPoint[]) => {
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  for (const p of ring) {
+    minX = Math.min(minX, p[0]);
+    minY = Math.min(minY, p[1]);
+    maxX = Math.max(maxX, p[0]);
+    maxY = Math.max(maxY, p[1]);
+  }
+  return { minX, minY, maxX, maxY };
+};
+const nativeCellIndex = new WeakMap<
+  readonly NativeDoorCell[],
+  { cell: NativeDoorCell; box: ReturnType<typeof ringBounds> }[]
+>();
+const cellsContaining = (cells: readonly NativeDoorCell[], p: RoomPoint) => {
+  let index = nativeCellIndex.get(cells);
+  if (!index) {
+    index = cells
+      .filter((c) => c.ringsFeet[0]?.length)
+      .map((cell) => ({ cell, box: ringBounds(cell.ringsFeet[0]!) }));
+    nativeCellIndex.set(cells, index);
+  }
+  return index
+    .filter(
+      ({ cell, box }) =>
+        p[0] >= box.minX &&
+        p[0] <= box.maxX &&
+        p[1] >= box.minY &&
+        p[1] <= box.maxY &&
+        // Even-odd over the outer ring and its holes.
+        cell.ringsFeet.filter((ring) => containsRoomPoint(p, ring)).length %
+          2 ===
+          1,
+    )
+    .map(({ cell }) => cell);
+};
+/** Owner representative: one room per circulation group, as legacy matching. */
+const ownerRepresentatives = (rooms: readonly DirectoryRoom[]) => {
+  const first = new Map<string, DirectoryRoom>();
+  for (const r of rooms.filter(isWalkable))
+    if (r.circulationGroup && !first.has(r.circulationGroup))
+      first.set(r.circulationGroup, r);
+  return (room: DirectoryRoom) =>
+    room.circulationGroup ? (first.get(room.circulationGroup) ?? room) : room;
+};
+/** Native-cell side owners for one door; diagnostic and decision in one. */
+export function nativeCellDoorOwners(
+  rooms: readonly DirectoryRoom[],
+  door: DirectoryDoor,
+  cells: readonly NativeDoorCell[],
+  { stepsFeet = NATIVE_DOOR_SIDE_STEPS_FEET, maxOwnerGapFeet = Infinity }: NativeCellOwnerOptions = {},
+): NativeCellDoorOwners {
+  const none: [NativeDoorSide, NativeDoorSide] = [{}, {}];
+  if (!door.footprint?.length || !door.normal)
+    return { kind: "missing-threshold", sides: none, reason: "No precise door footprint and normal." };
+  const length = DMath.hypot(door.normal[0], door.normal[1]);
+  if (!(length > 0) || !Number.isFinite(length))
+    return { kind: "missing-threshold", sides: none, reason: "Door normal is invalid." };
+  const nx = door.normal[0] / length,
+    ny = door.normal[1] / length;
+  const depth = Math.max(
+    ...door.footprint.map((p) =>
+      Math.abs((p[0] - door.point[0]) * nx + (p[1] - door.point[1]) * ny),
+    ),
+  );
+  const byKey = new Map(rooms.map((r) => [r.key, r]));
+  const representative = ownerRepresentatives(rooms);
+  const side = (sign: -1 | 1): NativeDoorSide => {
+    for (const step of stepsFeet) {
+      const offset = depth + step;
+      const probe: RoomPoint = [
+        door.point[0] + sign * nx * offset,
+        door.point[1] + sign * ny * offset,
+      ];
+      const found = cellsContaining(cells, probe);
+      if (!found.length) continue;
+      if (found.length > 1)
+        return { stepFeet: step, probeFeet: probe, reason: "Probe lies in more than one native cell." };
+      const cell = found[0]!;
+      const ranked = [...new Set(cell.roomKeys)]
+        .map((key) => byKey.get(key))
+        .filter((r): r is DirectoryRoom => !!r)
+        .map((room) => ({
+          room,
+          gap:
+            containsRoomPoint(probe, room.polygonFeet) &&
+            !(room.holesFeet ?? []).some((h) => containsRoomPoint(probe, h))
+              ? 0
+              : Math.min(
+                  ...[room.polygonFeet, ...(room.holesFeet ?? [])].map(
+                    (loop) => nearestRoomBoundary(probe, loop).distance,
+                  ),
+                ),
+        }))
+        .sort((a, b) => a.gap - b.gap || (a.room.key < b.room.key ? -1 : 1));
+      const base = { cellId: cell.id, stepFeet: step, probeFeet: probe };
+      if (!ranked.length)
+        return { ...base, reason: "The native cell carries no room on this level." };
+      const best = ranked[0]!;
+      if (ranked.some((r) => r.room.key !== best.room.key && Math.abs(r.gap - best.gap) <= 1e-9))
+        return { ...base, ownerGapFeet: best.gap, reason: "Two rooms are equally near inside the native cell." };
+      if (!isWalkable(best.room))
+        return { ...base, ownerGapFeet: best.gap, reason: `Nearest room ${best.room.key} is not walkable.` };
+      if (best.gap > maxOwnerGapFeet)
+        return { ...base, ownerGapFeet: best.gap, reason: `Nearest room ${best.room.key} is ${best.gap.toFixed(3)} ft from the probe (limit ${maxOwnerGapFeet} ft).` };
+      return { ...base, owner: representative(best.room).key, ownerGapFeet: best.gap };
+    }
+    return {};
+  };
+  const sides: [NativeDoorSide, NativeDoorSide] = [side(-1), side(1)];
+  const [a, b] = sides;
+  const kind =
+    a.cellId && b.cellId
+      ? a.cellId !== b.cellId
+        ? "native-pair"
+        : "same-cell"
+      : a.cellId || b.cellId
+        ? "one-side"
+        : "no-cell";
+  if (kind !== "native-pair")
+    return {
+      kind,
+      sides,
+      reason:
+        kind === "same-cell"
+          ? "Both faces open into one native cell; no native wall separates the sides."
+          : kind === "one-side"
+            ? "Only one face opens into a native cell (exterior or unsupported side)."
+            : "Neither face opens into a native cell.",
+    };
+  if (!a.owner || !b.owner)
+    return { kind, sides, reason: a.reason ?? b.reason ?? "A side has no owner." };
+  if (a.owner === b.owner)
+    return { kind, sides, reason: "Both native cells resolve to the same room." };
+  return { kind, sides, rooms: [a.owner, b.owner] };
+}
+function nativeCellDoorPortal(
+  rooms: readonly DirectoryRoom[],
+  door: DirectoryDoor,
+  pair: [string, string],
+): RoomPortal | undefined {
+  const points = pair.map((key) => {
+    const room = rooms.find((r) => r.key === key);
+    return room
+      ? [room.polygonFeet, ...(room.holesFeet ?? [])]
+          .map((loop) => nearestRoomBoundary(door.point, loop))
+          .sort((x, y) => x.distance - y.distance)[0]!.point
+      : undefined;
+  });
+  if (!points[0] || !points[1]) return undefined;
+  return {
+    doorId: door.id,
+    rooms: pair,
+    point: door.point,
+    from: points[0],
+    to: points[1],
+    halfWidth: door.halfWidth,
+    halfHeight: door.halfHeight,
+    footprint: door.footprint,
+    normal: door.normal,
+  };
+}
 export function doorCandidates(
+  rooms: readonly DirectoryRoom[],
+  door: DirectoryDoor,
+  matcher: DoorOwnerMatcher = { mode: "legacy" },
+): DirectoryRoom[] {
+  const legacy = legacyDoorCandidates(rooms, door);
+  if (matcher.mode !== "native-cell") return legacy;
+  // Native owners are candidates even where registered outlines stop short.
+  const native = nativeCellDoorOwners(rooms, door, matcher.cells, matcher).rooms ?? [];
+  const extra = native
+    .filter((key) => !legacy.some((r) => r.key === key))
+    .map((key) => rooms.find((r) => r.key === key)!)
+    .filter(Boolean);
+  return [...legacy, ...extra];
+}
+function legacyDoorCandidates(
   rooms: readonly DirectoryRoom[],
   door: DirectoryDoor,
 ): DirectoryRoom[] {
@@ -250,9 +487,10 @@ export function reviewedDoorPortal(
   rooms: readonly DirectoryRoom[],
   door: DirectoryDoor,
   link: ReviewedDoorLink,
+  matcher: DoorOwnerMatcher = { mode: "legacy" },
 ): RoomPortal | null {
   if (link.doorId !== door.id || link.rooms[0] === link.rooms[1]) return null;
-  const candidates = doorCandidates(rooms, door),
+  const candidates = doorCandidates(rooms, door, matcher),
     pair = link.rooms.map((key) => candidates.find((r) => r.key === key));
   if (pair.some((r) => !r || r.levelId !== link.levelId)) return null;
   const points = pair.map(
@@ -279,22 +517,46 @@ export function directoryDoorReviews(
   doors: readonly DirectoryDoor[],
   reviewed: readonly ReviewedDoorLink[] = [],
   explicitReviews: readonly ReviewedDoorLink[] = reviewed,
+  matcher: DoorOwnerMatcher = { mode: "legacy" },
 ): DoorReview[] {
   const auto = roomPortals(rooms, doors);
   return doors.map((door) => {
-    const candidates = doorCandidates(rooms, door).map((r) => r.key),
+    const native =
+      matcher.mode === "native-cell"
+        ? nativeCellDoorOwners(rooms, door, matcher.cells, matcher)
+        : undefined;
+    const candidates = doorCandidates(rooms, door, matcher).map((r) => r.key),
       override = reviewed.find(
         (l) => l.doorId === door.id && l.levelId === rooms[0]?.levelId,
       );
+    const legacy = auto.find((p) => p.doorId === door.id);
+    const sameRooms =
+      !!legacy &&
+      !!native?.rooms &&
+      [...legacy.rooms].sort().join("\n") ===
+        [...native.rooms].sort().join("\n");
+    // Agreement keeps the legacy portal verbatim (order and points).
+    const nativePortal = native?.rooms
+      ? sameRooms
+        ? legacy
+        : nativeCellDoorPortal(rooms, door, native.rooms)
+      : undefined;
+    const conflict = !!legacy && !!nativePortal && !sameRooms;
+    const overrideLegacy =
+      matcher.mode === "native-cell" && matcher.overrideLegacy === true;
+    // A reviewed link always wins. The native rule fills a door the legacy
+    // matcher left open; it replaces a disagreeing legacy match only on request.
     const portal = override
-      ? (reviewedDoorPortal(rooms, door, override) ?? undefined)
-      : auto.find((p) => p.doorId === door.id);
+      ? (reviewedDoorPortal(rooms, door, override, matcher) ?? undefined)
+      : conflict && !overrideLegacy
+        ? legacy
+        : (nativePortal ?? legacy);
     // A semantic link rejected upstream still represents an explicit ownership
     // decision. Automatic recovery must not replace that decision silently.
     const explicit = explicitReviews.some(
       (l) => l.doorId === door.id && l.levelId === rooms[0]?.levelId,
     );
-    return {
+    const review: DoorReview = {
       door,
       candidates,
       portal,
@@ -305,6 +567,14 @@ export function directoryDoorReviews(
           ? "ambiguous"
           : "unmatched",
     };
+    if (native)
+      review.nativeOwners = {
+        ...native,
+        decided: !override && !!nativePortal && portal === nativePortal,
+        conflict,
+        legacyRooms: legacy?.rooms,
+      };
+    return review;
   });
 }
 
