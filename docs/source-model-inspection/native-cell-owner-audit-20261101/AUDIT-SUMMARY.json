@@ -1,0 +1,949 @@
+{
+ "format": "native-cell-door-owner-audit-v1",
+ "diagnosticOnly": true,
+ "rule": "Each door side owner is the nearest room by outline (0 when inside the outer ring and outside its holes) among the room keys of the native cell containing the probe point at footprint depth + {0.25, 0.5, 1, 1.5} ft along the unit normal (first step that lands in a cell). Decides only for two different cells with two different, walkable, untied owners; otherwise the legacy owners stand.",
+ "inputs": {
+  "graphCompactSha256": "3191adf5f2c9f6ed94c8a9b3b9336feaef2fbc6a32eb96d50bbd99b898675e1f",
+  "level-1399969.json": "e0b623c75b18b1735cfb5f9f54237b958906f037e9974056a7312837abd70623",
+  "level-1425915.json": "fd18dd16919009a98d9a9a26f6271455c8237141acbb76c17ab291bdd02bd169",
+  "level-1450417.json": "31d15509d39336950106adcbde6573cd968e1a802f553e3b81cc43698ab6049a",
+  "level-1466293.json": "f6c217ba110c1a5830817ca23e9b1975352766bc1a6c7d749f91c2d1cf284c69",
+  "level-1487353.json": "5d5d753376fba917dbcd91bb06cdcbe070606859f87c2575fb24d28ca7ace723",
+  "level-1487816.json": "b4143ce6d171403c89a4fd377966a1d5c6750fd6178ca385e373ab29cf26c782",
+  "level-2295121.json": "3316ce229e28f5d575bde25a89f39fb29c469277dddd4a5fd52776bc71e232b1",
+  "level-311.json": "574c07b85cf5fa01a4caf981739b2467738b984d96c25bb7d148d4cda873a522",
+  "level-400176.json": "dc22119f6552bb4967fef6a179d369c831ca89373442eb20dbac9cdc182e0dea",
+  "level-402367.json": "c151ee83af795f4969decef822528c3bc7d870afcf64294f1054f0c8751097fc",
+  "level-407620.json": "4ca08a85e6c3ab1ad8acd9791e830acd7f284e57bd6ef91bafb40a513d214dea",
+  "level-694.json": "92c364db445a020b63f6b01406fa8dda77c334a08a10166f435d2a1d646442c0",
+  "nativeDoorSidesSha256": "02d4213ae5b4160b1779e8e946863203fc533519470cb9be0071b6489b0d6c86"
+ },
+ "doors": 1899,
+ "categories": {
+  "ambiguous:new-native-pair": 5,
+  "ambiguous:unresolved:same-cell": 1,
+  "connected:CHANGE": 2,
+  "connected:agree": 1300,
+  "connected:retained-legacy:native-pair:no-decision": 1,
+  "connected:retained-legacy:one-side": 23,
+  "connected:retained-legacy:same-cell": 293,
+  "unmatched:new-native-pair": 13,
+  "unmatched:unresolved:missing-threshold": 3,
+  "unmatched:unresolved:native-pair": 28,
+  "unmatched:unresolved:no-cell": 39,
+  "unmatched:unresolved:one-side": 150,
+  "unmatched:unresolved:same-cell": 41
+ },
+ "connected": {
+  "total": 1619,
+  "agree": 1300,
+  "change": 2,
+  "retainedLegacy": 317
+ },
+ "pythonSideCellCrossCheck": {
+  "compared": 1896,
+  "note": "NATIVE-DOOR-SIDES rows omit the 1,303 agreeing connected doors.",
+  "mismatches": 0,
+  "examples": []
+ },
+ "defaultPolicyOutcomeAgainstSavedOwners": {
+  "note": "Default fill-only policy: a saved connected door keeps its owners; a pure-rule disagreement is reported as a conflict. Saved unmatched/ambiguous doors with a native pair would be filled.",
+  "connectedOwnersChanged": 0,
+  "connectedConflictsReported": 2,
+  "unmatchedOrAmbiguousFilled": 18
+ },
+ "codePaths": {
+  "defaultFillOnly": {
+   "doors": 1899,
+   "legacyConnected": 1592,
+   "nativeConnected": 1623,
+   "portalChanged": 31,
+   "legacyConnectedLost": 0,
+   "legacyConnectedOwnerChanged": 0,
+   "conflictsReported": 1,
+   "changedWithoutNativeDecision": 0,
+   "changes": [
+    {
+     "door": 754072,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "05-111 Office",
+      "07-751 Circulation"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "07-751 Circulation",
+      "05-111 Office",
+      "05-117 Circulation"
+     ]
+    },
+    {
+     "door": 2427810,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "07-163 Corridor",
+      "07-168 Office"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "07-163 Corridor",
+      "07-168 Office"
+     ]
+    },
+    {
+     "door": 1025528,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "04-107 Fish Tank Lab",
+      "04-109 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "04-107 Fish Tank Lab"
+     ]
+    },
+    {
+     "door": 621887,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "07-309 Vestibule",
+      "07-305 Office"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": []
+    },
+    {
+     "door": 1951047,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "Reviewed Agora circulation",
+      "07-180 Multi Purpose Circulation Space and Hall"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "Reviewed Agora circulation",
+      "07-180 Multi Purpose Circulation Space and Hall"
+     ]
+    },
+    {
+     "door": 1779388,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-313 Soundproof Vestibule",
+      "06-314 Projection"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-313 Soundproof Vestibule"
+     ]
+    },
+    {
+     "door": 2369239,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-396 Washroom",
+      "06-366 Lounge"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "06-398 Washroom",
+      "06-368 Corridor",
+      "06-396 Washroom",
+      "06-366 Lounge"
+     ]
+    },
+    {
+     "door": 1779216,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-397 Meeting Room",
+      "06-368 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "06-397 Meeting Room",
+      "06-368 Corridor"
+     ]
+    },
+    {
+     "door": 1779618,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-342 Office",
+      "06-309 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-309 Corridor"
+     ]
+    },
+    {
+     "door": 2471813,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-1300 Vestibule",
+      "10-1302 Atrium"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "10-1300 Vestibule"
+     ]
+    },
+    {
+     "door": 2018558,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "08-105 Corridor",
+      "08-120 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-105 Corridor"
+     ]
+    },
+    {
+     "door": 1515126,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "08-127 Lab",
+      "08-128 Prep Room / Research Office"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-128 Prep Room / Research Office"
+     ]
+    },
+    {
+     "door": 2293604,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-1500 Vestibule",
+      "10-1304 Atrium"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-1312 Atrium",
+      "10-1304 Atrium",
+      "10-1500 Vestibule"
+     ]
+    },
+    {
+     "door": 1501504,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-S102 Stair",
+      "10-1580 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-S102 Stair",
+      "10-1580 Corridor"
+     ]
+    },
+    {
+     "door": 2042699,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-322 Lab",
+      "08-366 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-322 Lab",
+      "08-366 Corridor"
+     ]
+    },
+    {
+     "door": 2042840,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-323 Spill Kit",
+      "08-305 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-323 Spill Kit",
+      "08-305 Corridor"
+     ]
+    },
+    {
+     "door": 2215448,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "10-3604 Vestibule",
+      "Atrium crosswalk"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-3604 Vestibule",
+      "Atrium crosswalk"
+     ]
+    },
+    {
+     "door": 2042015,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-340 Corridor",
+      "08-302 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-340 Corridor"
+     ]
+    },
+    {
+     "door": 2215409,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "10-3514 Comm",
+      "10-3600 Corridor"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-3600 Corridor",
+      "10-3514 Comm",
+      "10-3512 Corridor"
+     ]
+    },
+    {
+     "door": 2110601,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "04-308 Soils Research Lab",
+      "04-302 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-308 Soils Research Lab",
+      "04-302 Corridor"
+     ]
+    },
+    {
+     "door": 2112703,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "04-302 Corridor",
+      "08-360 Link"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-302 Corridor",
+      "08-360 Link"
+     ]
+    },
+    {
+     "door": 2035604,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-310 Corridor",
+      "08-307 Office"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-310 Corridor",
+      "08-307 Office"
+     ]
+    },
+    {
+     "door": 2465283,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "08-437 Waiting Room",
+      "08-402 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-437 Waiting Room"
+     ]
+    },
+    {
+     "door": 2147550,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "04-407 UAV Sensor and Meteorological Equip Lab",
+      "04-402 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-407 UAV Sensor and Meteorological Equip Lab",
+      "04-402 Corridor"
+     ]
+    },
+    {
+     "door": 2051009,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "08-422 Spill Kit",
+      "08-405 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-422 Spill Kit"
+     ]
+    },
+    {
+     "door": 1352575,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "06-S204 Stair 4",
+      "06-213 Lecture Theatre"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-213 Lecture Theatre"
+     ]
+    },
+    {
+     "door": 1499415,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "10-2032 Artificial Intelligence Lab",
+      "10-2010 Corridor"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-2010 Corridor",
+      "10-2026 Corridor",
+      "10-2032 Artificial Intelligence Lab"
+     ]
+    },
+    {
+     "door": 1499570,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "10-2518 Comm",
+      "10-2520 Coffee"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-2518 Comm",
+      "10-2520 Coffee"
+     ]
+    },
+    {
+     "door": 1996180,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "08-241 Office",
+      "08-240 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-241 Office",
+      "08-240 Corridor"
+     ]
+    },
+    {
+     "door": 1998631,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "08-231 Sediment and Soils Lab",
+      "08-230 Sediment and Soils Lab"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-230 Sediment and Soils Lab"
+     ]
+    },
+    {
+     "door": 1968823,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "09-350 Corridor",
+      "09-S302 Stair"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "09-350 Corridor"
+     ]
+    }
+   ]
+  },
+  "overrideLegacy": {
+   "doors": 1899,
+   "legacyConnected": 1592,
+   "nativeConnected": 1623,
+   "portalChanged": 32,
+   "legacyConnectedLost": 0,
+   "legacyConnectedOwnerChanged": 1,
+   "conflictsReported": 1,
+   "changedWithoutNativeDecision": 0,
+   "changes": [
+    {
+     "door": 754072,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "05-111 Office",
+      "07-751 Circulation"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "07-751 Circulation",
+      "05-111 Office",
+      "05-117 Circulation"
+     ]
+    },
+    {
+     "door": 2427810,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "07-163 Corridor",
+      "07-168 Office"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "07-163 Corridor",
+      "07-168 Office"
+     ]
+    },
+    {
+     "door": 1025528,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "04-107 Fish Tank Lab",
+      "04-109 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "04-107 Fish Tank Lab"
+     ]
+    },
+    {
+     "door": 621887,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "07-309 Vestibule",
+      "07-305 Office"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": []
+    },
+    {
+     "door": 1951047,
+     "levelId": 311,
+     "legacy": null,
+     "native": [
+      "Reviewed Agora circulation",
+      "07-180 Multi Purpose Circulation Space and Hall"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "Reviewed Agora circulation",
+      "07-180 Multi Purpose Circulation Space and Hall"
+     ]
+    },
+    {
+     "door": 1779388,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-313 Soundproof Vestibule",
+      "06-314 Projection"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-313 Soundproof Vestibule"
+     ]
+    },
+    {
+     "door": 2369239,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-396 Washroom",
+      "06-366 Lounge"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "06-398 Washroom",
+      "06-368 Corridor",
+      "06-396 Washroom",
+      "06-366 Lounge"
+     ]
+    },
+    {
+     "door": 1779216,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-397 Meeting Room",
+      "06-368 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "06-397 Meeting Room",
+      "06-368 Corridor"
+     ]
+    },
+    {
+     "door": 1779618,
+     "levelId": 1487353,
+     "legacy": null,
+     "native": [
+      "06-342 Office",
+      "06-309 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-309 Corridor"
+     ]
+    },
+    {
+     "door": 2471813,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-1300 Vestibule",
+      "10-1302 Atrium"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "10-1300 Vestibule"
+     ]
+    },
+    {
+     "door": 2018558,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "08-105 Corridor",
+      "08-120 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-105 Corridor"
+     ]
+    },
+    {
+     "door": 1515126,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "08-127 Lab",
+      "08-128 Prep Room / Research Office"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-128 Prep Room / Research Office"
+     ]
+    },
+    {
+     "door": 2293604,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-1500 Vestibule",
+      "10-1304 Atrium"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-1312 Atrium",
+      "10-1304 Atrium",
+      "10-1500 Vestibule"
+     ]
+    },
+    {
+     "door": 1501504,
+     "levelId": 1487816,
+     "legacy": null,
+     "native": [
+      "10-S102 Stair",
+      "10-1580 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-S102 Stair",
+      "10-1580 Corridor"
+     ]
+    },
+    {
+     "door": 2042699,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-322 Lab",
+      "08-366 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-322 Lab",
+      "08-366 Corridor"
+     ]
+    },
+    {
+     "door": 2042840,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-323 Spill Kit",
+      "08-305 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-323 Spill Kit",
+      "08-305 Corridor"
+     ]
+    },
+    {
+     "door": 2215448,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "10-3604 Vestibule",
+      "Atrium crosswalk"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-3604 Vestibule",
+      "Atrium crosswalk"
+     ]
+    },
+    {
+     "door": 2042015,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-340 Corridor",
+      "08-302 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-340 Corridor"
+     ]
+    },
+    {
+     "door": 2215409,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "10-3514 Comm",
+      "10-3600 Corridor"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-3600 Corridor",
+      "10-3514 Comm",
+      "10-3512 Corridor"
+     ]
+    },
+    {
+     "door": 2110601,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "04-308 Soils Research Lab",
+      "04-302 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-308 Soils Research Lab",
+      "04-302 Corridor"
+     ]
+    },
+    {
+     "door": 2112703,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "04-302 Corridor",
+      "08-360 Link"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-302 Corridor",
+      "08-360 Link"
+     ]
+    },
+    {
+     "door": 2035604,
+     "levelId": 400176,
+     "legacy": null,
+     "native": [
+      "08-310 Corridor",
+      "08-307 Office"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-310 Corridor",
+      "08-307 Office"
+     ]
+    },
+    {
+     "door": 2465283,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "08-437 Waiting Room",
+      "08-402 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-437 Waiting Room"
+     ]
+    },
+    {
+     "door": 2147550,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "04-407 UAV Sensor and Meteorological Equip Lab",
+      "04-402 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "04-407 UAV Sensor and Meteorological Equip Lab",
+      "04-402 Corridor"
+     ]
+    },
+    {
+     "door": 2051009,
+     "levelId": 402367,
+     "legacy": null,
+     "native": [
+      "08-422 Spill Kit",
+      "08-405 Corridor"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-422 Spill Kit"
+     ]
+    },
+    {
+     "door": 1513453,
+     "levelId": 694,
+     "legacy": [
+      "08-211 Research Office",
+      "08-210 Corridor"
+     ],
+     "native": [
+      "08-202 Corridor",
+      "08-210 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-211 Research Office",
+      "08-210 Corridor"
+     ]
+    },
+    {
+     "door": 1352575,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "06-S204 Stair 4",
+      "06-213 Lecture Theatre"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "06-213 Lecture Theatre"
+     ]
+    },
+    {
+     "door": 1499415,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "10-2032 Artificial Intelligence Lab",
+      "10-2010 Corridor"
+     ],
+     "savedState": "ambiguous",
+     "savedOwners": [
+      "10-2010 Corridor",
+      "10-2026 Corridor",
+      "10-2032 Artificial Intelligence Lab"
+     ]
+    },
+    {
+     "door": 1499570,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "10-2518 Comm",
+      "10-2520 Coffee"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "10-2518 Comm",
+      "10-2520 Coffee"
+     ]
+    },
+    {
+     "door": 1996180,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "08-241 Office",
+      "08-240 Corridor"
+     ],
+     "savedState": "connected",
+     "savedOwners": [
+      "08-241 Office",
+      "08-240 Corridor"
+     ]
+    },
+    {
+     "door": 1998631,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "08-231 Sediment and Soils Lab",
+      "08-230 Sediment and Soils Lab"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "08-230 Sediment and Soils Lab"
+     ]
+    },
+    {
+     "door": 1968823,
+     "levelId": 694,
+     "legacy": null,
+     "native": [
+      "09-350 Corridor",
+      "09-S302 Stair"
+     ],
+     "savedState": "unmatched",
+     "savedOwners": [
+      "09-350 Corridor"
+     ]
+    }
+   ]
+  }
+ },
+ "rowsOmitted": "Per-door rows are omitted here; regenerate with scripts/audit-native-cell-door-owners.ts."
+}
