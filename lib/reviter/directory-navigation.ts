@@ -78,6 +78,16 @@ export type DoorReview = {
     /** Native owners disagree with the legacy automatic match. */
     conflict: boolean;
     legacyRooms?: [string, string];
+    /** An explicit ownership review exists for this door, so the native rule
+     * did not decide it. "accepted": the reviewed link was applied as written.
+     * "rejected": the link was reviewed but not accepted upstream; the door
+     * keeps the legacy outcome and the rejected record (rooms and any
+     * semantic source identity) is carried here unchanged. */
+    explicitReview?: {
+      status: "accepted" | "rejected";
+      link: ReviewedDoorLink;
+      reason: string;
+    };
   };
 };
 
@@ -245,16 +255,26 @@ export type NativeDoorCell = {
  * nearest room (by outline) inside the native cell found just past that face
  * of the door footprint along its normal. It only decides when it finds two
  * different cells with two different, walkable, untied owners. Explicit
- * reviewed links always take precedence. By default it only fills doors the
+ * reviews always take precedence: an accepted reviewed link is applied as
+ * written, and a door whose review was rejected upstream (present in
+ * `explicitReviews`, absent from the accepted links) is never filled or
+ * re-owned by the native rule. By default it only fills doors the
  * legacy matcher left without a portal; a disagreement with an existing legacy
  * portal is reported as a conflict and the legacy owners stand, because a
  * merged native cell can omit the real room (audit: doors 1513453, 1630256). */
 export type NativeCellOwnerOptions = {
   /** Feet beyond each footprint face; first step that lands in a cell wins. */
   stepsFeet?: readonly number[];
-  /** Bound on the probe-to-owner-outline gap. Defaults to the legacy 2 ft
-   * candidate reach so enabling the mode never widens ownership; raise it only
-   * with per-door review. */
+  /** Bound on the gap from the side probe (footprint depth + the first step
+   * that lands in a cell, along the normal) to the owner outline, in feet. It
+   * shares the number 2 with the legacy reach but not its region: legacy
+   * measures from the door centre and also requires the nearest outline point
+   * within the door's half-extents + 0.6 ft in X and Y, while this bound
+   * starts beyond the door face and has no XY envelope. The native mode can
+   * therefore accept an outline legacy rejects (e.g. 2.1 ft from a thin-wall
+   * door centre is 1.75 ft from the 0.25 ft probe); along the normal it reaches
+   * up to depth + step + 2 ft from the centre. Lower it, or raise it only with
+   * per-door review. */
   maxOwnerGapFeet?: number;
 };
 export type DoorOwnerMatcher =
@@ -547,18 +567,24 @@ export function directoryDoorReviews(
     const conflict = !!legacy && !!nativePortal && !sameRooms;
     const overrideLegacy =
       matcher.mode === "native-cell" && matcher.overrideLegacy === true;
-    // A reviewed link always wins. The native rule fills a door the legacy
-    // matcher left open; it replaces a disagreeing legacy match only on request.
-    const portal = override
-      ? (reviewedDoorPortal(rooms, door, override, matcher) ?? undefined)
-      : conflict && !overrideLegacy
-        ? legacy
-        : (nativePortal ?? legacy);
     // A semantic link rejected upstream still represents an explicit ownership
     // decision. Automatic recovery must not replace that decision silently.
-    const explicit = explicitReviews.some(
+    const explicitLink = explicitReviews.find(
       (l) => l.doorId === door.id && l.levelId === rooms[0]?.levelId,
     );
+    const explicit = !!explicitLink;
+    const rejected = !override && explicit;
+    // Explicit reviews take precedence over automatic native matching: an
+    // accepted link wins as written, and a rejected one keeps the legacy
+    // outcome (native owners never fill or re-own it). Otherwise the native
+    // rule fills a door the legacy matcher left open; it replaces a
+    // disagreeing legacy match only on request. In legacy mode `nativePortal`
+    // is undefined, so every branch below yields the unchanged legacy result.
+    const portal = override
+      ? (reviewedDoorPortal(rooms, door, override, matcher) ?? undefined)
+      : rejected || (conflict && !overrideLegacy)
+        ? legacy
+        : (nativePortal ?? legacy);
     const review: DoorReview = {
       door,
       candidates,
@@ -573,10 +599,25 @@ export function directoryDoorReviews(
     if (native)
       review.nativeOwners = {
         ...native,
-        decided: !override && !!nativePortal && portal === nativePortal,
+        decided:
+          !override && !explicit && !!nativePortal && portal === nativePortal,
         conflict,
         legacyRooms: legacy?.rooms,
       };
+    if (native && (override || explicitLink))
+      review.nativeOwners!.explicitReview = override
+        ? {
+            status: "accepted",
+            link: override,
+            reason:
+              "An accepted reviewed link decides this door; native-cell matching does not apply.",
+          }
+        : {
+            status: "rejected",
+            link: explicitLink!,
+            reason:
+              "An explicit ownership review for this door was not accepted upstream; native-cell matching must not replace it, so the legacy outcome stands until the review is corrected.",
+          };
     return review;
   });
 }
