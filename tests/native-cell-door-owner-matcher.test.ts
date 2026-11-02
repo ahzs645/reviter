@@ -163,9 +163,9 @@ test("default behaviour is unchanged: same output, no native fields", () => {
   assert.ok(before.every((r) => !("nativeOwners" in r)));
 });
 
-test("the default owner gap is fail-closed at the legacy 2 ft reach", () => {
+test("the default owner gap refuses an outline more than 2 ft from the side probe", () => {
   // The office outline starts 2.4 ft past the probe: native cells pair the
-  // sides, but the default bound refuses to decide rather than widen reach.
+  // sides, but the default bound refuses to decide.
   const rooms = [room("corridor", rect(0, 0, 9.9, 10)), room("office", rect(12.75, 0, 20, 10))];
   const cells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office"], rect(10.1, 0, 20, 10))];
   assert.equal(NATIVE_DOOR_OWNER_MAX_GAP_FEET, 2);
@@ -176,4 +176,123 @@ test("the default owner gap is fail-closed at the legacy 2 ft reach", () => {
   assert.equal(review!.state, "unmatched");
   const widened = nativeCellDoorOwners(rooms, door(), cells, { maxOwnerGapFeet: 3 });
   assert.deepEqual(widened.rooms, ["corridor", "office"]);
+});
+
+const shortOutlines = () => [room("corridor", rect(0, 0, 8.5, 10)), room("office", rect(11.5, 0, 20, 10))];
+const wallCells = () => [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office"], rect(10.1, 0, 20, 10))];
+const semanticEvidence = {
+  sourceModelSha256: "a".repeat(64),
+  exporter: "fixture",
+  nativeDoorUniqueId: "door-7-uid",
+  phaseUniqueId: "phase-uid",
+  fromNativeRoomUniqueId: "corridor-uid",
+  toNativeRoomUniqueId: "office-uid",
+};
+
+test("a rejected explicit review stays unmatched in native mode, with its record preserved", () => {
+  const rooms = shortOutlines(), cells = wallCells();
+  // Rejected upstream: absent from the accepted links, kept in explicitReviews.
+  const rejected = { doorId: 7, levelId: 1, rooms: ["corridor", "office"] as [string, string], semanticEvidence };
+  const [legacy] = directoryDoorReviews(rooms, [door()], [], [rejected]);
+  assert.equal(legacy!.state, "unmatched");
+  assert.equal(legacy!.portal, undefined);
+  assert.equal(legacy!.hasExplicitReview, true);
+  assert.ok(!("nativeOwners" in legacy!));
+  for (const matcher of [native(cells), { ...native(cells), overrideLegacy: true }]) {
+    const [review] = directoryDoorReviews(rooms, [door()], [], [rejected], matcher);
+    assert.equal(review!.state, "unmatched");
+    assert.equal(review!.portal, undefined);
+    assert.equal(review!.hasExplicitReview, true);
+    assert.equal(review!.nativeOwners!.decided, false);
+    // The native proposal is still reported as evidence, not applied.
+    assert.deepEqual(review!.nativeOwners!.rooms, ["corridor", "office"]);
+    assert.equal(review!.nativeOwners!.explicitReview!.status, "rejected");
+    assert.deepEqual(review!.nativeOwners!.explicitReview!.link, rejected);
+    assert.equal(review!.nativeOwners!.explicitReview!.link.semanticEvidence!.nativeDoorUniqueId, "door-7-uid");
+    assert.match(review!.nativeOwners!.explicitReview!.reason, /not accepted upstream/);
+    // Apart from the native diagnostic, the review equals the legacy one.
+    const strip = (r: object) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== "nativeOwners" && k !== "candidates"));
+    assert.deepEqual(strip(review!), strip(legacy!));
+  }
+  // Another door on the same call without a review is still filled.
+  const other = door(8, 4, 7, 10);
+  const reviews = directoryDoorReviews(rooms, [door(), other], [], [rejected], native(cells));
+  assert.equal(reviews[0]!.state, "unmatched");
+  assert.equal(reviews[1]!.state, "connected");
+  assert.equal(reviews[1]!.nativeOwners!.decided, true);
+  assert.equal(reviews[1]!.nativeOwners!.explicitReview, undefined);
+});
+
+test("a rejected review keeps the legacy outcome even where native owners agree or conflict", () => {
+  // Touching outlines: legacy connects, native agrees. Without a review the
+  // native rule claims the decision; with a rejected review it does not.
+  const touching = [room("corridor", rect(0, 0, 10, 10)), room("office", rect(10, 0, 20, 10)), room("store", rect(10, 6.9, 20, 10))];
+  const d = door(3, 4, 6.5);
+  const rejected = { doorId: 3, levelId: 1, rooms: ["corridor", "store"] as [string, string] };
+  const [legacy] = directoryDoorReviews(touching, [d], [], [rejected]);
+  assert.ok(legacy!.portal, "legacy matches this door by proximity (unchanged behaviour)");
+  const agreeCells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office", "store"], rect(10.1, 0, 20, 10))];
+  const [agree] = directoryDoorReviews(touching, [d], [], [rejected], native(agreeCells));
+  assert.deepEqual(agree!.portal, legacy!.portal);
+  assert.equal(agree!.nativeOwners!.decided, false);
+  assert.equal(agree!.nativeOwners!.explicitReview!.status, "rejected");
+  // overrideLegacy never lets the native rule re-own a rejected door.
+  const mergedCells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["store"], rect(10.1, 0, 20, 10))];
+  const [forced] = directoryDoorReviews(touching, [d], [], [rejected], { mode: "native-cell", cells: mergedCells, overrideLegacy: true });
+  assert.deepEqual(forced!.portal, legacy!.portal);
+  assert.equal(forced!.nativeOwners!.decided, false);
+  assert.equal(forced!.nativeOwners!.conflict, true);
+});
+
+test("an accepted review is applied as written in native mode", () => {
+  const rooms = [room("corridor", rect(0, 0, 10, 10)), room("office", rect(10, 0, 20, 10)), room("store", rect(10, 6.9, 20, 10))];
+  const d = door(3, 4, 6.5);
+  // Native cells would pick the store; the accepted review names the office.
+  const mergedCells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["store"], rect(10.1, 0, 20, 10))];
+  const link = { doorId: 3, levelId: 1, rooms: ["office", "corridor"] as [string, string], semanticEvidence };
+  const [legacy] = directoryDoorReviews(rooms, [d], [link], [link]);
+  for (const matcher of [native(mergedCells), { ...native(mergedCells), overrideLegacy: true }]) {
+    const [review] = directoryDoorReviews(rooms, [d], [link], [link], matcher);
+    assert.equal(review!.state, "connected");
+    assert.deepEqual(review!.portal, legacy!.portal);
+    assert.deepEqual(review!.portal!.rooms, ["office", "corridor"], "order as reviewed");
+    assert.equal(review!.portal!.reviewed, true);
+    assert.equal(review!.nativeOwners!.decided, false);
+    assert.equal(review!.nativeOwners!.explicitReview!.status, "accepted");
+    assert.deepEqual(review!.nativeOwners!.explicitReview!.link, link);
+  }
+  // Where legacy outlines stop short, an accepted link naming the native
+  // owners is applied (the owners are candidates) and marked reviewed.
+  const accepted = { doorId: 7, levelId: 1, rooms: ["office", "corridor"] as [string, string] };
+  const [short] = directoryDoorReviews(shortOutlines(), [door()], [accepted], [accepted], native(wallCells()));
+  assert.equal(short!.state, "connected");
+  assert.deepEqual(short!.portal!.rooms, ["office", "corridor"]);
+  assert.equal(short!.portal!.reviewed, true);
+  assert.equal(short!.nativeOwners!.decided, false);
+});
+
+test("the native gap bound is measured from the side probe, not the door centre", () => {
+  // Thin wall: door centre x = 10, faces 9.9/10.1, half-width 0.1. The office
+  // outline is 2.1 ft from the door centre (and 2.0 ft past the face).
+  const rooms = [room("corridor", rect(0, 0, 9.9, 10)), room("office", rect(12.1, 0, 20, 10))];
+  const cells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office"], rect(10.1, 0, 20, 10))];
+  // Legacy requires the outline within 2 ft of the centre AND within
+  // half-width + 0.6 = 0.7 ft in X: it rejects the office.
+  assert.deepEqual(doorCandidates(rooms, door()).map((r) => r.key), ["corridor"]);
+  const [legacy] = directoryDoorReviews(rooms, [door()]);
+  assert.equal(legacy!.state, "unmatched");
+  // Native probes at 10.1 + 0.25 = 10.35 and finds the office 1.75 ft away,
+  // inside the 2 ft default: equal numbers, different regions, so the native
+  // mode widens reach here.
+  const [review] = directoryDoorReviews(rooms, [door()], [], [], native(cells));
+  assert.equal(review!.state, "connected");
+  assert.deepEqual(review!.portal!.rooms, ["corridor", "office"]);
+  assert.ok(Math.abs(review!.nativeOwners!.sides[1].ownerGapFeet! - 1.75) < 1e-9);
+  assert.ok(Math.abs(review!.nativeOwners!.sides[1].probeFeet![0] - 10.35) < 1e-9);
+  // Effective normal reach from the centre is depth + first step + 2 ft:
+  // 0.1 + 0.25 + 2 = 2.35 ft here. Just inside accepts, just outside refuses.
+  const at = (x: number) =>
+    directoryDoorReviews([room("corridor", rect(0, 0, 9.9, 10)), room("office", rect(x, 0, 20, 10))], [door()], [], [], native(cells))[0]!.state;
+  assert.equal(at(12.349), "connected");
+  assert.equal(at(12.351), "unmatched");
 });
