@@ -588,3 +588,25 @@ test('strict overhead fixture classification follows certified native slab plane
  data.nativeIndoorEnvelopes.levels=data.nativeIndoorEnvelopes.levels.filter(l=>l.elevationFeet===0);
  assert.ok(prepareNativeCirculationGeometry(model,data).geometry.fixtures?.some(f=>f.nativeElementId===140&&f.elevationFeet===0),'an unproved raised slab remains conservatively obstructive');
 });
+
+test("cell-route progress reporting is observational and ends at the complete cell count",async()=>{
+ const build=async()=>{
+  const {model,data}=setup();data.records=[owner("left",rect(1,1,9,9)),owner("right",rect(11,1,19,9))];
+  for(const [id,y0,y1]of[[110,0,4],[111,6,10]])model.elementBounds.push({elementId:id,categoryId:-2000011,solid:{start:{x:10,y:y0},end:{x:10,y:y1},thickness:.4,baseElevation:0,topElevation:10}} as never);
+  data.doors=[{id:"door",nativeElementId:115,hostWallNativeElementId:110,levelId:1,pointFeet:[10,5],footprintFeet:rect(9.7,4,10.3,6),normalFeet:[1,0],roomKeys:["left","right"],state:"connected"}];
+  data.nodes=[{id:"left-arrival",roomKey:"left",kind:"arrival",levelId:1,surfaceId:"left",pointFeet:[3,5,0]},{id:"left-portal",roomKey:"left",kind:"portal",levelId:1,surfaceId:"left",pointFeet:[9.85,5,0]},{id:"right-portal",roomKey:"right",kind:"portal",levelId:1,surfaceId:"right",pointFeet:[10.15,5,0]},{id:"right-arrival",roomKey:"right",kind:"arrival",levelId:1,surfaceId:"right",pointFeet:[17,5,0]}] as IndoorDataset["nodes"];
+  data.edges=[{id:"door",nativeElementId:115,kind:"door",from:"left-portal",to:"right-portal",roomKeys:["left","right"],enabled:true,pointsFeet:[[9.85,5,0],[10.15,5,0]],lengthMetres:.1,accessible:"unknown",evidence:"native"}];
+  data.walkingSupport={version:1,sourceModelSha256:data.source.modelSha256,floors:[{nativeElementId:100,elevationFeet:0,ringsFeet:[rect(0,0,20,10)]}]} as IndoorDataset["walkingSupport"];
+  await sourceEnvelopes(data);data.circulationGeometry=prepareNativeCirculationGeometry(model,data).geometry;
+  return data;
+ };
+ const plain=await build(),reported=await build(),events:{phase:string;done:number;total:number;added:number}[]=[];
+ const added=attachNativeCirculationCellRoutes(plain);
+ assert.equal(attachNativeCirculationCellRoutes(reported,e=>events.push(e)),added);
+ assert.equal(JSON.stringify(reported),JSON.stringify(plain),"a progress callback cannot change the dataset");
+ const cells=events.filter(e=>e.phase==="cells");
+ assert.deepEqual(cells.at(0),{phase:"cells",done:0,total:2,added:0});
+ assert.deepEqual(cells.at(-1),{phase:"cells",done:2,total:2,added:cells.at(-1)!.added});
+ const owners=events.filter(e=>e.phase==="owner-arrivals");
+ assert.ok(owners.length>=2&&owners.at(-1)!.done===owners.at(-1)!.total&&owners.at(-1)!.added===added);
+});
