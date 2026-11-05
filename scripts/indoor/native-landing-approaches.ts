@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { build } from "esbuild";
+import { canonicalValueSha256 } from "./canonical-value-digest.ts";
 import {
   planNativeApproaches,
   createNativeApproachEvaluator,
@@ -34,6 +35,7 @@ import type { IndoorDataset, IndoorEdge } from "../../lib/reviter/indoor-contrac
 import type { ConvertResult } from "../../lib/reviter/types.ts";
 import {
   createCheckpointBinding,
+  checkpointIdentity,
   hashFile,
   sha256,
   strictJson,
@@ -187,7 +189,14 @@ async function snapshot(directory: string, name: string, value: unknown) {
     await file?.close();
     await rm(temporary, { force: true });
   }
-  return { name, path, bytes: bytes.length };
+  // Representation-independent identity of the same value (see canonical-value-digest.ts).
+  let contentSha256: string | undefined;
+  try {
+    contentSha256 = canonicalValueSha256(value);
+  } catch {
+    contentSha256 = undefined;
+  }
+  return { name, path, bytes: bytes.length, contentSha256 };
 }
 export async function landingApproachBinding(model: ConvertResult, dataset: IndoorDataset, checkpointDir: string) {
   const inputDirectory = resolve(checkpointDir, "inputs");
@@ -205,9 +214,10 @@ export async function landingApproachBinding(model: ConvertResult, dataset: Indo
     resolve(root, "package-lock.json"),
   ];
   const binding = await createCheckpointBinding({
-    immutableInputs: inputs.map(({ name, path }) => ({ name, path })),
+    immutableInputs: inputs.map(({ name, path, contentSha256 }) => ({ name, path, contentSha256 })),
     algorithmFiles,
     algorithmVersion: LANDING_APPROACH_ALGORITHM + ":" + process.version,
+    reuseRoot: root,
   });
   return { binding, inputs, workerModule };
 }
@@ -325,11 +335,13 @@ export async function attachNativeCirculationResumable(
   {
     const dir = resolve(options.checkpointDir!);
     const { binding, workerModule } = await landingApproachBinding(model, dataset, dir);
-    bindingSha256 = binding.sha256;
+    // Lines and the file are keyed by the reuse identity: identical values and
+    // algorithm bytes reuse candidates even when V8 stored a number differently.
+    bindingSha256 = checkpointIdentity(binding);
     if (options.checkpointDir) {
       await mkdir(resolve(dir, "landing-approaches"), { recursive: true });
-      path = resolve(dir, "landing-approaches", binding.sha256 + ".jsonl");
-      const read = await readLandingApproachCheckpoint(path, binding.sha256);
+      path = resolve(dir, "landing-approaches", bindingSha256 + ".jsonl");
+      const read = await readLandingApproachCheckpoint(path, bindingSha256);
       cache = read.entries;
       receipt.ignoredCheckpointLines = read.ignored;
       options.onEvent?.(`Native landing approaches · ${cache.size} checked checkpoint candidates · ${read.ignored} ignored lines`);
