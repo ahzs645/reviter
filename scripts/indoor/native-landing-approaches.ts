@@ -17,10 +17,11 @@ import { serialize } from "node:v8";
 import { mkdir, open, link, rm, readFile } from "node:fs/promises";
 import { Worker, type ResourceLimits } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { resolve, relative, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { build } from "esbuild";
 import { canonicalValueSha256 } from "./canonical-value-digest.ts";
+import { createLandingPlaneScope, landingPairPlane, LANDING_SCOPE_VERSION, type LandingPlaneScope, type LandingScopedCollections } from "./landing-approach-scope.ts";
 import {
   planNativeApproaches,
   createNativeApproachEvaluator,
@@ -60,6 +61,24 @@ export type LandingApproachOptions = {
   onEvent?: (message: string) => void;
   /** Test hook: evaluated after each committed wave; throwing simulates a crash. */
   afterWave?: (wave: number) => void | Promise<void>;
+  /** Prototype (in-process only): key each candidate on its plane scope
+   * (landing-approach-scope.ts) so unchanged pairs survive unrelated input
+   * changes. Off by default. */
+  scopedReuse?: boolean;
+  /** Test hooks for the scoped prototype: replace the scoped collection
+   * declarations, or simulate an implementation change. */
+  scopeCollections?: LandingScopedCollections;
+  algorithmVersionSuffix?: string;
+};
+export type ScopedLandingReceipt = {
+  implementationSha256: string;
+  planes: { elevationFeet: number; scopeSha256: string; violations: number; counts: LandingPlaneScope["counts"] }[];
+  /** Fresh pairs evaluated violation-free on their plane scope. */
+  scopedEvaluated: number;
+  /** Fresh pairs evaluated on complete inputs after a scope violation. */
+  completeEvaluated: number;
+  reusedScoped: number;
+  reusedComplete: number;
 };
 export type LandingApproachReceipt = {
   format: "reviter-native-landing-approach-checkpoints";
@@ -76,6 +95,7 @@ export type LandingApproachReceipt = {
   waveSize: number;
   elapsedMs: number;
   workerHeapUsedBytesAfterInit?: number[];
+  scoped?: ScopedLandingReceipt;
 };
 
 /** The walking-region query key for one pair (portal state or plain plane). */
@@ -198,7 +218,7 @@ async function snapshot(directory: string, name: string, value: unknown) {
   }
   return { name, path, bytes: bytes.length, contentSha256 };
 }
-export async function landingApproachBinding(model: ConvertResult, dataset: IndoorDataset, checkpointDir: string) {
+export async function landingApproachBinding(model: ConvertResult, dataset: IndoorDataset, checkpointDir: string, algorithmVersionSuffix = "") {
   const inputDirectory = resolve(checkpointDir, "inputs");
   await mkdir(inputDirectory, { recursive: true });
   const inputs = [await snapshot(inputDirectory, "native-model", model), await snapshot(inputDirectory, "landing-dataset", dataset)];
@@ -216,7 +236,7 @@ export async function landingApproachBinding(model: ConvertResult, dataset: Indo
   const binding = await createCheckpointBinding({
     immutableInputs: inputs.map(({ name, path, contentSha256 }) => ({ name, path, contentSha256 })),
     algorithmFiles,
-    algorithmVersion: LANDING_APPROACH_ALGORITHM + ":" + process.version,
+    algorithmVersion: LANDING_APPROACH_ALGORITHM + ":" + process.version + algorithmVersionSuffix,
     reuseRoot: root,
   });
   return { binding, inputs, workerModule };
@@ -317,6 +337,7 @@ export async function attachNativeCirculationResumable(
   const waveSize = options.waveSize ?? 2 * workers;
   if (!Number.isSafeInteger(waveSize) || waveSize < 1) throw Error("Invalid landing wave size");
   const receipt: LandingApproachReceipt = { format: "reviter-native-landing-approach-checkpoints", version: 1, pairs: 0, evaluated: 0, reused: 0, speculativeUnused: 0, ignoredCheckpointLines: 0, waves: 0, workers, waveSize, elapsedMs: 0 };
+  if (options.scopedReuse) return attachNativeCirculationScoped(model, dataset, options, receipt, started);
   if (!options.checkpointDir && workers === 1) {
     // Unchanged synchronous behaviour.
     const result = attachNativeCirculation(model, dataset, options.onProgress);
@@ -392,4 +413,134 @@ export async function attachNativeCirculationResumable(
   } finally {
     await pool?.close();
   }
+}
+
+type ScopedEntry = { format: "reviter-landing-approach-scoped"; version: 1; implementationSha256: string; key: string; scope: "plane" | "complete"; candidateSha256: string; candidate: NativeApproachCandidate };
+/** Read intact scoped lines for one implementation; torn or foreign lines are ignored. */
+export async function readScopedLandingCheckpoint(path: string, implementationSha256: string) {
+  const entries = new Map<string, NativeApproachCandidate>();
+  let ignored = 0, text = "";
+  try {
+    text = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  for (const line of text.split("\n")) {
+    if (!line) continue;
+    try {
+      const e = JSON.parse(line) as ScopedEntry;
+      if (e.format !== "reviter-landing-approach-scoped" || e.version !== 1 || e.implementationSha256 !== implementationSha256 ||
+        !/^[a-f0-9]{64}$/.test(e.key) || !["plane", "complete"].includes(e.scope) || !Array.isArray(e.candidate?.regionDiagnostics) ||
+        sha256(strictJson(e.candidate as unknown as JsonValue)) !== e.candidateSha256) {
+        ignored++;
+        continue;
+      }
+      entries.set(e.key, e.candidate);
+    } catch {
+      ignored++;
+    }
+  }
+  return { entries, ignored };
+}
+
+/** Scoped reuse prototype. The implementation identity binds every resolved
+ * algorithm file by content (no input bytes). A plane-scoped key binds that
+ * identity, the exact pair key and the plane scope digest; a complete key
+ * binds the identity, the pair key and the complete input identity. A pair is
+ * reused only under one of those exact keys. Ordered replay is unchanged. */
+async function attachNativeCirculationScoped(
+  model: ConvertResult,
+  dataset: IndoorDataset,
+  options: LandingApproachOptions,
+  receipt: LandingApproachReceipt,
+  started: number,
+): Promise<{ edges: IndoorEdge[]; diagnostics: string[]; receipt: LandingApproachReceipt }> {
+  if (receipt.workers !== 1) throw Error("Scoped landing reuse is an in-process prototype; use one landing worker");
+  if (!options.checkpointDir) throw Error("Scoped landing reuse requires --checkpoint-dir");
+  const dir = resolve(options.checkpointDir);
+  const { binding } = await landingApproachBinding(model, dataset, dir, options.algorithmVersionSuffix);
+  const implementationSha256 = sha256(JSON.stringify({
+    format: "reviter-landing-implementation",
+    version: 1,
+    algorithmVersion: binding.algorithmVersion,
+    scope: LANDING_SCOPE_VERSION,
+    algorithm: binding.algorithmFiles.map((f) => ({ path: relative(root, f.path).split(sep).join("/"), sha256: f.sha256 })).sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : 0)),
+  }));
+  const modelContent = binding.immutableInputs.find((f) => f.name === "native-model")?.contentSha256;
+  if (!modelContent) throw Error("Scoped landing reuse requires a canonical model digest");
+  const completeInputs = checkpointIdentity(binding);
+  await mkdir(resolve(dir, "landing-approaches"), { recursive: true });
+  const path = resolve(dir, "landing-approaches", "scoped-" + implementationSha256 + ".jsonl");
+  const read = await readScopedLandingCheckpoint(path, implementationSha256);
+  const cache = read.entries;
+  receipt.ignoredCheckpointLines = read.ignored;
+  receipt.bindingSha256 = completeInputs;
+  receipt.checkpointPath = path;
+  options.onEvent?.(`Native landing approaches · ${cache.size} checked scoped candidates · ${read.ignored} ignored lines`);
+  const plan = planNativeApproaches(model, dataset);
+  receipt.pairs = plan.pairs.length;
+  const scoped: ScopedLandingReceipt = { implementationSha256, planes: [], scopedEvaluated: 0, completeEvaluated: 0, reusedScoped: 0, reusedComplete: 0 };
+  const planes = new Map<number, { scope: LandingPlaneScope; evaluate?: (p: NativeApproachPair) => NativeApproachCandidate; tainted: boolean }>();
+  const plane = (z: number) => {
+    let entry = planes.get(z);
+    if (!entry) planes.set(z, (entry = { scope: createLandingPlaneScope(model, dataset, z, modelContent, options.scopeCollections), tainted: false }));
+    return entry;
+  };
+  let complete: ((p: NativeApproachPair) => NativeApproachCandidate) | undefined;
+  const replay = createNativeApproachReplay(dataset, plan, options.onProgress);
+  while (replay.advance() < plan.pairs.length) {
+    const i = replay.next, pair = plan.pairs[i]!, pairKey = nativeApproachPairKey(dataset, pair);
+    const entry = plane(landingPairPlane(pair.a, nativeApproachPortal(pair)));
+    const planeKey = sha256(JSON.stringify(["plane", implementationSha256, pairKey, entry.scope.sha256])),
+      completeKey = sha256(JSON.stringify(["complete", implementationSha256, pairKey, completeInputs]));
+    let candidate = cache.get(planeKey);
+    if (candidate) scoped.reusedScoped++;
+    else if ((candidate = cache.get(completeKey))) scoped.reusedComplete++;
+    else {
+      let key = planeKey, kind: "plane" | "complete" = "plane";
+      if (!entry.tainted) {
+        const before = entry.scope.violations.length;
+        try {
+          entry.evaluate ??= createNativeApproachEvaluator(entry.scope.model, entry.scope.dataset);
+          candidate = candidateCarrier(entry.evaluate(pair));
+        } catch (error) {
+          if (entry.scope.violations.length === before) throw error;
+        }
+        // Any refused read, even one the evaluator caught, taints this plane's
+        // evaluator and its memos for the rest of the run.
+        if (entry.scope.violations.length !== before) {
+          entry.tainted = true;
+          entry.evaluate = undefined;
+          candidate = undefined;
+        }
+      }
+      if (!candidate) {
+        complete ??= createNativeApproachEvaluator(model, dataset);
+        candidate = candidateCarrier(complete(pair));
+        key = completeKey;
+        kind = "complete";
+      }
+      if (kind === "plane") scoped.scopedEvaluated++;
+      else scoped.completeEvaluated++;
+      cache.set(key, candidate);
+      const json = strictJson(candidate as unknown as JsonValue);
+      const line: ScopedEntry = { format: "reviter-landing-approach-scoped", version: 1, implementationSha256, key, scope: kind, candidateSha256: sha256(json), candidate };
+      const file = await open(path, "a");
+      try {
+        await file.writeFile("\n" + JSON.stringify(line) + "\n");
+        await file.sync();
+      } finally {
+        await file.close();
+      }
+      receipt.evaluated++;
+      receipt.waves++;
+      await options.afterWave?.(receipt.waves);
+    }
+    replay.accept(candidate);
+  }
+  receipt.reused = scoped.reusedScoped + scoped.reusedComplete;
+  scoped.planes = [...planes.values()].map(({ scope }) => ({ elevationFeet: scope.elevationFeet, scopeSha256: scope.sha256, violations: scope.violations.length, counts: scope.counts }));
+  receipt.scoped = scoped;
+  receipt.elapsedMs = performance.now() - started;
+  return { ...replay.finish(), receipt };
 }
