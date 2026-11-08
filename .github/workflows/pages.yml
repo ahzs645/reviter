@@ -1,9 +1,7 @@
 name: Deploy GitHub Pages
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -29,6 +27,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: ahzs645/openindoormaps
+          ref: 65c85bb25ebfd8de1b00b05f3dc6373c4efa4240
           path: openindoormaps
 
       - name: Setup Node.js
@@ -36,7 +35,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: reviter/package-lock.json
+          cache-dependency-path: |
+            reviter/package-lock.json
+            openindoormaps/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -44,19 +45,10 @@ jobs:
       - name: Install sibling map dependencies
         run: npm ci --prefix ../openindoormaps
 
-      - name: Lint
-        run: npm run lint
-
-      # Types are erased by --experimental-strip-types and never checked at
-      # runtime, so this is the only place a type error can be caught at all.
-      - name: Typecheck
-        run: npm run typecheck
-
-      # Glob discovery, so a newly added test file runs without being enumerated
-      # anywhere. This replaces a hand-maintained list that had drifted to cover
-      # 18 of the 135 test files on disk.
-      - name: Test
-        run: npm run test:unit
+      # Direct manual runs validate themselves. CI calls this only after check.
+      - name: Validate standalone manual build
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run lint && npm run typecheck && npm run test:unit && npm run test:autodesk
 
       - name: Build static application
         env:
