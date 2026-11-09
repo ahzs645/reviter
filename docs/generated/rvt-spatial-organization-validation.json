@@ -1,0 +1,840 @@
+{
+  "schemaVersion": 1,
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "sourceOnly": true,
+  "scope": "Bounded current source graph projection, complete selected ElementHeader categories and owned active-site transform direction proof; no evaluated quantities or navigation certification.",
+  "focusedTests": {
+    "passed": 11,
+    "failed": 0
+  },
+  "results": [
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+      "status": "complete",
+      "nativeReaderStatus": "complete",
+      "nativeReaderClasses": {
+        "ActiveGeoLocationTrackingElement": {
+          "body_bytes": 121,
+          "complete_graph_body_bytes": 121,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AllProjectRevisions": {
+          "body_bytes": 165,
+          "complete_graph_body_bytes": 165,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AreaMeasureElem": {
+          "body_bytes": 676,
+          "complete_graph_body_bytes": 676,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 768,
+          "complete_graph_body_bytes": 768,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoLocation": {
+          "body_bytes": 594,
+          "complete_graph_body_bytes": 594,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoSite": {
+          "body_bytes": 1174,
+          "complete_graph_body_bytes": 1174,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 196,
+          "complete_graph_body_bytes": 196,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "RoomElem": {
+          "body_bytes": 52590,
+          "complete_graph_body_bytes": 52590,
+          "complete_graphs": 14,
+          "diagnostics": {},
+          "records": 14,
+          "unsupported_graphs": 0
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "spatialKinds": {
+        "room": 14
+      },
+      "sourceCategoryProof": {
+        "status": "complete",
+        "retainedHeaderWitnesses": 14,
+        "inflatedBytes": 108532153,
+        "diagnostics": []
+      },
+      "areaSchemes": 2,
+      "revisions": 1,
+      "revisionCatalogs": 1,
+      "worksetVisibilityRecords": 1,
+      "sites": 2,
+      "coordinates": {
+        "status": "proven",
+        "activeLocationId": "21748",
+        "projectLocationId": "111428",
+        "storedSiteToInternal": {
+          "matrixRows": [
+            [
+              0.7986355100472903,
+              0.6018150231520515,
+              0
+            ],
+            [
+              -0.6018150231520515,
+              0.7986355100472903,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            89.07790894790304,
+            10.140540887202249,
+            0
+          ]
+        },
+        "internalToShared": {
+          "matrixRows": [
+            [
+              0.7986355100472903,
+              -0.6018150231520515,
+              0
+            ],
+            [
+              0.6018150231520515,
+              0.7986355100472903,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            -65.03805139774867,
+            -61.70701987942478,
+            0
+          ]
+        },
+        "trueNorthInInternal": [
+          0.6018150231520515,
+          0.7986355100472903,
+          0
+        ],
+        "basePointWitnesses": [
+          {
+            "elementId": "111426",
+            "errorFeet": 2.7747580858440755e-14
+          }
+        ],
+        "reason": "Explicit active location -> owned InstanceInfo -> source GeoSite; stored transform direction verified against survey BasePoint owned GPoint and stored transformed position."
+      },
+      "limitations": [
+        "Spatial identities do not certify boundaries, occupiable volume or navigation.",
+        "Partition names/IDs do not establish workset names or element workset ownership.",
+        "Stored geodetic coordinates and CRS text do not establish an EPSG code or map-conversion scale.",
+        "Values are source records, not evaluated Revit API results."
+      ]
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+      "status": "complete",
+      "nativeReaderStatus": "complete",
+      "nativeReaderClasses": {
+        "ActiveGeoLocationTrackingElement": {
+          "body_bytes": 121,
+          "complete_graph_body_bytes": 121,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AllProjectRevisions": {
+          "body_bytes": 145,
+          "complete_graph_body_bytes": 145,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AreaMeasureElem": {
+          "body_bytes": 636,
+          "complete_graph_body_bytes": 636,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 768,
+          "complete_graph_body_bytes": 768,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoLocation": {
+          "body_bytes": 554,
+          "complete_graph_body_bytes": 554,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoSite": {
+          "body_bytes": 1142,
+          "complete_graph_body_bytes": 1142,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 176,
+          "complete_graph_body_bytes": 176,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "RoomElem": {
+          "body_bytes": 696082,
+          "complete_graph_body_bytes": 696082,
+          "complete_graphs": 116,
+          "diagnostics": {},
+          "records": 116,
+          "unsupported_graphs": 0
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "spatialKinds": {
+        "room": 91,
+        "area": 25
+      },
+      "sourceCategoryProof": {
+        "status": "complete",
+        "retainedHeaderWitnesses": 116,
+        "inflatedBytes": 96687613,
+        "diagnostics": []
+      },
+      "areaSchemes": 2,
+      "revisions": 1,
+      "revisionCatalogs": 1,
+      "worksetVisibilityRecords": 1,
+      "sites": 2,
+      "coordinates": {
+        "status": "proven",
+        "activeLocationId": "21748",
+        "projectLocationId": "250335",
+        "storedSiteToInternal": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "internalToShared": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "trueNorthInInternal": [
+          0,
+          1,
+          0
+        ],
+        "basePointWitnesses": [
+          {
+            "elementId": "250333",
+            "errorFeet": 0
+          }
+        ],
+        "reason": "Explicit active location -> owned InstanceInfo -> source GeoSite; stored transform direction verified against survey BasePoint owned GPoint and stored transformed position."
+      },
+      "limitations": [
+        "Spatial identities do not certify boundaries, occupiable volume or navigation.",
+        "Partition names/IDs do not establish workset names or element workset ownership.",
+        "Stored geodetic coordinates and CRS text do not establish an EPSG code or map-conversion scale.",
+        "Values are source records, not evaluated Revit API results."
+      ]
+    },
+    {
+      "model": "snowdon",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "schemaSha256": "0bfb947b3c9a0cec2ea9692873e3b0325f1c9387caaffddbce4cc2509e77cf21",
+      "status": "partial",
+      "nativeReaderStatus": "partial",
+      "nativeReaderClasses": {
+        "ActiveGeoLocationTrackingElement": {
+          "body_bytes": 121,
+          "complete_graph_body_bytes": 121,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AllProjectRevisions": {
+          "body_bytes": 181,
+          "complete_graph_body_bytes": 181,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AreaMeasureElem": {
+          "body_bytes": 730,
+          "complete_graph_body_bytes": 730,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 760,
+          "complete_graph_body_bytes": 760,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoLocation": {
+          "body_bytes": 602,
+          "complete_graph_body_bytes": 602,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoSite": {
+          "body_bytes": 12380,
+          "complete_graph_body_bytes": 12380,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 584,
+          "complete_graph_body_bytes": 584,
+          "complete_graphs": 3,
+          "diagnostics": {},
+          "records": 3,
+          "unsupported_graphs": 0
+        },
+        "RoomElem": {
+          "body_bytes": 1063997,
+          "complete_graph_body_bytes": 720800,
+          "complete_graphs": 150,
+          "diagnostics": {
+            "graph RoomCreate3dGeometryGStep starts10125: GeomGenerator.m_edgeHistTable at 47649: EdgeHistEntry.m_edgeHist at 47649: EdgeHist.m_keys at 47649: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts11441: GeomGenerator.m_edgeHistTable at 47009: EdgeHistEntry.m_id at 47009: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts12397: GeomGenerator.m_edgeHistTable at 45733: EdgeHistEntry.m_id at 45733: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts19761: GeomGenerator.m_faceHistTable at 43577: FaceHistEntry.m_faceHist at 43577: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts9563: GeomGenerator.m_edgeHistTable at 47671: native field value budget exceeded (20000)": 1
+          },
+          "records": 155,
+          "unsupported_graphs": 5
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "spatialKinds": {
+        "room": 49,
+        "area": 101
+      },
+      "sourceCategoryProof": {
+        "status": "complete",
+        "retainedHeaderWitnesses": 155,
+        "inflatedBytes": 446336335,
+        "diagnostics": []
+      },
+      "areaSchemes": 2,
+      "revisions": 3,
+      "revisionCatalogs": 1,
+      "worksetVisibilityRecords": 1,
+      "sites": 2,
+      "coordinates": {
+        "status": "proven",
+        "activeLocationId": "47145",
+        "projectLocationId": "143299",
+        "storedSiteToInternal": {
+          "matrixRows": [
+            [
+              0.8986750261834819,
+              0.4386150901577807,
+              0
+            ],
+            [
+              -0.4386150901577807,
+              0.8986750261834819,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            -1344592.6599208075,
+            368888.246460596,
+            -780.4999999999997
+          ]
+        },
+        "internalToShared": {
+          "matrixRows": [
+            [
+              0.8986750261834819,
+              -0.4386150901577807,
+              0
+            ],
+            [
+              0.4386150901577807,
+              0.8986750261834819,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            1370151.7953399091,
+            258247.97620990028,
+            780.4999999999997
+          ]
+        },
+        "trueNorthInInternal": [
+          0.4386150901577807,
+          0.8986750261834819,
+          0
+        ],
+        "basePointWitnesses": [
+          {
+            "elementId": "143297",
+            "errorFeet": 6.507814330688532e-11
+          }
+        ],
+        "reason": "Explicit active location -> owned InstanceInfo -> source GeoSite; stored transform direction verified against survey BasePoint owned GPoint and stored transformed position."
+      },
+      "limitations": [
+        "Spatial identities do not certify boundaries, occupiable volume or navigation.",
+        "Partition names/IDs do not establish workset names or element workset ownership.",
+        "Stored geodetic coordinates and CRS text do not establish an EPSG code or map-conversion scale.",
+        "Values are source records, not evaluated Revit API results."
+      ]
+    },
+    {
+      "model": "mechanical",
+      "sourceSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+      "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+      "status": "complete",
+      "nativeReaderStatus": "complete",
+      "nativeReaderClasses": {
+        "ActiveGeoLocationTrackingElement": {
+          "body_bytes": 121,
+          "complete_graph_body_bytes": 121,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AllProjectRevisions": {
+          "body_bytes": 145,
+          "complete_graph_body_bytes": 145,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AreaMeasureElem": {
+          "body_bytes": 636,
+          "complete_graph_body_bytes": 636,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 728,
+          "complete_graph_body_bytes": 728,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoLocation": {
+          "body_bytes": 840,
+          "complete_graph_body_bytes": 840,
+          "complete_graphs": 3,
+          "diagnostics": {},
+          "records": 3,
+          "unsupported_graphs": 0
+        },
+        "GeoSite": {
+          "body_bytes": 1116,
+          "complete_graph_body_bytes": 1116,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 176,
+          "complete_graph_body_bytes": 176,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "RoomElem": {
+          "body_bytes": 19217,
+          "complete_graph_body_bytes": 19217,
+          "complete_graphs": 9,
+          "diagnostics": {},
+          "records": 9,
+          "unsupported_graphs": 0
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "spatialKinds": {
+        "mep-space": 9
+      },
+      "sourceCategoryProof": {
+        "status": "complete",
+        "retainedHeaderWitnesses": 18,
+        "inflatedBytes": 21805924,
+        "diagnostics": []
+      },
+      "areaSchemes": 2,
+      "revisions": 1,
+      "revisionCatalogs": 1,
+      "worksetVisibilityRecords": 1,
+      "sites": 3,
+      "coordinates": {
+        "status": "proven",
+        "activeLocationId": "1577",
+        "projectLocationId": "1580",
+        "storedSiteToInternal": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "internalToShared": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "trueNorthInInternal": [
+          0,
+          1,
+          0
+        ],
+        "basePointWitnesses": [
+          {
+            "elementId": "1578",
+            "errorFeet": 0
+          }
+        ],
+        "reason": "Explicit active location -> owned InstanceInfo -> source GeoSite; stored transform direction verified against survey BasePoint owned GPoint and stored transformed position."
+      },
+      "limitations": [
+        "Spatial identities do not certify boundaries, occupiable volume or navigation.",
+        "Partition names/IDs do not establish workset names or element workset ownership.",
+        "Stored geodetic coordinates and CRS text do not establish an EPSG code or map-conversion scale.",
+        "Values are source records, not evaluated Revit API results."
+      ]
+    },
+    {
+      "model": "unbc",
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "schemaSha256": "d961c44726fe7fc32bce4425639481a5d5e91acecec7b7fd897610fc369f046f",
+      "status": "complete",
+      "nativeReaderStatus": "complete",
+      "nativeReaderClasses": {
+        "ActiveGeoLocationTrackingElement": {
+          "body_bytes": 121,
+          "complete_graph_body_bytes": 121,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AllProjectRevisions": {
+          "body_bytes": 145,
+          "complete_graph_body_bytes": 145,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "AreaMeasureElem": {
+          "body_bytes": 590,
+          "complete_graph_body_bytes": 590,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 752,
+          "complete_graph_body_bytes": 752,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "GeoLocation": {
+          "body_bytes": 1414,
+          "complete_graph_body_bytes": 1414,
+          "complete_graphs": 5,
+          "diagnostics": {},
+          "records": 5,
+          "unsupported_graphs": 0
+        },
+        "GeoSite": {
+          "body_bytes": 7199,
+          "complete_graph_body_bytes": 7199,
+          "complete_graphs": 5,
+          "diagnostics": {},
+          "records": 5,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 178,
+          "complete_graph_body_bytes": 178,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "spatialKinds": {},
+      "sourceCategoryProof": {
+        "status": "complete",
+        "retainedHeaderWitnesses": 0,
+        "inflatedBytes": 0,
+        "diagnostics": []
+      },
+      "areaSchemes": 2,
+      "revisions": 1,
+      "revisionCatalogs": 1,
+      "worksetVisibilityRecords": 1,
+      "sites": 5,
+      "coordinates": {
+        "status": "proven",
+        "activeLocationId": "21748",
+        "projectLocationId": "111428",
+        "storedSiteToInternal": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "internalToShared": {
+          "matrixRows": [
+            [
+              1,
+              0,
+              0
+            ],
+            [
+              0,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              1
+            ]
+          ],
+          "originFeet": [
+            0,
+            0,
+            0
+          ]
+        },
+        "trueNorthInInternal": [
+          0,
+          1,
+          0
+        ],
+        "basePointWitnesses": [
+          {
+            "elementId": "111426",
+            "errorFeet": 0
+          }
+        ],
+        "reason": "Explicit active location -> owned InstanceInfo -> source GeoSite; stored transform direction verified against survey BasePoint owned GPoint and stored transformed position."
+      },
+      "limitations": [
+        "Spatial identities do not certify boundaries, occupiable volume or navigation.",
+        "Partition names/IDs do not establish workset names or element workset ownership.",
+        "Stored geodetic coordinates and CRS text do not establish an EPSG code or map-conversion scale.",
+        "Values are source records, not evaluated Revit API results."
+      ]
+    }
+  ]
+}

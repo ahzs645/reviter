@@ -1,0 +1,357 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index b5ee8f0..004495c 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1027,6 +1027,7 @@ dependencies = [
+  "rvt",
+  "serde",
+  "serde-wasm-bindgen",
++ "serde_json",
+  "wasm-bindgen",
+ ]
+ 
+diff --git a/rvt-wasm/Cargo.toml b/rvt-wasm/Cargo.toml
+index 7aa8ac7..f0dcb6c 100644
+--- a/rvt-wasm/Cargo.toml
++++ b/rvt-wasm/Cargo.toml
+@@ -20,6 +20,7 @@ rvt = { path = ".." }
+ wasm-bindgen = "0.2"
+ serde-wasm-bindgen = "0.6"
+ serde = { version = "1", features = ["derive"] }
++serde_json = "1"
+ 
+ # wasm-pack configuration. The bundled `wasm-opt` in wasm-pack 0.14
+ # doesn't accept rustc's bulk-memory output — it prints a wall of
+diff --git a/rvt-wasm/src/lib.rs b/rvt-wasm/src/lib.rs
+index 9d7fa39..5bbd856 100644
+--- a/rvt-wasm/src/lib.rs
++++ b/rvt-wasm/src/lib.rs
+@@ -37,6 +37,24 @@ use rvt::ifc::{
+ };
+ use serde::Deserialize;
+ 
++mod native_evidence;
++
++/// Advanced, opt-in source metadata/owner-graph extraction. Does not export
++/// geometry or certify rooms. Resource limits and partial/unsupported results
++/// are returned explicitly; large native integers retain exact decimal text.
++#[wasm_bindgen(js_name = openNativeEvidence)]
++pub fn open_native_evidence(bytes: &[u8], options: JsValue) -> Result<JsValue, JsValue> {
++    install_panic_hook();
++    let options = if options.is_null() || options.is_undefined() {
++        native_evidence::NativeEvidenceOptions::default()
++    } else {
++        serde_wasm_bindgen::from_value(options).map_err(err_str)?
++    };
++    let result = native_evidence::extract_native_evidence(bytes, options).map_err(err_str)?;
++    serde::Serialize::serialize(&result, &serde_wasm_bindgen::Serializer::json_compatible())
++        .map_err(err_str)
++}
++
+ #[derive(Debug, Default, Deserialize)]
+ struct WasmWalkerLimits {
+     max_scan_bytes: Option<usize>,
+diff --git a/rvt-wasm/src/native_evidence.rs b/rvt-wasm/src/native_evidence.rs
+new file mode 100644
+index 0000000..9b40f56
+--- /dev/null
++++ b/rvt-wasm/src/native_evidence.rs
+@@ -0,0 +1,298 @@
++//! Reviter-owned opt-in binding adapter. Core native decoders are unchanged.
++//! Reuses rvt-rs native_document/source namespaces; Apache-2.0 attribution is
++//! retained in the vendored LICENSE/NOTICE and Reviter patch provenance.
++use rvt::{RevitFile, compression, native_document, reader::OpenLimits};
++use serde::{Deserialize, Serialize};
++use serde_json::{Value, json};
++use std::{collections::BTreeSet, io::{self, Write}};
++
++const MIB: usize = 1024 * 1024;
++const SAFE_INTEGER: u64 = 9_007_199_254_740_991;
++const DEFAULT_CLASSES: &[&str] = &[
++    "ParamElem", "ParamElemCategory", "ParamElemExtended", "ParamElemExternal",
++    "ParamElemFamily", "ParamElemGlobal", "ParamElemProject", "ParamBinding",
++    "UnitsElem", "ProjectPhase", "DataStorage", "TextNote", "TextElement",
++    "Dimension", "RoomElem",
++];
++
++#[derive(Debug, Deserialize)]
++#[serde(untagged)]
++pub enum SelectedId { Number(u64), Decimal(String) }
++
++#[derive(Debug, Deserialize, Default)]
++#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
++pub struct NativeEvidenceOptions {
++    pub selected_ids: Vec<SelectedId>,
++    pub selected_classes: Option<Vec<String>>,
++    pub max_file_bytes: Option<usize>,
++    pub max_stream_bytes: Option<usize>,
++    pub max_member_bytes: Option<usize>,
++    pub max_inflated_bytes: Option<usize>,
++    pub max_gzip_members: Option<usize>,
++    pub max_group_bytes: Option<usize>,
++    pub max_graph_values: Option<usize>,
++    pub max_graph_objects: Option<usize>,
++    pub max_decoded_records: Option<usize>,
++    pub max_records: Option<usize>,
++    pub max_record_bytes: Option<usize>,
++    pub max_summary_bytes: Option<usize>,
++    pub max_output_bytes: Option<usize>,
++}
++
++#[derive(Debug, Serialize)]
++#[serde(rename_all = "camelCase")]
++struct Limits {
++    max_file_bytes: usize, max_stream_bytes: usize, max_member_bytes: usize,
++    max_inflated_bytes: usize, max_gzip_members: usize, max_group_bytes: usize,
++    max_graph_values: usize, max_graph_objects: usize, max_decoded_records: usize,
++    max_records: usize, max_record_bytes: usize, max_summary_bytes: usize, max_output_bytes: usize,
++}
++fn limit(value: Option<usize>, default: usize, ceiling: usize, name: &str) -> Result<usize, String> {
++    let value = value.unwrap_or(default);
++    if value == 0 || value > ceiling { return Err(format!("{name} must be positive and at most {ceiling}")); }
++    Ok(value)
++}
++impl NativeEvidenceOptions {
++    fn validated(self) -> Result<(Limits, native_document::Options), String> {
++        let limits = Limits {
++            max_file_bytes: limit(self.max_file_bytes, 256 * MIB, 512 * MIB, "maxFileBytes")?,
++            max_stream_bytes: limit(self.max_stream_bytes, 128 * MIB, 256 * MIB, "maxStreamBytes")?,
++            max_member_bytes: limit(self.max_member_bytes, 16 * MIB, 64 * MIB, "maxMemberBytes")?,
++            max_inflated_bytes: limit(self.max_inflated_bytes, 768 * MIB, 1024 * MIB, "maxInflatedBytes")?,
++            max_gzip_members: limit(self.max_gzip_members, 20_000, 100_000, "maxGzipMembers")?,
++            max_group_bytes: limit(self.max_group_bytes, 128 * MIB, 256 * MIB, "maxGroupBytes")?,
++            max_graph_values: limit(self.max_graph_values, 20_000, 100_000, "maxGraphValues")?,
++            max_graph_objects: limit(self.max_graph_objects, 2_048, 10_000, "maxGraphObjects")?,
++            max_decoded_records: limit(self.max_decoded_records, 4_096, 20_000, "maxDecodedRecords")?,
++            max_records: limit(self.max_records, 128, 2_048, "maxRecords")?,
++            max_record_bytes: limit(self.max_record_bytes, MIB, 8 * MIB, "maxRecordBytes")?,
++            max_summary_bytes: limit(self.max_summary_bytes, 8 * MIB, 16 * MIB, "maxSummaryBytes")?,
++            max_output_bytes: limit(self.max_output_bytes, 32 * MIB, 64 * MIB, "maxOutputBytes")?,
++        };
++        if limits.max_records > limits.max_decoded_records || limits.max_output_bytes < 16_384 ||
++            limits.max_record_bytes > limits.max_output_bytes || limits.max_summary_bytes > limits.max_output_bytes {
++            return Err("record/summary/output budgets are inconsistent (output minimum 16384 bytes)".into());
++        }
++        if self.selected_ids.len() > 4_096 || self.selected_classes.as_ref().is_some_and(|v| v.len() > 64) {
++            return Err("selection is limited to 4096 ids and 64 classes".into());
++        }
++        let mut ids = BTreeSet::new();
++        for selected in self.selected_ids {
++            let id = match selected {
++                SelectedId::Number(n) if n <= SAFE_INTEGER => n,
++                SelectedId::Number(_) => return Err("unsafe selectedIds numbers must be exact decimal strings".into()),
++                SelectedId::Decimal(s) if !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit()) =>
++                    s.parse::<u64>().map_err(|_| "selectedIds decimal value exceeds u64")?,
++                SelectedId::Decimal(_) => return Err("selectedIds must contain positive integer numbers or decimal strings".into()),
++            };
++            if id == 0 { return Err("selectedIds must be positive".into()); }
++            ids.insert(id);
++        }
++        let classes = self.selected_classes.unwrap_or_else(|| if ids.is_empty() {
++            DEFAULT_CLASSES.iter().map(|s| (*s).to_owned()).collect()
++        } else { Vec::new() });
++        if classes.iter().any(|s| s.is_empty() || s.len() > 128 || s.chars().any(char::is_control)) {
++            return Err("selectedClasses must contain nonempty, control-free class names of at most 128 bytes".into());
++        }
++        if ids.is_empty() && classes.is_empty() { return Err("empty explicit selection would extract the entire document".into()); }
++        let options = native_document::Options {
++            selected_ids: ids, selected_classes: classes.into_iter().collect(), channels: BTreeSet::from([102]),
++            max_stream_bytes: limits.max_stream_bytes as u64, max_group_bytes: limits.max_group_bytes,
++            max_graph_values: limits.max_graph_values, max_graph_objects: limits.max_graph_objects,
++        };
++        Ok((limits, options))
++    }
++}
++
++/// Count exact JSON encoding without allocating a potentially oversized string.
++struct JsonBudget { bytes: usize, limit: usize }
++impl Write for JsonBudget {
++    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
++        if bytes.len() > self.limit.saturating_sub(self.bytes) { return Err(io::Error::other("encoded JSON budget exceeded")); }
++        self.bytes += bytes.len(); Ok(bytes.len())
++    }
++    fn flush(&mut self) -> io::Result<()> { Ok(()) }
++}
++fn encoded_size(value: &impl Serialize, limit: usize) -> Result<usize, String> {
++    let mut writer = JsonBudget { bytes: 0, limit };
++    serde_json::to_writer(&mut writer, value).map_err(|e| e.to_string())?;
++    Ok(writer.bytes)
++}
++fn exact_json(value: &impl Serialize, cap: usize) -> Result<Value, String> {
++    // Integer strings can add two bytes per value. Reserve that expansion with
++    // the final exact size check, never return precision-losing JS integers.
++    encoded_size(value, cap)?;
++    let mut value = serde_json::to_value(value).map_err(|e| e.to_string())?;
++    fn preserve(value: &mut Value) {
++        match value {
++            Value::Number(n) if n.as_u64().is_some_and(|n| n > SAFE_INTEGER) || n.as_i64().is_some_and(|n| n.unsigned_abs() > SAFE_INTEGER) => { *value = Value::String(n.to_string()); }
++            Value::Array(values) => values.iter_mut().for_each(preserve),
++            Value::Object(values) => values.values_mut().for_each(preserve),
++            _ => {}
++        }
++    }
++    preserve(&mut value); encoded_size(&value, cap)?; Ok(value)
++}
++fn short_error(error: impl std::fmt::Display) -> String { error.to_string().chars().take(4096).collect() }
++
++/// Upstream's cached partition inflate has its own fixed limits. Preflight the
++/// exact same immutable prepared bytes with stricter member/aggregate budgets
++/// BEFORE invoking that cache; drop each inflated member immediately.
++fn preflight(file: &mut RevitFile, limits: &Limits) -> Result<(usize, usize), String> {
++    let mut total = 0usize;
++    let mut members = 0usize;
++    for name in file.stream_names() {
++        if file.stream_size(&name).is_some_and(|size| size > limits.max_stream_bytes as u64) {
++            return Err(format!("stream {name} exceeds maxStreamBytes"));
++        }
++        if !name.starts_with("Partitions/") && !matches!(name.as_str(), "Formats/Latest" | "Global/History" | "Global/ElemTable" | "Global/DocumentIncrementTable" | "Global/Latest") { continue; }
++        let stored = file.read_stream_with_limit(&name, limits.max_stream_bytes as u64).map_err(short_error)?;
++        let prepared = compression::prepare_stream_for_inflate(&name, &stored);
++        for at in 0..prepared.len().saturating_sub(2) {
++            if prepared[at..at + 3] != [0x1f, 0x8b, 8] || compression::gzip_header_len(&prepared, at).is_none() { continue; }
++            members += 1;
++            if members > limits.max_gzip_members { return Err("maxGzipMembers exceeded".into()); }
++            let remaining = limits.max_inflated_bytes.saturating_sub(total);
++            let result = compression::inflate_member_at_with_limits(&prepared, at, compression::InflateLimits { max_output_bytes: limits.max_member_bytes.min(remaining) });
++            match result {
++                Ok((bytes, _)) => { total = total.checked_add(bytes.len()).ok_or("inflate size overflow")?; }
++                Err(rvt::Error::DecompressLimitExceeded(error)) => return Err(format!("inflate budget blocked {name}: {error}")),
++                // Incidental magic inside compressed bytes is not a member.
++                Err(_) => {}
++            }
++        }
++    }
++    Ok((total, members))
++}
++
++pub fn extract_native_evidence(bytes: &[u8], options: NativeEvidenceOptions) -> Result<Value, String> {
++    let (limits, options) = options.validated()?;
++    let selected_ids = options.selected_ids.iter().map(u64::to_string).collect::<Vec<_>>();
++    let header_bytes = encoded_size(&(&limits, &selected_ids, &options.selected_classes), limits.max_output_bytes / 4)?;
++    if bytes.len() > limits.max_file_bytes { return Ok(json!({ "apiVersion": 1, "kind": "native-source-evidence", "status": "budget-blocked", "records": [], "summary": null, "diagnostics": { "error": "maxFileBytes exceeded", "limits": limits } })); }
++    let mut file = match RevitFile::open_bytes_with_limits(bytes.to_vec(), OpenLimits {
++        max_file_bytes: limits.max_file_bytes as u64, max_stream_bytes: limits.max_stream_bytes as u64,
++        inflate_limits: compression::InflateLimits { max_output_bytes: limits.max_member_bytes },
++    }) {
++        Ok(file) => file,
++        Err(error) => return Ok(json!({ "apiVersion": 1, "kind": "native-source-evidence", "status": "unsupported", "records": [], "summary": null, "diagnostics": { "error": short_error(error), "limits": limits } })),
++    };
++    let (inflated_bytes, gzip_members) = match preflight(&mut file, &limits) {
++        Ok(value) => value,
++        Err(error) => return Ok(json!({ "apiVersion": 1, "kind": "native-source-evidence", "status": "budget-blocked", "records": [], "summary": null, "diagnostics": { "error": error, "limits": limits } })),
++    };
++    let mut records = Vec::new();
++    let mut retained_bytes = 0usize;
++    let mut decoded_records = 0usize;
++    let mut dropped_records = 0usize;
++    let mut budget_stopped = false;
++    // Half the response is reserved for summary/header/diagnostics. The final
++    // response is counted again after exact integer conversion.
++    let record_pool = limits.max_output_bytes / 2;
++    let summary_pool = limits.max_output_bytes.saturating_sub(record_pool + header_bytes + 8192);
++    let extraction = native_document::extract(&mut file, &options, |record| {
++        decoded_records += 1;
++        if records.len() >= limits.max_records { dropped_records += 1; }
++        else {
++            match exact_json(&record, limits.max_record_bytes.min(record_pool.saturating_sub(retained_bytes))) {
++                Ok(value) => { retained_bytes += encoded_size(&value, limits.max_record_bytes).map_err(io::Error::other)? + 1; records.push(value); }
++                Err(_) => dropped_records += 1,
++            }
++        }
++        if decoded_records >= limits.max_decoded_records {
++            budget_stopped = true;
++            return Err(io::Error::other("maxDecodedRecords reached; extraction stopped before summary completion").into());
++        }
++        Ok(())
++    });
++    let mut summary_truncated = false;
++    let (summary, extraction_error, unsupported) = match extraction {
++        Ok(summary) => {
++            let unsupported = summary.unsupported_graph_records + summary.unsupported_metadata_records;
++            let cap = limits.max_summary_bytes.min(summary_pool);
++            let value = match exact_json(&summary, cap) {
++                Ok(value) => value,
++                Err(_) => {
++                    summary_truncated = true;
++                    json!({ "revit_version": summary.revit_version, "schema_sha256": summary.schema_sha256,
++                        "indexed_elements": summary.indexed_elements, "emitted_records": summary.emitted_records,
++                        "complete_graph_records": summary.complete_graph_records, "unsupported_graph_records": summary.unsupported_graph_records,
++                        "projected_metadata_records": summary.projected_metadata_records, "unsupported_metadata_records": summary.unsupported_metadata_records,
++                        "parameter_definition_count": summary.parameter_definitions.len(), "unit_format_count": summary.unit_formats.len(),
++                        "extensible_storage_schema_count": summary.extensible_storage_catalog.as_ref().map_or(0, |c| c.schemas.len()),
++                        "summary_truncated": true, "complete_document_geometry": false, "serialized_values_not_evaluated": true })
++                }
++            };
++            (value, None, unsupported)
++        }
++        Err(error) => (Value::Null, Some(short_error(error)), 0),
++    };
++    let status = if budget_stopped { "budget-blocked" } else if extraction_error.is_some() { "unsupported" }
++        else if dropped_records > 0 || summary_truncated || unsupported > 0 { "partial" } else { "complete" };
++    let response = json!({ "apiVersion": 1, "kind": "native-source-evidence", "status": status, "records": records, "summary": summary,
++        "diagnostics": { "limits": limits, "selectedIds": selected_ids,
++            "selectedClasses": options.selected_classes, "inflatedBytesPreflight": inflated_bytes, "gzipMembersPreflight": gzip_members,
++            "decodedRecords": decoded_records, "retainedRecords": records.len(), "droppedRecords": dropped_records,
++            "summaryTruncated": summary_truncated, "unsupportedRecords": unsupported, "error": extraction_error,
++            "unsafeIntegerEncoding": "decimal-string", "valueSemantics": "serialized-not-evaluated",
++            "completeDocumentGeometry": false,
++            "limitations": ["Definition extraction runs before selected owners under the same stream/group/per-graph limits; selected record caps do not cap definition-owner count.",
++                "Inflated-byte limits bound decoded source bytes, not total heap/RSS; upstream may hold cache and graph copies.",
++                "Embedded content groups and historical records remain excluded by the upstream current-record extractor.",
++                "Built-in definition catalog and unsupported native graph/value classes remain unresolved; inspect summary diagnostics."] } });
++    encoded_size(&response, limits.max_output_bytes)?;
++    Ok(response)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn defaults_never_select_every_owner() {
++        let (_, options) = NativeEvidenceOptions::default().validated().unwrap();
++        assert!(!options.selected_classes.is_empty()); assert!(options.selected_ids.is_empty());
++        let invalid = NativeEvidenceOptions { selected_classes: Some(Vec::new()), ..Default::default() };
++        assert!(invalid.validated().is_err());
++    }
++    #[test]
++    fn selection_and_budgets_fail_closed() {
++        assert!(NativeEvidenceOptions { max_graph_values: Some(0), ..Default::default() }.validated().is_err());
++        assert!(NativeEvidenceOptions { selected_ids: vec![SelectedId::Number(SAFE_INTEGER + 1)], ..Default::default() }.validated().is_err());
++        let (_, options) = NativeEvidenceOptions { selected_ids: vec![SelectedId::Decimal(u64::MAX.to_string())], ..Default::default() }.validated().unwrap();
++        assert!(options.selected_ids.contains(&u64::MAX)); assert!(options.selected_classes.is_empty());
++    }
++    #[test]
++    fn exact_serialization_limits_and_integer_precision() {
++        assert!(encoded_size(&"a\\\"\n", 3).is_err());
++        let value = exact_json(&json!({ "big": u64::MAX, "negative": i64::MIN, "safe": 17 }), 1024).unwrap();
++        assert_eq!(value["big"], u64::MAX.to_string()); assert_eq!(value["negative"], i64::MIN.to_string()); assert_eq!(value["safe"], 17);
++    }
++    #[test]
++    fn malformed_and_oversized_inputs_report_diagnostics() {
++        let result = extract_native_evidence(b"invalid", NativeEvidenceOptions::default()).unwrap();
++        assert_eq!(result["status"], "unsupported");
++        assert_eq!(result["kind"], "native-source-evidence");
++        let result = extract_native_evidence(b"invalid", NativeEvidenceOptions { max_file_bytes: Some(1), ..Default::default() }).unwrap();
++        assert_eq!(result["status"], "budget-blocked");
++        assert_eq!(result["kind"], "native-source-evidence");
++    }
++    #[test]
++    fn real_selected_native_metadata_when_model_is_available() {
++        let Ok(path) = std::env::var("REVITER_NATIVE_EVIDENCE_MODEL") else { return; };
++        let bytes = std::fs::read(path).unwrap();
++        let classes = std::env::var("REVITER_NATIVE_EVIDENCE_CLASSES").unwrap_or_else(|_| "UnitsElem,ProjectPhase,ParamElemExternal,ParamElemProject,ParamElemFamily,DataStorage".into());
++        let result = extract_native_evidence(&bytes, NativeEvidenceOptions {
++            selected_classes: Some(classes.split(',').map(str::to_owned).collect()),
++            ..Default::default()
++        }).unwrap();
++        if let Ok(path) = std::env::var("REVITER_NATIVE_EVIDENCE_OUTPUT") { std::fs::write(path, serde_json::to_vec_pretty(&result).unwrap()).unwrap(); }
++        assert_eq!(result["kind"], "native-source-evidence");
++        assert!(encoded_size(&result, 32 * MIB).is_ok());
++        assert!(result["records"].as_array().is_some_and(|records| !records.is_empty()), "{}", result["diagnostics"]);
++        assert!(result["summary"].is_object(), "{}", result["diagnostics"]);
++        println!("native metadata status={} records={} definitions={} units={} ES={} error={}", result["status"], result["records"].as_array().unwrap().len(),
++            result["summary"]["parameter_definitions"].as_object().map_or(0, |v| v.len()),
++            result["summary"]["unit_formats"].as_object().map_or(0, |v| v.len()),
++            result["summary"]["extensible_storage_catalog"]["schemas"].as_object().map_or(0, |v| v.len()), result["diagnostics"]["error"]);
++    }
++}

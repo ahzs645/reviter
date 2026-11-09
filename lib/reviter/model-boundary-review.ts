@@ -1,4 +1,5 @@
 import pc from "polygon-clipping";
+import { hypot } from "./deterministic-math.ts";
 import type { IndoorDataset } from "./indoor-contract.ts";
 import type {
   BoundaryReference,
@@ -154,7 +155,7 @@ export function sectionForModelBoundaryReview(
       continue;
     const segments = indices.map((i) => section.wallSegments[i]!),
       base = segments[0]!,
-      length = Math.hypot(base[1][0] - base[0][0], base[1][1] - base[0][1]);
+    length = hypot(base[1][0] - base[0][0], base[1][1] - base[0][1]);
     if (length < 0.5 || length > 30) continue;
     const axis: RoomPoint = [
         (base[1][0] - base[0][0]) / length,
@@ -165,7 +166,7 @@ export function sectionForModelBoundaryReview(
       points = segments.flat();
     if (
       segments.some(([a, b]) => {
-        const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const l = hypot(b[0] - a[0], b[1] - a[1]);
         return (
           l < 0.5 ||
           Math.abs(((b[0] - a[0]) * axis[0] + (b[1] - a[1]) * axis[1]) / l) <

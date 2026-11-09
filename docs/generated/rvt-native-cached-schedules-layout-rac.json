@@ -1,0 +1,162 @@
+{
+  "model": "rac.rvt",
+  "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "schemaSha256": "c964f9aa2a5f674e3ca412edb6c72fa3eb6208f6b462e836489ab9a2ea066c04",
+  "revitVersion": 2025,
+  "rawEvidenceStatus": "complete",
+  "inventoryStatus": "complete",
+  "schedules": 8,
+  "checkedFields": 33,
+  "checkedCells": 246,
+  "checkedSortFields": 9,
+  "checkedFilters": 1,
+  "expressionFields": 0,
+  "nonEmptyCellText": 33,
+  "sourceProjectionMismatches": 0,
+  "cachedLayout": {
+    "checkedRowDimensions": 67,
+    "checkedColumnDimensions": 50,
+    "checkedReciprocalRectangles": 9,
+    "checkedCoveredCells": 33,
+    "hiddenSections": 6,
+    "previewSections": 16,
+    "previewCells": 222,
+    "previewMerges": 9,
+    "sourceTopologyMismatches": 0
+  },
+  "sourceGraphClasses": {
+    "DBViewSchedule": 8,
+    "ScheduleData": 8,
+    "ScheduleSchema": 8,
+    "ScheduleSegmentRec": 8,
+    "ScheduleSectionData": 16,
+    "ScheduleSortField": 9,
+    "ScheduleField": 33,
+    "TableCellData": 246,
+    "ScheduleFilter": 1
+  },
+  "diagnostics": [],
+  "samples": [
+    {
+      "elementId": "959491",
+      "categoryId": "-2001360",
+      "fieldIds": [
+        "3",
+        "1",
+        "2",
+        "5"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "3"
+      ],
+      "filterFields": [],
+      "storedCells": 30,
+      "source": {
+        "stream": "Partitions/14",
+        "groupRecordOffset": 41925,
+        "bodySha256": "87a1218e45d66ae05f653bf4ef0eb9ed74f7e98871531a22c282153f0cbd7d62",
+        "rawRecordIndex": 0
+      }
+    },
+    {
+      "elementId": "970087",
+      "categoryId": "-2000150",
+      "fieldIds": [
+        "3",
+        "4",
+        "0",
+        "2",
+        "5"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "4",
+        "3"
+      ],
+      "filterFields": [
+        "3"
+      ],
+      "storedCells": 180,
+      "source": {
+        "stream": "Partitions/14",
+        "groupRecordOffset": 62305,
+        "bodySha256": "e5e07aa60de338463a75689fd7c3231f4aa24fae37b110153d4f4c965cb933eb",
+        "rawRecordIndex": 1
+      }
+    },
+    {
+      "elementId": "1098723",
+      "categoryId": "-2006070",
+      "fieldIds": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "3"
+      ],
+      "filterFields": [],
+      "storedCells": 6,
+      "source": {
+        "stream": "Partitions/14",
+        "groupRecordOffset": 3551,
+        "bodySha256": "b32dde8e4763a46f89548dc9cdfb366495e89c0e4ec22cce7262a373433bc569",
+        "rawRecordIndex": 2
+      }
+    },
+    {
+      "elementId": "1098728",
+      "categoryId": "-2006070",
+      "fieldIds": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "hiddenFields": 1,
+      "sortingFields": [
+        "3"
+      ],
+      "filterFields": [],
+      "storedCells": 6,
+      "source": {
+        "stream": "Partitions/14",
+        "groupRecordOffset": 11872,
+        "bodySha256": "18a31db5d0444497702371d631ce49b0e7f635533a9f425e5fa96b46dd32177c",
+        "rawRecordIndex": 3
+      }
+    }
+  ],
+  "comparisonScope": "Exact source digest and independently reopened stored graph fields/IDs. Enum codes and formulas are unevaluated; cached cells are not independently regenerated Revit rows.",
+  "negativeLayoutCases": [
+    {
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "missing-owned-cached-cell",
+      "status": "partial",
+      "omittedSectionReason": "Stored cell grid is incomplete; missing cells cannot be synthesized.",
+      "passed": true
+    },
+    {
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "covered-nonanchor-text",
+      "status": "partial",
+      "omittedSectionReason": "A covered non-anchor cell retains text; merging would discard stored content.",
+      "passed": true
+    },
+    {
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "broken-native-dimension-token",
+      "status": "partial",
+      "omittedSectionReason": "Owned section dimensions or visibility are incomplete, invalid or over budget.",
+      "passed": true
+    }
+  ],
+  "negativeScope": "Synthetic corruptions of the actual-model positive baseline; hashes identify original source bytes, not modified RVT files."
+}

@@ -1,0 +1,250 @@
+{
+  "unitTests": {
+    "passed": 2131,
+    "skipped": 3,
+    "failed": 0,
+    "total": 2134
+  },
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "githubPagesBuild": "passed",
+  "renderedHtmlChecks": {
+    "passed": 4,
+    "failed": 0
+  },
+  "githubPagesChecks": {
+    "passed": 1,
+    "failed": 0
+  },
+  "seededMalformedInput": {
+    "cases": 256,
+    "targetRuns": 2560,
+    "failures": 0,
+    "seed": 5396052,
+    "corpusSha256": "67b054cdf75e66d8a8158f2af5dcab31bac4e1095839b02a56d15bdbcadacf8b",
+    "evidence": "rvt-malformed-fuzz-expanded.json",
+    "scope": "Fresh seeded CLI execution after deferred large-frame priority correction; four separate positive FIFO/cap regressions exercise the new path."
+  },
+  "nativeWasmChecks": {
+    "passed": 7
+  },
+  "nativeRustAdapterChecks": {
+    "passed": 5
+  },
+  "vanillaRebuild": {
+    "pinnedCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "allFourOutputHashesMatchOriginalBaseline": true
+  },
+  "changedSourceLint": {
+    "newDiagnostics": 0,
+    "inheritedDiagnostics": [],
+    "scope": "All 36 changed/new continuation TypeScript, browser script and test sources passed scoped ESLint; repository baseline is retained separately."
+  },
+  "repositoryLintBaseline": {
+    "errors": 113,
+    "warnings": 75,
+    "scope": "Earlier unchanged-base and initial-integration runs; repository-wide lint is not claimed clean."
+  },
+  "finalInventoryChecks": {
+    "passed": 25,
+    "failed": 0,
+    "scope": "Retained earlier inventory checks; current exhaustive source-inventory regression suite separately passes both tests."
+  },
+  "modelComparison": {
+    "freshReviterModels": 4,
+    "verifiedUnchangedUpstreamReuses": 4,
+    "sceneBaselineMatches": 12,
+    "independentIfcOutputsReopened": 8,
+    "unbcProductMatches": 35117,
+    "unbcProductCompared": 35117,
+    "unbcTypeMatches": 36886,
+    "unbcTypeCompared": 37132,
+    "evidence": "rvt-native-large-frame-validation.json",
+    "expectedMeshHashTriangleAndBatchChanges": 12,
+    "geometryBaselineCommit": "2d42a9c",
+    "triangleCounts": {
+      "rac": {
+        "prior": 195167,
+        "current": 209174
+      },
+      "school": {
+        "prior": 378957,
+        "current": 438508
+      },
+      "snowdon": {
+        "prior": 1594784,
+        "current": 1759255
+      },
+      "unbc": {
+        "prior": 858388,
+        "current": 898491
+      }
+    },
+    "sourceTypeEnvelopeVetoes": {
+      "rac": 0,
+      "school": 18,
+      "snowdon": 17,
+      "unbc": 3,
+      "lostPreviouslyMatchingUnbcIdentities": 0,
+      "lostPreviouslyMatchingUpstreamIdentities": 0,
+      "evidence": "rvt-native-type-envelope-census.json"
+    },
+    "noPriorOwnerIdentityLossesOnAllFourModels": true,
+    "pairedUnbcGeometry": {
+      "uniqueTagAndGlobalIdOwners": 36048,
+      "ownerAreaErrorsImproved": 82,
+      "ownerAreaErrorsWorsened": 8,
+      "ownerBoundErrorsWorsenedBeyondFeet": 0.0001,
+      "ownerBoundErrorWorseningsBeyondThreshold": 0,
+      "wall1185924MaxBidirectionalSampledDistanceFeet": 3.938770423421556e-06,
+      "column2236110MaxBidirectionalSampledDistanceFeet": 1.19845263328114e-05,
+      "unresolvedWall801614SampledDistanceFeet": 0.8002203057058352,
+      "scope": "Current large-frame continuation versus2d42a9c. Finite surface samples are not continuous distance guarantees; area agreement is not local surface equivalence. Nine source material gaps remain in11 separately checked witnesses.",
+      "maximumCurrentWorsenedRelativeAreaError": 0.0006799306449751273
+    },
+    "wholeLargeFrames": {
+      "admitted": 478,
+      "perModel": {
+        "rac": 30,
+        "school": 23,
+        "snowdon": 316,
+        "unbc": 109
+      },
+      "skippedBufferBudget": 0,
+      "skippedDefinitionBudget": 0,
+      "scope": "All queued source frames processed; one UNBC existing owner preserved. Snowdon remains subject to the unchanged final scene output cap."
+    }
+  },
+  "nativeTableInventory": {
+    "exactUpstreamDeclarationMatches": 4,
+    "actualCorpusAndMalformedChecksPassed": 10
+  },
+  "viewpointStateBrowser": {
+    "passed": 12,
+    "errors": 0,
+    "desktopAndMobile": true,
+    "version": 3,
+    "optionalMarkupSelectionDisplayMode": true,
+    "restoredCanvasPngMatches": true,
+    "evidence": "rvt-viewpoint-v3-browser-validation.json"
+  },
+  "scope": "Further source-backed continuation with large whole-frame recovery, cached HTML tables, circular details and actual structural profiles. Native WASM/Rust/vanilla rebuild results retain their earlier execution because the corresponding binary/core/harness remained unchanged. Repository-wide lint is not claimed clean.",
+  "nativeInventoryBrowser": {
+    "passed": true,
+    "desktopAndMobile": true,
+    "errors": 0,
+    "csvDownloads": 5,
+    "jsonDownloads": 1,
+    "ifcDownloads": 1,
+    "svgDownloads": 1,
+    "mobileCsvMatchesDesktop": true,
+    "storedSchedules": true,
+    "sourceOrganizationAndTrueNorth": true,
+    "selectedSourceView": "312",
+    "evidence": "rvt-native-inventory-browser-validation.json"
+  },
+  "additionalUpstreamGeometryMode": {
+    "freshModels": 4,
+    "apiConverted": 4,
+    "sourceGeometryQualityGatePasses": 3,
+    "sourceGeometryQualityGateFails": 1,
+    "wasmDoesNotInvokeQualityValidator": true,
+    "independentReaderReopens": 8,
+    "evidence": "rvt-upstream-geometry-mode-validation.json"
+  },
+  "sourceOrganizationIfc": {
+    "models": 3,
+    "outputsReopened": 6,
+    "readers": [
+      "web-ifc",
+      "IFC-Lite"
+    ],
+    "areaRecords": 25,
+    "mepSpaceRecords": 9,
+    "geometryAndPropertyDisagreements": 0,
+    "evidence": "rvt-source-organization-ifc-validation.json"
+  },
+  "nativeMapsProfiles": {
+    "schoolMaps": 79,
+    "schoolOccurrences": 252,
+    "schoolRotatedGroups": 4,
+    "structuralSnowdonMaps": 142,
+    "structuralSnowdonOccurrences": 463,
+    "actualModelProfileUsages": 435,
+    "actualModelProfileDefinitions": 13,
+    "schoolProfileUsages": 8,
+    "structuralSnowdonProfileUsages": 427,
+    "profileBodyAndColorDisagreements": 0,
+    "unknownMaterialsRetained": true,
+    "scope": "Source-qualified family classification plus symbol-owned dimensions; all435 actual profile owner bodies/colors match profile-disabled exports exactly. General sections/fillets/cardinal points remain unsupported. web-ifc nullable-material logging limitation is recorded.",
+    "evidence": "rvt-structural-profile-family-validation.json"
+  },
+  "upstreamHeadVerified": {
+    "utcDate": "2026-10-15",
+    "head": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "branch": "fork/main"
+  },
+  "cachedScheduleHtml": {
+    "actualSchedules": 97,
+    "adversarialTextArtifacts": 1,
+    "browserArtifactsPassed": 98,
+    "corruptedLayoutRefusals": 9,
+    "sourceTopologyDisagreements": 0,
+    "networkRequests": 0,
+    "browserErrors": 0,
+    "recalculatedFormulas": false,
+    "evidence": "rvt-native-cached-schedule-html-browser-validation.json"
+  },
+  "nativeSourceContinuationBrowser": {
+    "model": "rac.rvt",
+    "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+    "scope": "Production app and workers on actual model; independent reopening of downloaded cached HTML and source SVG. Cached content is not a refreshed schedule or full drawing.",
+    "storedSchedules": 8,
+    "selectedScheduleId": "959491",
+    "defaultSections": 2,
+    "includedHiddenSections": 2,
+    "mergedCells": 1,
+    "htmlDownloads": 3,
+    "mobileHtmlMatchesDesktop": true,
+    "sourceCircle": {
+      "viewId": "245424",
+      "elementId": "941493",
+      "radiusFeet": 0.4880464958558832,
+      "sourceSha256Verified": true
+    },
+    "desktopAndMobileControls": true,
+    "mobileHorizontalOverflow": false,
+    "remoteArtifactRequests": 0,
+    "browserErrors": []
+  },
+  "nativeCircularDetail": {
+    "actualPositiveCircles": 1,
+    "actualOffsetArcsWithheld": 8,
+    "scope": "Source-owned RAC periodic circle; School family-offset arcs remain unresolved. Bounded arcs additionally qualify in source fixtures. Full drawings remain unsupported.",
+    "evidence": "rvt-native-circular-detail-validation.json"
+  },
+  "originalSymbolEnvelopeSourceAudit": {
+    "largeMissingReferencesRecovered": 14,
+    "investigatedWindowConflictsWithheld": 3,
+    "historicalEnvelopeChecksumBytes": 33552587,
+    "historicalEnvelopeScanCapped": true,
+    "legacyIdentityScanCapped": false,
+    "budgetDiagnosticsVisibleInConversion": true,
+    "apiGeometryOptionsEquivalent": false,
+    "evidence": "rvt-native-identity-envelope-validation.json"
+  },
+  "postSuiteFocusedChecks": {
+    "deferredGeometryDiagnosticTests": 4,
+    "failed": 0,
+    "typecheck": "passed",
+    "changedFileLint": "passed",
+    "productionBuild": "passed",
+    "githubPagesBuild": "passed",
+    "scope": "After the whole-suite run, a reporting-only boolean marks conservative supplemental output withholding as truncated; geometry, order and IFC IDs remain unchanged. Canonical identity analysis CLI was also reconciled against all actual IFC populations and passed typecheck/lint."
+  },
+  "currentCapabilityInventoryTests": {
+    "passed": 2,
+    "failed": 0,
+    "suite": "tests/rvt-upstream-capability-inventory.test.ts"
+  }
+}

@@ -198,6 +198,26 @@ export {
   type RoomDisposition,
   type RoomReviewState,
 } from "./room-review.ts";
+export {
+  applyElementOverrides,
+  assertedFields,
+  clearAllElementOverrides,
+  clearElementOverride,
+  emptyElementOverrideState,
+  isElementOverride,
+  isEmptyOverride,
+  mergeElementOverrides,
+  overrideFor,
+  redoElementOverrides,
+  setElementOverride,
+  undoElementOverrides,
+  ELEMENT_OVERRIDE_VERSION,
+  type AssertedCategory,
+  type ElementOverride,
+  type ElementOverridePatch,
+  type ElementOverrideSidecar,
+  type ElementOverrideState,
+} from "./element-overrides.ts";
 
 // ─── Paired-IFC reference analysis ───────────────────────────────────────────
 
@@ -235,6 +255,9 @@ export {
   makePascalSceneJson,
   makePlanSvg,
   makeReport,
+  makeElementsCsv,
+  makeNativeRoomsCsv,
+  makeParametersCsv,
   outputName,
   parseFloorReferenceAlignment,
   planDrawingFrame,

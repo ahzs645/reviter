@@ -12,6 +12,7 @@ declare global {
         regions?: string;
         indoor?: string;
     cadReview?: string;
+    evidence?: string;
       }
     | undefined;
 }

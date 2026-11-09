@@ -19,6 +19,7 @@ import { propertyRowsFor } from "../app/studio/format.ts";
 import { boundsDimensions } from "../lib/reviter/viewer.ts";
 import type { ElementBoundsRecord } from "../lib/reviter/types.ts";
 import type { PropertyProvenance, PropertyRow } from "../app/studio/types.ts";
+import { emptyElementOverrideState, setElementOverride } from "../lib/reviter/element-overrides.ts";
 
 function record(overrides: Partial<ElementBoundsRecord> = {}): ElementBoundsRecord {
   return {
@@ -152,4 +153,19 @@ test("a category the element's own header states is a read, and its family and p
   // A wall's built height, which Revit keeps unlabelled, is shown as its height.
   assert.equal(rows.get("parameter--1001101")?.label, "Height");
   assert.equal(rows.get("parameter--1001101")?.value, "13.78 ft");
+});
+
+test("asserted fields are marked edited while native family, parameters and identity remain decoded", () => {
+  const element = record({ familyName: "Source family", typeName: "Source type", categorySource: "element-header",
+    parameters: [{ parameterId: -1001101, name: "Height", value: 13.78 }] });
+  const override = setElementOverride(emptyElementOverrideState(), element.elementId, {
+    category: { id: -2000170, name: "Curtain Panels" }, typeName: "Reviewed type", note: "Checked",
+  }, "reviewer").overrides[0]!;
+  const rows = new Map(propertyRowsFor(element, boundsDimensions(element.boundsFeet), null, override).map(row => [row.key, row]));
+  for (const key of ["category", "category-id", "type", "assertion-note"]) assert.equal(rows.get(key)?.provenance, "edited");
+  for (const key of ["family", "element-id", "parameter--1001101"]) assert.equal(rows.get(key)?.provenance, "decoded");
+  assert.equal(rows.get("type")?.value, "Reviewed type");
+  assert.match(rows.get("category-id")!.value, /reviewer assertion/);
+  assert.equal(rows.get("parameter--1001101")?.value, "13.78 ft");
+  assert.equal(element.typeName, "Source type");
 });

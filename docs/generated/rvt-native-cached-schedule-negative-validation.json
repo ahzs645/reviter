@@ -1,0 +1,97 @@
+{
+  "kind": "native-cached-schedule-negative-model-validation",
+  "status": "passed",
+  "cases": [
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "missing-owned-cached-cell",
+      "status": "partial",
+      "omittedSectionReason": "Stored cell grid is incomplete; missing cells cannot be synthesized.",
+      "passed": true
+    },
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "covered-nonanchor-text",
+      "status": "partial",
+      "omittedSectionReason": "A covered non-anchor cell retains text; merging would discard stored content.",
+      "passed": true
+    },
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "scheduleId": "959491",
+      "sectionCode": 0,
+      "syntheticMutation": "broken-native-dimension-token",
+      "status": "partial",
+      "omittedSectionReason": "Owned section dimensions or visibility are incomplete, invalid or over budget.",
+      "passed": true
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "scheduleId": "135424",
+      "sectionCode": 0,
+      "syntheticMutation": "missing-owned-cached-cell",
+      "status": "partial",
+      "omittedSectionReason": "Stored cell grid is incomplete; missing cells cannot be synthesized.",
+      "passed": true
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "scheduleId": "135424",
+      "sectionCode": 0,
+      "syntheticMutation": "covered-nonanchor-text",
+      "status": "partial",
+      "omittedSectionReason": "A covered non-anchor cell retains text; merging would discard stored content.",
+      "passed": true
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "scheduleId": "135424",
+      "sectionCode": 0,
+      "syntheticMutation": "broken-native-dimension-token",
+      "status": "partial",
+      "omittedSectionReason": "Owned section dimensions or visibility are incomplete, invalid or over budget.",
+      "passed": true
+    },
+    {
+      "model": "snowdon",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "scheduleId": "2289240",
+      "sectionCode": 0,
+      "syntheticMutation": "missing-owned-cached-cell",
+      "status": "partial",
+      "omittedSectionReason": "Stored cell grid is incomplete; missing cells cannot be synthesized.",
+      "passed": true
+    },
+    {
+      "model": "snowdon",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "scheduleId": "2289240",
+      "sectionCode": 0,
+      "syntheticMutation": "covered-nonanchor-text",
+      "status": "partial",
+      "omittedSectionReason": "A covered non-anchor cell retains text; merging would discard stored content.",
+      "passed": true
+    },
+    {
+      "model": "snowdon",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "scheduleId": "2289240",
+      "sectionCode": 0,
+      "syntheticMutation": "broken-native-dimension-token",
+      "status": "partial",
+      "omittedSectionReason": "Owned section dimensions or visibility are incomplete, invalid or over budget.",
+      "passed": true
+    }
+  ],
+  "scope": "Nine synthetic corruptions of actual RAC/School/Snowdon cached source layouts. Original model hashes identify the unmodified positive baselines; mutation results are adversarial tests, not claims about genuine source records."
+}

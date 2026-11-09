@@ -1,0 +1,320 @@
+{
+  "kind": "native-record-inventory-batch-validation",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "queryCount": 5,
+  "retainedSourceRecords": 2303,
+  "projectedRecords": 2283,
+  "fallbackRecords": 20,
+  "comparedFields": 34553,
+  "comparedPointerEdges": 3475,
+  "mismatches": 0,
+  "batches": [
+    {
+      "kind": "native-record-inventory-validation",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "readerPatch": "native-evidence",
+      "revitVersion": 2024,
+      "sourceStatus": "partial",
+      "inventoryStatus": "partial",
+      "retainedSourceRecords": 1413,
+      "projectedRecords": 1408,
+      "fallbackRecords": 5,
+      "comparedFields": 19589,
+      "comparedPointerEdges": 3080,
+      "mismatches": 0,
+      "classCounts": {
+        "TextNote": 336,
+        "AreaMeasureElem": 2,
+        "BasePoint": 2,
+        "RefPlane": 886,
+        "Grid": 28,
+        "RoomElem": 150,
+        "WorksetVisibilitySettingsElem": 1,
+        "ProjectRevision": 3
+      },
+      "classFieldCounts": {
+        "TextNote": 4368,
+        "AreaMeasureElem": 18,
+        "BasePoint": 18,
+        "RefPlane": 12404,
+        "Grid": 336,
+        "RoomElem": 2400,
+        "WorksetVisibilitySettingsElem": 6,
+        "ProjectRevision": 39
+      },
+      "projectedValueAndWitnessSha256": "e91457da034f5bd0bed5c43f83d53df362dd4beb64d95f0a1918b195e48c1dde",
+      "sourceClassCoverage": {
+        "AreaMeasureElem": {
+          "body_bytes": 730,
+          "complete_graph_body_bytes": 730,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "BasePoint": {
+          "body_bytes": 760,
+          "complete_graph_body_bytes": 760,
+          "complete_graphs": 2,
+          "diagnostics": {},
+          "records": 2,
+          "unsupported_graphs": 0
+        },
+        "Grid": {
+          "body_bytes": 20578,
+          "complete_graph_body_bytes": 20578,
+          "complete_graphs": 28,
+          "diagnostics": {},
+          "records": 28,
+          "unsupported_graphs": 0
+        },
+        "ProjectRevision": {
+          "body_bytes": 584,
+          "complete_graph_body_bytes": 584,
+          "complete_graphs": 3,
+          "diagnostics": {},
+          "records": 3,
+          "unsupported_graphs": 0
+        },
+        "RefPlane": {
+          "body_bytes": 669870,
+          "complete_graph_body_bytes": 669870,
+          "complete_graphs": 886,
+          "diagnostics": {},
+          "records": 886,
+          "unsupported_graphs": 0
+        },
+        "RoomElem": {
+          "body_bytes": 1063997,
+          "complete_graph_body_bytes": 720800,
+          "complete_graphs": 150,
+          "diagnostics": {
+            "graph RoomCreate3dGeometryGStep starts10125: GeomGenerator.m_edgeHistTable at 47649: EdgeHistEntry.m_edgeHist at 47649: EdgeHist.m_keys at 47649: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts11441: GeomGenerator.m_edgeHistTable at 47009: EdgeHistEntry.m_id at 47009: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts12397: GeomGenerator.m_edgeHistTable at 45733: EdgeHistEntry.m_id at 45733: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts19761: GeomGenerator.m_faceHistTable at 43577: FaceHistEntry.m_faceHist at 43577: native field value budget exceeded (20000)": 1,
+            "graph RoomCreate3dGeometryGStep starts9563: GeomGenerator.m_edgeHistTable at 47671: native field value budget exceeded (20000)": 1
+          },
+          "records": 155,
+          "unsupported_graphs": 5
+        },
+        "TextNote": {
+          "body_bytes": 219221,
+          "complete_graph_body_bytes": 219221,
+          "complete_graphs": 336,
+          "diagnostics": {},
+          "records": 336,
+          "unsupported_graphs": 0
+        },
+        "WorksetVisibilitySettingsElem": {
+          "body_bytes": 109,
+          "complete_graph_body_bytes": 109,
+          "complete_graphs": 1,
+          "diagnostics": {},
+          "records": 1,
+          "unsupported_graphs": 0
+        }
+      },
+      "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+    },
+    {
+      "kind": "native-record-inventory-validation",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "readerPatch": "native-evidence",
+      "revitVersion": 2024,
+      "sourceStatus": "partial",
+      "inventoryStatus": "partial",
+      "retainedSourceRecords": 199,
+      "projectedRecords": 197,
+      "fallbackRecords": 2,
+      "comparedFields": 3924,
+      "comparedPointerEdges": 0,
+      "mismatches": 0,
+      "classCounts": {
+        "DBViewPlan": 115,
+        "DBViewSection": 82
+      },
+      "classFieldCounts": {
+        "DBViewPlan": 2530,
+        "DBViewSection": 1394
+      },
+      "projectedValueAndWitnessSha256": "8b127074046a6314ba5937fbb90d8848e617b983c0f72d475e469f369bef27e5",
+      "sourceClassCoverage": {
+        "DBViewPlan": {
+          "body_bytes": 1010309,
+          "complete_graph_body_bytes": 870080,
+          "complete_graphs": 115,
+          "diagnostics": {
+            "graph Edge starts57188: GEdge.m_firstAndLastEdgePnts at 57268: EdgePnt.uv at 57268: native field value budget exceeded (20000)": 1,
+            "graph Edge starts57968: GNode.m_GInfo at 57968: GInfo.m_categoryId at 57968: ElementId.m_id at 57968: Identifier.m_id64 at 57968: native field value budget exceeded (20000)": 1
+          },
+          "records": 117,
+          "unsupported_graphs": 2
+        },
+        "DBViewSection": {
+          "body_bytes": 326058,
+          "complete_graph_body_bytes": 326058,
+          "complete_graphs": 82,
+          "diagnostics": {},
+          "records": 82,
+          "unsupported_graphs": 0
+        }
+      },
+      "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+    },
+    {
+      "kind": "native-record-inventory-validation",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "readerPatch": "native-evidence",
+      "revitVersion": 2024,
+      "sourceStatus": "complete",
+      "inventoryStatus": "complete",
+      "retainedSourceRecords": 109,
+      "projectedRecords": 109,
+      "fallbackRecords": 0,
+      "comparedFields": 1967,
+      "comparedPointerEdges": 0,
+      "mismatches": 0,
+      "classCounts": {
+        "DBView3d": 44,
+        "DBViewProject": 3,
+        "DBViewDrafting": 57,
+        "DBViewLegend": 5
+      },
+      "classFieldCounts": {
+        "DBView3d": 748,
+        "DBViewProject": 51,
+        "DBViewDrafting": 1083,
+        "DBViewLegend": 85
+      },
+      "projectedValueAndWitnessSha256": "aac31128182544995d7fcb4a003ec67a960cf190bf3ab763fc3ee97f03c41592",
+      "sourceClassCoverage": {
+        "DBView3d": {
+          "body_bytes": 171287,
+          "complete_graph_body_bytes": 171287,
+          "complete_graphs": 44,
+          "diagnostics": {},
+          "records": 44,
+          "unsupported_graphs": 0
+        },
+        "DBViewDrafting": {
+          "body_bytes": 152474,
+          "complete_graph_body_bytes": 152474,
+          "complete_graphs": 57,
+          "diagnostics": {},
+          "records": 57,
+          "unsupported_graphs": 0
+        },
+        "DBViewLegend": {
+          "body_bytes": 14992,
+          "complete_graph_body_bytes": 14992,
+          "complete_graphs": 5,
+          "diagnostics": {},
+          "records": 5,
+          "unsupported_graphs": 0
+        },
+        "DBViewProject": {
+          "body_bytes": 7409,
+          "complete_graph_body_bytes": 7409,
+          "complete_graphs": 3,
+          "diagnostics": {},
+          "records": 3,
+          "unsupported_graphs": 0
+        }
+      },
+      "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+    },
+    {
+      "kind": "native-record-inventory-validation",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "readerPatch": "native-evidence",
+      "revitVersion": 2024,
+      "sourceStatus": "partial",
+      "inventoryStatus": "partial",
+      "retainedSourceRecords": 92,
+      "projectedRecords": 79,
+      "fallbackRecords": 13,
+      "comparedFields": 1738,
+      "comparedPointerEdges": 395,
+      "mismatches": 0,
+      "classCounts": {
+        "DBViewSchedule": 79
+      },
+      "classFieldCounts": {
+        "DBViewSchedule": 1738
+      },
+      "projectedValueAndWitnessSha256": "5a90c382ff1e4f1ae595f03ccc9a4211daa34ac74c743f5638f711379ef1624b",
+      "sourceClassCoverage": {
+        "DBViewSchedule": {
+          "body_bytes": 6338313,
+          "complete_graph_body_bytes": 1439853,
+          "complete_graphs": 79,
+          "diagnostics": {
+            "graph TableCellData starts103091: TableCellData.m_formatOptions at 103105: native field value budget exceeded (20000)": 1,
+            "graph TableCellData starts104043: TableCellData.m_formatOptions at 104140: FormatOptions.m_bSuppressSpaces at 104140: native field value budget exceeded (20000)": 1,
+            "graph TableCellData starts104244: TableCellData.m_formatOptions at 104258: FormatOptions.m_symbolTypeId at 104258: ForgeTypeId.m_typeId at 104258: native field value budget exceeded (20000)": 1,
+            "graph TableCellData starts104666: TableCellData.m_formatOptions at 104766: FormatOptions.m_bUseGrouping at 104766: native field value budget exceeded (20000)": 1,
+            "graph TableCellData starts110141: TableCellData.m_arrCombinedParams at 110151: native field value budget exceeded (20000)": 1,
+            "graph TableCellStyle starts101107: TableCellStyle.m_borderRightLineStyle at 101157: native field value budget exceeded (20000)": 1,
+            "graph TableCellStyle starts101406: TableCellStyle.m_borderTopLineStyle at 101464: ElementId.m_id at 101464: Identifier.m_id64 at 101464: native field value budget exceeded (20000)": 1,
+            "graph TableCellStyleHelper starts87982: TableCellStyleHelper.m_verAlignment at 87994: native field value budget exceeded (20000)": 1,
+            "graph TableCellStyleHelper starts92754: TableCellStyleHelper.m_fontSize at 92762: native field value budget exceeded (20000)": 1,
+            "graph TableCellStyleHelper starts94963: TableCellStyleHelper.m_underline at 94977: native field value budget exceeded (20000)": 1,
+            "native graph object budget exceeded": 3
+          },
+          "records": 92,
+          "unsupported_graphs": 13
+        }
+      },
+      "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+    },
+    {
+      "kind": "native-record-inventory-validation",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+      "readerPatch": "native-evidence",
+      "revitVersion": 2024,
+      "sourceStatus": "complete",
+      "inventoryStatus": "complete",
+      "retainedSourceRecords": 490,
+      "projectedRecords": 490,
+      "fallbackRecords": 0,
+      "comparedFields": 7335,
+      "comparedPointerEdges": 0,
+      "mismatches": 0,
+      "classCounts": {
+        "Viewport": 487,
+        "ViewSheetSet": 3
+      },
+      "classFieldCounts": {
+        "Viewport": 7305,
+        "ViewSheetSet": 30
+      },
+      "projectedValueAndWitnessSha256": "62015e8e5be8b68cd478ee5a26406d4f5df647af9c526b41ed4021a2e8641cb8",
+      "sourceClassCoverage": {
+        "ViewSheetSet": {
+          "body_bytes": 1190,
+          "complete_graph_body_bytes": 1190,
+          "complete_graphs": 3,
+          "diagnostics": {},
+          "records": 3,
+          "unsupported_graphs": 0
+        },
+        "Viewport": {
+          "body_bytes": 106780,
+          "complete_graph_body_bytes": 106780,
+          "complete_graphs": 487,
+          "diagnostics": {},
+          "records": 487,
+          "unsupported_graphs": 0
+        }
+      },
+      "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+    }
+  ],
+  "scope": "Disjoint typed owner queries independently compared against their source graphs and the same exact source RVT bytes; source graph fallbacks and output limits retained per batch."
+}

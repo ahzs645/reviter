@@ -1,0 +1,51 @@
+{
+  "checks": {
+    "version2LiveStateCaptured": true,
+    "visibilityAndClippingChangeRenderedPixels": true,
+    "desktopCameraVisibilityAndClippingPixelsRestored": true,
+    "foreignSourceStateRefused": true,
+    "invalidAndBudgetStateRefused": true,
+    "mobileClippingRestored": true,
+    "mobileVisibilityAndSectionRecaptured": true,
+    "pendingSourceDeferred": true,
+    "pendingStateRestoredAfterMatchingSource": true
+  },
+  "errors": [],
+  "sourceSha256": "sha256-41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "canvasHashes": {
+    "original": "5042de6256475f27701dadb327a339b6585796b4120bfb258a215e9b6d84e936",
+    "changed": "14391f3723042ed43e7c27324df46de0def0fb654a68171b57ba2d949e67891e",
+    "restored": "5042de6256475f27701dadb327a339b6585796b4120bfb258a215e9b6d84e936"
+  },
+  "mobileHorizontalOverflow": false,
+  "model": "RAC (user-supplied RVT)",
+  "browser": "Playwright Chromium 1194, software WebGL",
+  "viewports": {
+    "desktop": [
+      1440,
+      1000
+    ],
+    "mobile": [
+      390,
+      844
+    ]
+  },
+  "mode": "production",
+  "limits": {
+    "fragmentCharacters": 4096,
+    "hiddenCategories": 64,
+    "categoryCharacters": 96
+  },
+  "savedState": {
+    "hiddenCategories": [
+      "Walls"
+    ],
+    "section": {
+      "enabled": true,
+      "mode": "x",
+      "offset": 0.37,
+      "reverse": true
+    }
+  },
+  "comparisonNote": "Canvas screenshots use the same viewport dimensions and collapsed viewpoint details before and after restoration."
+}

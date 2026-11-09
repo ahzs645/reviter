@@ -1,0 +1,703 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-ifc-owner-geometry.ts (compact independently reopened measurements)",
+  "source": {
+    "fileName": "unbc.rvt",
+    "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "release": 2027
+  },
+  "upstream": {
+    "repo": "https://github.com/helenkwok/rvt-rs",
+    "commit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+    "source": "src/native_graphics_traversal.rs::direction_condition, default3D comparisons6\u20138"
+  },
+  "scope": "Rendered IFC products with one exact decimal Tag on each side and identical GlobalId. Duplicate Tags and identity disagreements excluded; no name, shape, aggregation or GLB dbId identity inference.",
+  "frame": "Both IFCs reopened with COORDINATE_TO_ORIGIN=false; explicit placed geometry mapped from Y-up metres to (x,-z,y)/0.3048 Z-up feet; no estimated translation/rotation/scale.",
+  "limitations": [
+    "Bounds/area/volume agreement does not establish equal surfaces or decoded join order.",
+    "Volume is the sum of absolute oriented shell volumes only when every individual part has exact-coordinate closed manifold edges and consistent winding. No welding tolerance or hole filling is used. Self-intersection and overlap between parts are not validated; this is not union/material volume.",
+    "IFC exporter view, phase, tessellation and geometry-selection differences can change metrics; triangle count is descriptive, never an accuracy score.",
+    "Source decoder provenance must be established separately before changing a native body. This audit never replaces source geometry with reference geometry."
+  ],
+  "prior": {
+    "output": {
+      "fileName": "reviter.ifc",
+      "sha256": "0b24f8d234fd9b10cca8f69e2b2b1d8ff5e2ac9c05af4d074a59c32e9c9542ff",
+      "bytes": 198754585,
+      "schema": "IFC4",
+      "taggedProductsWithMeshes": 36415,
+      "anonymousMeshes": 0,
+      "invalidTriangles": 0
+    },
+    "reference": {
+      "fileName": "unbc-reference.ifc",
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+      "bytes": 83798926,
+      "schema": "IFC2X3",
+      "taggedProductsWithMeshes": 36280,
+      "anonymousMeshes": 2,
+      "invalidTriangles": 0
+    },
+    "coverage": {
+      "compared": 36048,
+      "ambiguous": 92,
+      "identityDisagreements": 2,
+      "outputOnly": 273,
+      "referenceOnly": 2
+    },
+    "byEntity": {
+      "IfcSlab -> IfcSlab": {
+        "compared": 87,
+        "boundsWithin001Feet": 81,
+        "areaWithinOnePercent": 87,
+        "closedVolumePairs": 7,
+        "closedVolumeWithinOnePercent": 7
+      },
+      "IfcColumn -> IfcColumn": {
+        "compared": 311,
+        "boundsWithin001Feet": 221,
+        "areaWithinOnePercent": 9,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcWallStandardCase -> IfcWall": {
+        "compared": 7381,
+        "boundsWithin001Feet": 7344,
+        "areaWithinOnePercent": 7345,
+        "closedVolumePairs": 762,
+        "closedVolumeWithinOnePercent": 747
+      },
+      "IfcWall -> IfcWall": {
+        "compared": 140,
+        "boundsWithin001Feet": 137,
+        "areaWithinOnePercent": 134,
+        "closedVolumePairs": 3,
+        "closedVolumeWithinOnePercent": 2
+      },
+      "IfcStairFlight -> IfcStairFlight": {
+        "compared": 96,
+        "boundsWithin001Feet": 67,
+        "areaWithinOnePercent": 67,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRoof -> IfcRoof": {
+        "compared": 6,
+        "boundsWithin001Feet": 6,
+        "areaWithinOnePercent": 6,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRamp -> IfcRamp": {
+        "compared": 11,
+        "boundsWithin001Feet": 11,
+        "areaWithinOnePercent": 10,
+        "closedVolumePairs": 9,
+        "closedVolumeWithinOnePercent": 9
+      },
+      "IfcRailing -> IfcRailing": {
+        "compared": 202,
+        "boundsWithin001Feet": 197,
+        "areaWithinOnePercent": 145,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcPlate -> IfcPlate": {
+        "compared": 6235,
+        "boundsWithin001Feet": 6233,
+        "areaWithinOnePercent": 6232,
+        "closedVolumePairs": 6229,
+        "closedVolumeWithinOnePercent": 6229
+      },
+      "IfcWindow -> IfcWindow": {
+        "compared": 20,
+        "boundsWithin001Feet": 9,
+        "areaWithinOnePercent": 0,
+        "closedVolumePairs": 10,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcCovering -> IfcCovering": {
+        "compared": 46,
+        "boundsWithin001Feet": 45,
+        "areaWithinOnePercent": 46,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcDoor -> IfcDoor": {
+        "compared": 1912,
+        "boundsWithin001Feet": 1801,
+        "areaWithinOnePercent": 187,
+        "closedVolumePairs": 1855,
+        "closedVolumeWithinOnePercent": 3
+      },
+      "IfcMember -> IfcMember": {
+        "compared": 19601,
+        "boundsWithin001Feet": 19601,
+        "areaWithinOnePercent": 15227,
+        "closedVolumePairs": 57,
+        "closedVolumeWithinOnePercent": 57
+      }
+    }
+  },
+  "ownBodyPrecedenceOnly": {
+    "output": {
+      "fileName": "unbc-owner-fallback-current.ifc",
+      "sha256": "9a99923ac8a61fb94d4fae1c2d399f9006955d397b80ac755029c7a8bcc9445f",
+      "bytes": 196753909,
+      "schema": "IFC4",
+      "taggedProductsWithMeshes": 36415,
+      "anonymousMeshes": 0,
+      "invalidTriangles": 0
+    },
+    "reference": {
+      "fileName": "unbc-reference.ifc",
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+      "bytes": 83798926,
+      "schema": "IFC2X3",
+      "taggedProductsWithMeshes": 36280,
+      "anonymousMeshes": 2,
+      "invalidTriangles": 0
+    },
+    "coverage": {
+      "compared": 36048,
+      "ambiguous": 92,
+      "identityDisagreements": 2,
+      "outputOnly": 273,
+      "referenceOnly": 2
+    },
+    "byEntity": {
+      "IfcSlab -> IfcSlab": {
+        "compared": 87,
+        "boundsWithin001Feet": 81,
+        "areaWithinOnePercent": 87,
+        "closedVolumePairs": 7,
+        "closedVolumeWithinOnePercent": 7
+      },
+      "IfcColumn -> IfcColumn": {
+        "compared": 311,
+        "boundsWithin001Feet": 261,
+        "areaWithinOnePercent": 199,
+        "closedVolumePairs": 5,
+        "closedVolumeWithinOnePercent": 5
+      },
+      "IfcWallStandardCase -> IfcWall": {
+        "compared": 7381,
+        "boundsWithin001Feet": 7344,
+        "areaWithinOnePercent": 7345,
+        "closedVolumePairs": 762,
+        "closedVolumeWithinOnePercent": 747
+      },
+      "IfcWall -> IfcWall": {
+        "compared": 140,
+        "boundsWithin001Feet": 137,
+        "areaWithinOnePercent": 134,
+        "closedVolumePairs": 3,
+        "closedVolumeWithinOnePercent": 2
+      },
+      "IfcStairFlight -> IfcStairFlight": {
+        "compared": 96,
+        "boundsWithin001Feet": 67,
+        "areaWithinOnePercent": 67,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRoof -> IfcRoof": {
+        "compared": 6,
+        "boundsWithin001Feet": 6,
+        "areaWithinOnePercent": 6,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRamp -> IfcRamp": {
+        "compared": 11,
+        "boundsWithin001Feet": 11,
+        "areaWithinOnePercent": 10,
+        "closedVolumePairs": 9,
+        "closedVolumeWithinOnePercent": 9
+      },
+      "IfcRailing -> IfcRailing": {
+        "compared": 202,
+        "boundsWithin001Feet": 197,
+        "areaWithinOnePercent": 145,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcPlate -> IfcPlate": {
+        "compared": 6235,
+        "boundsWithin001Feet": 6233,
+        "areaWithinOnePercent": 6232,
+        "closedVolumePairs": 6229,
+        "closedVolumeWithinOnePercent": 6229
+      },
+      "IfcWindow -> IfcWindow": {
+        "compared": 20,
+        "boundsWithin001Feet": 9,
+        "areaWithinOnePercent": 0,
+        "closedVolumePairs": 10,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcCovering -> IfcCovering": {
+        "compared": 46,
+        "boundsWithin001Feet": 45,
+        "areaWithinOnePercent": 46,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcDoor -> IfcDoor": {
+        "compared": 1912,
+        "boundsWithin001Feet": 1801,
+        "areaWithinOnePercent": 187,
+        "closedVolumePairs": 1855,
+        "closedVolumeWithinOnePercent": 3
+      },
+      "IfcMember -> IfcMember": {
+        "compared": 19601,
+        "boundsWithin001Feet": 19601,
+        "areaWithinOnePercent": 15227,
+        "closedVolumePairs": 57,
+        "closedVolumeWithinOnePercent": 57
+      }
+    }
+  },
+  "ownBodyAndDefault3dSelection": {
+    "output": {
+      "fileName": "reviter.ifc",
+      "sha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426",
+      "bytes": 195745359,
+      "schema": "IFC4",
+      "taggedProductsWithMeshes": 36415,
+      "anonymousMeshes": 0,
+      "invalidTriangles": 0
+    },
+    "reference": {
+      "fileName": "unbc-reference.ifc",
+      "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+      "bytes": 83798926,
+      "schema": "IFC2X3",
+      "taggedProductsWithMeshes": 36280,
+      "anonymousMeshes": 2,
+      "invalidTriangles": 0
+    },
+    "coverage": {
+      "compared": 36048,
+      "ambiguous": 92,
+      "identityDisagreements": 2,
+      "outputOnly": 273,
+      "referenceOnly": 2
+    },
+    "byEntity": {
+      "IfcSlab -> IfcSlab": {
+        "compared": 87,
+        "boundsWithin001Feet": 81,
+        "areaWithinOnePercent": 87,
+        "closedVolumePairs": 7,
+        "closedVolumeWithinOnePercent": 7
+      },
+      "IfcColumn -> IfcColumn": {
+        "compared": 311,
+        "boundsWithin001Feet": 261,
+        "areaWithinOnePercent": 249,
+        "closedVolumePairs": 54,
+        "closedVolumeWithinOnePercent": 54
+      },
+      "IfcWallStandardCase -> IfcWall": {
+        "compared": 7381,
+        "boundsWithin001Feet": 7344,
+        "areaWithinOnePercent": 7345,
+        "closedVolumePairs": 762,
+        "closedVolumeWithinOnePercent": 747
+      },
+      "IfcWall -> IfcWall": {
+        "compared": 140,
+        "boundsWithin001Feet": 137,
+        "areaWithinOnePercent": 134,
+        "closedVolumePairs": 3,
+        "closedVolumeWithinOnePercent": 2
+      },
+      "IfcStairFlight -> IfcStairFlight": {
+        "compared": 96,
+        "boundsWithin001Feet": 67,
+        "areaWithinOnePercent": 67,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRoof -> IfcRoof": {
+        "compared": 6,
+        "boundsWithin001Feet": 6,
+        "areaWithinOnePercent": 6,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcRamp -> IfcRamp": {
+        "compared": 11,
+        "boundsWithin001Feet": 11,
+        "areaWithinOnePercent": 10,
+        "closedVolumePairs": 9,
+        "closedVolumeWithinOnePercent": 9
+      },
+      "IfcRailing -> IfcRailing": {
+        "compared": 202,
+        "boundsWithin001Feet": 197,
+        "areaWithinOnePercent": 198,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcPlate -> IfcPlate": {
+        "compared": 6235,
+        "boundsWithin001Feet": 6233,
+        "areaWithinOnePercent": 6232,
+        "closedVolumePairs": 6229,
+        "closedVolumeWithinOnePercent": 6229
+      },
+      "IfcWindow -> IfcWindow": {
+        "compared": 20,
+        "boundsWithin001Feet": 9,
+        "areaWithinOnePercent": 0,
+        "closedVolumePairs": 10,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcCovering -> IfcCovering": {
+        "compared": 46,
+        "boundsWithin001Feet": 45,
+        "areaWithinOnePercent": 46,
+        "closedVolumePairs": 0,
+        "closedVolumeWithinOnePercent": 0
+      },
+      "IfcDoor -> IfcDoor": {
+        "compared": 1912,
+        "boundsWithin001Feet": 1801,
+        "areaWithinOnePercent": 187,
+        "closedVolumePairs": 1855,
+        "closedVolumeWithinOnePercent": 3
+      },
+      "IfcMember -> IfcMember": {
+        "compared": 19601,
+        "boundsWithin001Feet": 19601,
+        "areaWithinOnePercent": 15227,
+        "closedVolumePairs": 57,
+        "closedVolumeWithinOnePercent": 57
+      }
+    }
+  },
+  "sceneTriangles": {
+    "prior": 901903,
+    "ownBodyPrecedenceOnly": 870784,
+    "combined": 858388
+  },
+  "sceneMeshes": {
+    "prior": 32,
+    "combined": 32
+  },
+  "sceneGeometryHash": {
+    "ownBodyPrecedenceOnly": "5740c2841ab12e40a5153d08d884b34e787e70242bf49dabb482859e9164e29d",
+    "combined": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901"
+  },
+  "pairedOwnerDeltas": {
+    "matchedOwnerPairs": 36048,
+    "triangleCountChangedOwners": 357,
+    "areaImprovedBeyond1eMinus5Relative": 357,
+    "areaWorsenedBeyond1eMinus5Relative": 0,
+    "boundsImprovedBeyond001Feet": 47,
+    "boundsWorsenedBeyond001Feet": 4,
+    "boundsWorsenedSamples": [
+      {
+        "tag": "1572665",
+        "beforeCornerErrorFeet": 0.0006505088269932457,
+        "afterCornerErrorFeet": 0.0031031451370040486,
+        "afterAreaRelativeError": 9.38653337132848e-05
+      },
+      {
+        "tag": "1573726",
+        "beforeCornerErrorFeet": 0.0006390335142043568,
+        "afterCornerErrorFeet": 0.003084108270371644,
+        "afterAreaRelativeError": 9.298397901416959e-05
+      },
+      {
+        "tag": "1575513",
+        "beforeCornerErrorFeet": 0.0004816020567659507,
+        "afterCornerErrorFeet": 0.0028114754170474043,
+        "afterAreaRelativeError": 5.490143632868592e-05
+      },
+      {
+        "tag": "1735216",
+        "beforeCornerErrorFeet": 0.0003315298124775268,
+        "afterCornerErrorFeet": 0.002262424929377005,
+        "afterAreaRelativeError": 0.0007046731413067822
+      }
+    ],
+    "scope": "All differences are measured against the same reference IFC; per-owner metric agreement is not general surface equivalence."
+  },
+  "ownBodyWitnesses": [
+    {
+      "before": {
+        "tag": "694201",
+        "referenceIfcType": "IfcColumn",
+        "outputIfcType": "IfcColumn",
+        "boundsCornerErrorFeet": 6.658948848325963e-06,
+        "areaDelta": {
+          "absolute": 148.11229527453656,
+          "relative": 2.8530671207358473
+        },
+        "closedPartVolumeDelta": null,
+        "output": {
+          "triangles": 45,
+          "surfaceAreaSquareFeet": 200.02565342796697,
+          "sumClosedPartVolumesCubicFeet": null,
+          "parts": 3,
+          "closedParts": 0,
+          "boundaryEdges": 21,
+          "nonManifoldEdges": 4,
+          "inconsistentWindingEdges": 0
+        },
+        "reference": {
+          "triangles": 26,
+          "surfaceAreaSquareFeet": 51.91335815343042,
+          "sumClosedPartVolumesCubicFeet": 10.32466164325777,
+          "parts": 1,
+          "closedParts": 1,
+          "boundaryEdges": 0,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        }
+      },
+      "after": {
+        "tag": "694201",
+        "referenceIfcType": "IfcColumn",
+        "outputIfcType": "IfcColumn",
+        "boundsCornerErrorFeet": 6.658948848325963e-06,
+        "areaDelta": {
+          "absolute": 0.0002214169427858792,
+          "relative": 4.265124635772537e-06
+        },
+        "closedPartVolumeDelta": null,
+        "output": {
+          "triangles": 25,
+          "surfaceAreaSquareFeet": 51.91357957037321,
+          "sumClosedPartVolumesCubicFeet": null,
+          "parts": 2,
+          "closedParts": 0,
+          "boundaryEdges": 17,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        },
+        "reference": {
+          "triangles": 26,
+          "surfaceAreaSquareFeet": 51.91335815343042,
+          "sumClosedPartVolumesCubicFeet": 10.32466164325777,
+          "parts": 1,
+          "closedParts": 1,
+          "boundaryEdges": 0,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        }
+      }
+    },
+    {
+      "before": {
+        "tag": "694735",
+        "referenceIfcType": "IfcColumn",
+        "outputIfcType": "IfcColumn",
+        "boundsCornerErrorFeet": 1.3412513482080612e-05,
+        "areaDelta": {
+          "absolute": 148.1123976858952,
+          "relative": 2.833160106800518
+        },
+        "closedPartVolumeDelta": null,
+        "output": {
+          "triangles": 44,
+          "surfaceAreaSquareFeet": 200.39055779777047,
+          "sumClosedPartVolumesCubicFeet": null,
+          "parts": 3,
+          "closedParts": 0,
+          "boundaryEdges": 24,
+          "nonManifoldEdges": 4,
+          "inconsistentWindingEdges": 0
+        },
+        "reference": {
+          "triangles": 26,
+          "surfaceAreaSquareFeet": 52.278160111875295,
+          "sumClosedPartVolumesCubicFeet": 10.474330149593303,
+          "parts": 1,
+          "closedParts": 1,
+          "boundaryEdges": 0,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        }
+      },
+      "after": {
+        "tag": "694735",
+        "referenceIfcType": "IfcColumn",
+        "outputIfcType": "IfcColumn",
+        "boundsCornerErrorFeet": 1.3412513482080612e-05,
+        "areaDelta": {
+          "absolute": 0.00032382830295318854,
+          "relative": 6.194332437488155e-06
+        },
+        "closedPartVolumeDelta": null,
+        "output": {
+          "triangles": 24,
+          "surfaceAreaSquareFeet": 52.27848394017825,
+          "sumClosedPartVolumesCubicFeet": null,
+          "parts": 2,
+          "closedParts": 0,
+          "boundaryEdges": 20,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        },
+        "reference": {
+          "triangles": 26,
+          "surfaceAreaSquareFeet": 52.278160111875295,
+          "sumClosedPartVolumesCubicFeet": 10.474330149593303,
+          "parts": 1,
+          "closedParts": 1,
+          "boundaryEdges": 0,
+          "nonManifoldEdges": 0,
+          "inconsistentWindingEdges": 0
+        }
+      }
+    }
+  ],
+  "surfaceSampling": {
+    "scope": "Exact-identity selected owners only. Every triangle's vertices, edge midpoints and centroid tested against all opposing triangles; a finite sample diagnostic, not a continuous Hausdorff bound.",
+    "maxTags": 32,
+    "maxTrianglesPerOwner": 2000,
+    "requestedTags": [
+      "694201",
+      "694735",
+      "1185924",
+      "801614",
+      "2236110"
+    ],
+    "unmatchedRequestedTags": [],
+    "results": [
+      {
+        "tag": "694201",
+        "globalId": "3q3eK5Zbb2NxtMMzRYU4gF",
+        "outputToReference": {
+          "maximumFeet": 6.773266547677869e-06,
+          "samples": 175
+        },
+        "referenceToOutput": {
+          "maximumFeet": 6.658948848325963e-06,
+          "samples": 182
+        }
+      },
+      {
+        "tag": "694735",
+        "globalId": "3q3eK5Zbb2NxtMMzRYU4Jv",
+        "outputToReference": {
+          "maximumFeet": 1.3541016737234985e-05,
+          "samples": 168
+        },
+        "referenceToOutput": {
+          "maximumFeet": 1.3412513482080612e-05,
+          "samples": 182
+        }
+      },
+      {
+        "tag": "2236110",
+        "globalId": "3$80Jb4C96ThbKDugcWiHp",
+        "outputToReference": {
+          "maximumFeet": 0.4866388322993251,
+          "samples": 84
+        },
+        "referenceToOutput": {
+          "maximumFeet": 0.48663709953438167,
+          "samples": 420
+        }
+      },
+      {
+        "tag": "801614",
+        "globalId": "3j5UD8SwDBcRETZaO4YP6Z",
+        "outputToReference": {
+          "maximumFeet": 0.8002203057058352,
+          "samples": 294
+        },
+        "referenceToOutput": {
+          "maximumFeet": 5.2329667737052005e-05,
+          "samples": 406
+        }
+      },
+      {
+        "tag": "1185924",
+        "globalId": "3NnPElt$TDiP3TKZm8fKQt",
+        "outputToReference": {
+          "maximumFeet": 23.303759407117063,
+          "samples": 504
+        },
+        "referenceToOutput": {
+          "maximumFeet": 0.36909353763083175,
+          "samples": 252
+        }
+      }
+    ]
+  },
+  "sourceOnlyWitnesses": {
+    "verifiedFramedOwners": [
+      {
+        "elementId": 694735,
+        "marker": 2246,
+        "bodyBytes": 22258,
+        "completeFifo": true,
+        "rootChildrenSourceSlots": [
+          2215,
+          2254,
+          2343
+        ]
+      },
+      {
+        "elementId": 694201,
+        "marker": 2246,
+        "bodyBytes": 22734,
+        "completeFifo": true,
+        "rootChildrenSourceSlots": [
+          2215,
+          2254,
+          2343
+        ]
+      },
+      {
+        "elementId": 360469,
+        "marker": 2246,
+        "bodyBytes": 12163,
+        "completeFifo": true,
+        "rootChildrenSourceSlots": [
+          2254,
+          2254,
+          2254,
+          2343
+        ]
+      }
+    ],
+    "finalCertifiedMeshes": [
+      {
+        "ownerId": 694735,
+        "drawableFaces": 10,
+        "triangles": 24
+      },
+      {
+        "ownerId": 694201,
+        "drawableFaces": 10,
+        "triangles": 25
+      },
+      {
+        "ownerId": 360469,
+        "drawableFaces": 6,
+        "triangles": 12
+      }
+    ],
+    "originalSymbol360469BeforeSelection": {
+      "drawableFaces": 12,
+      "triangles": 24,
+      "surfaceAreaSquareFeet": 151.5558586672728
+    },
+    "scope": "Native saved graphics and selected output meshes; no assertion of Revit API Solid geometry equivalence or type identity authorization."
+  },
+  "validation": {
+    "focusedTests": 26,
+    "failed": 0,
+    "typecheck": "passed",
+    "changedGeometrySourcesLint": "passed",
+    "fourModelCampaign": "docs/generated/rvt-native-geometry-four-models.json"
+  }
+}

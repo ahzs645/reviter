@@ -1,0 +1,27 @@
+{
+  "file": "/workspace/mep-audit/ifc-ecs-re1-mechanical.rvt",
+  "sha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+  "pages": 243,
+  "milliseconds": 5359,
+  "systemCount": 5,
+  "membershipCount": 78,
+  "connectionCount": 69,
+  "comparison": {
+    "referenceSha256": "9e56cf7246ce86ef73646dd588a1efb8a4756e5e102b30e28b3b58577a454db0",
+    "referenceConnections": 73,
+    "recoveredConnections": 69,
+    "matching": 69,
+    "unexpected": [],
+    "missing": [
+      "427568:6/441892:0",
+      "427568:9/428274:0",
+      "433643:1/491631:1",
+      "433747:1/490317:1"
+    ]
+  },
+  "limitations": [
+    "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+    "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+    "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+  ]
+}

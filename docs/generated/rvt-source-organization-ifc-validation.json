@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 1,
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "reopenReaders": [
+    "web-ifc 0.0.77",
+    "IFC-Lite 4.1.0"
+  ],
+  "focusedTests": {
+    "passed": 17,
+    "failed": 0
+  },
+  "scope": "Same source RVT bytes and pinned native evidence; optional identity-only spatial/site metadata; independently reopened transformed triangle/material preservation.",
+  "results": [
+    {
+      "model": "rac",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "inputByteSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "sourceStatus": "complete",
+      "spatialKinds": {
+        "room": 14
+      },
+      "sourceCoordinatesStatus": "proven",
+      "ordinaryIfcBytes": 14674808,
+      "expandedIfcBytes": 14677617,
+      "geometryOwnersBefore": 461,
+      "geometryOwnersAfter": 461,
+      "independentlyReopenedGeometryMismatches": [],
+      "sourceSpatialProducts": [],
+      "independentSchema": "IFC4",
+      "independentlyRecoveredSpatial": 0,
+      "sourcePropertyDisagreements": 0,
+      "siteLatitude": [
+        42,
+        12,
+        46,
+        800000
+      ],
+      "siteLongitude": [
+        -71,
+        -2,
+        0,
+        -600000
+      ],
+      "trueNorth": [
+        0.601815023152051,
+        0.79863551004729
+      ],
+      "expectedSourceTrueNorth": "(0.601815023152051,0.79863551004729)",
+      "projectedCrsEmitted": false,
+      "limitations": [
+        "Identity-only source zones/spaces have no body, placement, quantity or access certification.",
+        "Metamorphic geometry comparison reopens both outputs using web-ifc and compares transformed oriented triangles/materials rounded to one micrometre; it does not compare either output to Revit geometry."
+      ],
+      "postExportMeshByteSha256": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
+      "sourceMeshDigestTiming": "After both exports; preservation here is established by independently reopened ordinary/expanded IFC geometry, not a before-export source-buffer snapshot."
+    },
+    {
+      "model": "school",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "inputByteSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "sourceStatus": "complete",
+      "spatialKinds": {
+        "room": 91,
+        "area": 25
+      },
+      "sourceCoordinatesStatus": "proven",
+      "ordinaryIfcBytes": 47868153,
+      "expandedIfcBytes": 47910092,
+      "geometryOwnersBefore": 5507,
+      "geometryOwnersAfter": 5507,
+      "independentlyReopenedGeometryMismatches": [],
+      "sourceSpatialProducts": [
+        {
+          "elementId": 177458,
+          "globalId": "0L6PAa8RD5WhJxVZAT8X5Y",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 177460,
+          "globalId": "0L6PAa8RD5WhJxVZAT8X5a",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178603,
+          "globalId": "06NqO8bQX07hzFUDJa89ab",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178608,
+          "globalId": "06NqO8bQX07hzFUDJa89a_",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178610,
+          "globalId": "06NqO8bQX07hzFUDJa89ay",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178612,
+          "globalId": "06NqO8bQX07hzFUDJa89aw",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178614,
+          "globalId": "06NqO8bQX07hzFUDJa89au",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178616,
+          "globalId": "06NqO8bQX07hzFUDJa89as",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 178625,
+          "globalId": "06NqO8bQX07hzFUDJa89bF",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179035,
+          "globalId": "06NqO8bQX07hzFUDJa89lL",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179037,
+          "globalId": "06NqO8bQX07hzFUDJa89lJ",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179039,
+          "globalId": "06NqO8bQX07hzFUDJa89lH",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179041,
+          "globalId": "06NqO8bQX07hzFUDJa89ll",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179043,
+          "globalId": "06NqO8bQX07hzFUDJa89lj",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179045,
+          "globalId": "06NqO8bQX07hzFUDJa89lh",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179047,
+          "globalId": "06NqO8bQX07hzFUDJa89lf",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179049,
+          "globalId": "06NqO8bQX07hzFUDJa89ld",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179053,
+          "globalId": "06NqO8bQX07hzFUDJa89lZ",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179135,
+          "globalId": "06NqO8bQX07hzFUDJa89in",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179137,
+          "globalId": "06NqO8bQX07hzFUDJa89jF",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179139,
+          "globalId": "06NqO8bQX07hzFUDJa89jD",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179141,
+          "globalId": "06NqO8bQX07hzFUDJa89jB",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179143,
+          "globalId": "06NqO8bQX07hzFUDJa89j9",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179145,
+          "globalId": "06NqO8bQX07hzFUDJa89j7",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "elementId": 179147,
+          "globalId": "06NqO8bQX07hzFUDJa89j5",
+          "type": "IfcSpatialZone",
+          "objectType": "RevitArea",
+          "representation": null,
+          "placement": null
+        }
+      ],
+      "independentSchema": "IFC4",
+      "independentlyRecoveredSpatial": 25,
+      "sourcePropertyDisagreements": 0,
+      "siteLatitude": [
+        42,
+        59,
+        27,
+        600000
+      ],
+      "siteLongitude": [
+        -71,
+        -27,
+        -39,
+        -600000
+      ],
+      "trueNorth": [
+        0,
+        1
+      ],
+      "expectedSourceTrueNorth": "(0.,1.)",
+      "projectedCrsEmitted": false,
+      "limitations": [
+        "Identity-only source zones/spaces have no body, placement, quantity or access certification.",
+        "Metamorphic geometry comparison reopens both outputs using web-ifc and compares transformed oriented triangles/materials rounded to one micrometre; it does not compare either output to Revit geometry."
+      ],
+      "postExportMeshByteSha256": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
+      "sourceMeshDigestTiming": "After both exports; preservation here is established by independently reopened ordinary/expanded IFC geometry, not a before-export source-buffer snapshot."
+    },
+    {
+      "model": "mechanical",
+      "sourceSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+      "inputByteSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+      "sourceStatus": "complete",
+      "spatialKinds": {
+        "mep-space": 9
+      },
+      "sourceCoordinatesStatus": "proven",
+      "ordinaryIfcBytes": 495062,
+      "expandedIfcBytes": 511930,
+      "sourceMeshSha256": "a34cfd61a92fa3032fbe6ad52c1d2d22a2dad1c418e202147e69cef0262a890f",
+      "postExportSourceMeshSha256": "a34cfd61a92fa3032fbe6ad52c1d2d22a2dad1c418e202147e69cef0262a890f",
+      "geometryOwnersBefore": 83,
+      "geometryOwnersAfter": 83,
+      "independentlyReopenedGeometryMismatches": [],
+      "sourceSpatialProducts": [
+        {
+          "expressId": 3607,
+          "elementId": 425275,
+          "globalId": "1EBsSULHHFzvOJ4cyCdian",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3624,
+          "elementId": 425277,
+          "globalId": "1EBsSULHHFzvOJ4cyCdiat",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3641,
+          "elementId": 425279,
+          "globalId": "1EBsSULHHFzvOJ4cyCdiar",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3658,
+          "elementId": 425281,
+          "globalId": "1EBsSULHHFzvOJ4cyCdibB",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3675,
+          "elementId": 425283,
+          "globalId": "1EBsSULHHFzvOJ4cyCdib9",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3692,
+          "elementId": 425285,
+          "globalId": "1EBsSULHHFzvOJ4cyCdibF",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3709,
+          "elementId": 425287,
+          "globalId": "1EBsSULHHFzvOJ4cyCdibD",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3726,
+          "elementId": 425289,
+          "globalId": "1EBsSULHHFzvOJ4cyCdib3",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        },
+        {
+          "expressId": 3743,
+          "elementId": 425291,
+          "globalId": "1EBsSULHHFzvOJ4cyCdib1",
+          "type": "IfcSpace",
+          "objectType": "RevitMEPSpace",
+          "representation": null,
+          "placement": null
+        }
+      ],
+      "sourceParentChecks": 9,
+      "sourceParentDisagreements": [],
+      "independentSchema": "IFC4",
+      "independentlyRecoveredSpatial": 9,
+      "sourcePropertyDisagreements": 0,
+      "siteLatitude": [
+        35,
+        39,
+        38,
+        719866
+      ],
+      "siteLongitude": [
+        139,
+        46,
+        22,
+        116213
+      ],
+      "trueNorth": [
+        0,
+        1
+      ],
+      "expectedSourceTrueNorth": "(0.,1.)",
+      "projectedCrsEmitted": false,
+      "limitations": [
+        "Identity-only source zones/spaces have no body, placement, quantity or access certification.",
+        "Metamorphic geometry comparison reopens both outputs using web-ifc and compares transformed oriented triangles/materials rounded to one micrometre; it does not compare either output to Revit geometry."
+      ],
+      "sourceMeshDigestTiming": "Before and after export"
+    }
+  ]
+}

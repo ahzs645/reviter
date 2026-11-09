@@ -1,0 +1,63 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2024,
+  "sourceStatus": "complete",
+  "inventoryStatus": "complete",
+  "retainedSourceRecords": 109,
+  "projectedRecords": 109,
+  "fallbackRecords": 0,
+  "comparedFields": 1967,
+  "comparedPointerEdges": 0,
+  "mismatches": 0,
+  "classCounts": {
+    "DBView3d": 44,
+    "DBViewProject": 3,
+    "DBViewDrafting": 57,
+    "DBViewLegend": 5
+  },
+  "classFieldCounts": {
+    "DBView3d": 748,
+    "DBViewProject": 51,
+    "DBViewDrafting": 1083,
+    "DBViewLegend": 85
+  },
+  "projectedValueAndWitnessSha256": "aac31128182544995d7fcb4a003ec67a960cf190bf3ab763fc3ee97f03c41592",
+  "sourceClassCoverage": {
+    "DBView3d": {
+      "body_bytes": 171287,
+      "complete_graph_body_bytes": 171287,
+      "complete_graphs": 44,
+      "diagnostics": {},
+      "records": 44,
+      "unsupported_graphs": 0
+    },
+    "DBViewDrafting": {
+      "body_bytes": 152474,
+      "complete_graph_body_bytes": 152474,
+      "complete_graphs": 57,
+      "diagnostics": {},
+      "records": 57,
+      "unsupported_graphs": 0
+    },
+    "DBViewLegend": {
+      "body_bytes": 14992,
+      "complete_graph_body_bytes": 14992,
+      "complete_graphs": 5,
+      "diagnostics": {},
+      "records": 5,
+      "unsupported_graphs": 0
+    },
+    "DBViewProject": {
+      "body_bytes": 7409,
+      "complete_graph_body_bytes": 7409,
+      "complete_graphs": 3,
+      "diagnostics": {},
+      "records": 3,
+      "unsupported_graphs": 0
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

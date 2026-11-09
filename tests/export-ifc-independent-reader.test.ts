@@ -35,13 +35,78 @@ import { createDataAccessor } from "@ifc-lite/ids/bridge";
 
 import { makeIfc } from "../lib/reviter/export-ifc.ts";
 import { ifcExportFixture } from "./fixtures/ifc-export-fixture.ts";
+import type { ElementOverride } from "../lib/reviter/element-overrides.ts";
 
 const RECOVERY_IDS = new URL("./fixtures/reviter-recovery.ids", import.meta.url);
+const ASSERTION_IDS = new URL("./fixtures/reviter-assertions.ids", import.meta.url);
 
 /** `parseColumnar` takes an `ArrayBuffer`; a Node `Buffer` may be a slice of a pool. */
-function exportedIfcBuffer(): ArrayBuffer {
-  const bytes = new TextEncoder().encode(makeIfc(ifcExportFixture()));
+function exportedIfcBuffer(options?: Parameters<typeof makeIfc>[1]): ArrayBuffer {
+  const bytes = new TextEncoder().encode(makeIfc(ifcExportFixture(), options));
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+/**
+ * A note on the wall, asserting nothing about what it is.
+ *
+ * Used where the test needs an asserted export that still contains a wall: the
+ * fixture has exactly one, and re-categorising it leaves the recovery
+ * document's wall specifications with nothing to match.
+ */
+const ASSERTED_NOTE: ElementOverride[] = [{
+  elementId: 10,
+  category: null,
+  typeName: null,
+  note: "Checked on site",
+  author: "reviewer",
+  createdAt: "2026-08-19T00:00:00Z",
+  updatedAt: "2026-08-19T12:00:00Z",
+}];
+
+/** One reviewer assertion, of the kind the 60.1%-inferred categories invite. */
+const ASSERTED: ElementOverride[] = [{
+  elementId: 10,
+  category: { id: -2_000_170, name: "Curtain Panels" },
+  typeName: null,
+  note: "Misfiled as a wall by the record-code consensus",
+  author: "reviewer",
+  createdAt: "2026-08-19T00:00:00Z",
+  updatedAt: "2026-08-19T12:00:00Z",
+}];
+
+async function validate(store: Awaited<ReturnType<typeof parseQuietly>>, document: URL) {
+  return validateIDS(
+    parseIDS(readFileSync(document, "utf8")),
+    createDataAccessor(store),
+    {
+      modelId: "ifc-export-fixture",
+      schemaVersion: store.schemaVersion,
+      entityCount: store.entityCount,
+    },
+    { translator: createTranslationService("en") },
+  );
+}
+
+/** Every specification matched something and everything it matched passed. */
+function assertAllPass(
+  report: Awaited<ReturnType<typeof validate>>,
+  label: string,
+): void {
+  assert.ok(report.specificationResults.length > 0, `${label}: no specifications`);
+  for (const result of report.specificationResults) {
+    // An applicable count of zero would pass vacuously: a specification that
+    // matched nothing has not checked the exporter, it has only failed to find
+    // it. Both are worth failing on.
+    assert.ok(
+      (result.applicableCount ?? 0) > 0,
+      `${label} — ${result.specification.name}: matched no entities`,
+    );
+    assert.equal(
+      result.passRate,
+      100,
+      `${label} — ${result.specification.name}: ${result.failedCount ?? "some"} of ${result.applicableCount} failed`,
+    );
+  }
 }
 
 /**
@@ -134,33 +199,64 @@ test("an independent reader recovers the exported products, identity and evidenc
 });
 
 test("the export satisfies the recovery-evidence IDS", async () => {
-  const store = await parseQuietly(exportedIfcBuffer());
-  const specification = parseIDS(readFileSync(RECOVERY_IDS, "utf8"));
+  assertAllPass(await validate(await parseQuietly(exportedIfcBuffer()), RECOVERY_IDS), "recovery");
+});
 
-  const report = await validateIDS(
-    specification,
-    createDataAccessor(store),
-    {
-      modelId: "ifc-export-fixture",
-      schemaVersion: store.schemaVersion,
-      entityCount: store.entityCount,
-    },
-    { translator: createTranslationService("en") },
-  );
+test("an asserted export still satisfies the recovery-evidence IDS", async () => {
+  // An assertion must not be able to cost an element the evidence every product
+  // is required to carry. Asserted here with a note rather than a category,
+  // because re-categorising the fixture's only wall would empty the wall
+  // specifications' applicability — see the test below.
+  const store = await parseQuietly(exportedIfcBuffer({ overrides: ASSERTED_NOTE }));
+  assertAllPass(await validate(store, RECOVERY_IDS), "recovery, asserted");
+});
 
-  assert.ok(report.specificationResults.length > 0, "the IDS document declares specifications");
+test("re-categorising moves an element out of the old class's requirements", () => {
+  // Not a defect, and worth pinning: an asserted category changes which
+  // specifications apply to the element. It is the reason the assertion rules
+  // live in their own IDS document rather than being folded into the always-on
+  // one, whose gate fails a specification that matched nothing.
+  const asserted = makeIfc(ifcExportFixture(), { overrides: ASSERTED });
+  assert.equal(/IFCWALL\(/.test(asserted), false, "the wall stayed a wall");
+  assert.match(asserted, /IFCPLATE\(/);
+});
+
+test("an asserted export satisfies the assertion-integrity IDS", async () => {
+  const store = await parseQuietly(exportedIfcBuffer({ overrides: ASSERTED }));
+  assertAllPass(await validate(store, ASSERTION_IDS), "assertions");
+});
+
+test("the assertion IDS matches nothing when nothing was asserted", async () => {
+  // Correct behaviour, and the reason this lives in its own document: the
+  // always-on gate fails a specification that matched no entities, and this one
+  // matches none until a reviewer says something.
+  const report = await validate(await parseQuietly(exportedIfcBuffer()), ASSERTION_IDS);
   for (const result of report.specificationResults) {
-    // An applicable count of zero would pass vacuously: a specification that
-    // matched nothing has not checked the exporter, it has only failed to find
-    // it. Both are worth failing on.
-    assert.ok(
-      (result.applicableCount ?? 0) > 0,
-      `${result.specification.name}: matched no entities`,
-    );
-    assert.equal(
-      result.passRate,
-      100,
-      `${result.specification.name}: ${result.failedCount ?? "some"} of ${result.applicableCount} failed`,
-    );
+    assert.equal(result.applicableCount ?? 0, 0, `${result.specification.name} matched an unasserted export`);
   }
+});
+
+test("an independent reader sees the assertion and what the decoder said", async () => {
+  const store = await parseQuietly(exportedIfcBuffer({ overrides: ASSERTED }));
+  const table = store.entities;
+  let plate: number | null = null;
+  for (let row = 0; row < table.count; row += 1) {
+    const expressId = table.expressId[row]!;
+    if (table.getTypeName(expressId) === "IfcPlate") plate = expressId;
+  }
+  // The reviewer said curtain panel, so the file says IfcPlate — an assertion
+  // that only renamed the element while leaving it an IfcWall would be a label,
+  // not a correction.
+  assert.ok(plate, "the asserted category did not change the exported class");
+
+  const recovery = properties(store, plate).get("Reviter_Recovery");
+  assert.ok(recovery, "the asserted element carries Reviter_Recovery");
+  assert.equal(recovery.get("RevitCategory"), "Curtain Panels");
+  assert.equal(recovery.get("CategoryEvidence"), "reviewer-assertion");
+  assert.equal(recovery.get("AssertedFields"), "category,note");
+  assert.equal(recovery.get("AssertedBy"), "reviewer");
+  assert.equal(recovery.get("DecodedRevitCategory"), "Walls");
+  assert.equal(recovery.get("DecodedCategoryEvidence"), "native-token");
+  // The identity the decoder read is untouched by the assertion.
+  assert.equal(recovery.get("RevitElementId"), 10);
 });

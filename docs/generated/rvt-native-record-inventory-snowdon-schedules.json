@@ -1,0 +1,45 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2024,
+  "sourceStatus": "partial",
+  "inventoryStatus": "partial",
+  "retainedSourceRecords": 92,
+  "projectedRecords": 79,
+  "fallbackRecords": 13,
+  "comparedFields": 1738,
+  "comparedPointerEdges": 395,
+  "mismatches": 0,
+  "classCounts": {
+    "DBViewSchedule": 79
+  },
+  "classFieldCounts": {
+    "DBViewSchedule": 1738
+  },
+  "projectedValueAndWitnessSha256": "5a90c382ff1e4f1ae595f03ccc9a4211daa34ac74c743f5638f711379ef1624b",
+  "sourceClassCoverage": {
+    "DBViewSchedule": {
+      "body_bytes": 6338313,
+      "complete_graph_body_bytes": 1439853,
+      "complete_graphs": 79,
+      "diagnostics": {
+        "graph TableCellData starts103091: TableCellData.m_formatOptions at 103105: native field value budget exceeded (20000)": 1,
+        "graph TableCellData starts104043: TableCellData.m_formatOptions at 104140: FormatOptions.m_bSuppressSpaces at 104140: native field value budget exceeded (20000)": 1,
+        "graph TableCellData starts104244: TableCellData.m_formatOptions at 104258: FormatOptions.m_symbolTypeId at 104258: ForgeTypeId.m_typeId at 104258: native field value budget exceeded (20000)": 1,
+        "graph TableCellData starts104666: TableCellData.m_formatOptions at 104766: FormatOptions.m_bUseGrouping at 104766: native field value budget exceeded (20000)": 1,
+        "graph TableCellData starts110141: TableCellData.m_arrCombinedParams at 110151: native field value budget exceeded (20000)": 1,
+        "graph TableCellStyle starts101107: TableCellStyle.m_borderRightLineStyle at 101157: native field value budget exceeded (20000)": 1,
+        "graph TableCellStyle starts101406: TableCellStyle.m_borderTopLineStyle at 101464: ElementId.m_id at 101464: Identifier.m_id64 at 101464: native field value budget exceeded (20000)": 1,
+        "graph TableCellStyleHelper starts87982: TableCellStyleHelper.m_verAlignment at 87994: native field value budget exceeded (20000)": 1,
+        "graph TableCellStyleHelper starts92754: TableCellStyleHelper.m_fontSize at 92762: native field value budget exceeded (20000)": 1,
+        "graph TableCellStyleHelper starts94963: TableCellStyleHelper.m_underline at 94977: native field value budget exceeded (20000)": 1,
+        "native graph object budget exceeded": 3
+      },
+      "records": 92,
+      "unsupported_graphs": 13
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

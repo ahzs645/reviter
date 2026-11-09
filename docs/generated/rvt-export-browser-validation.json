@@ -1,0 +1,27 @@
+{
+  "source": "MIT IFC-ECS RE1 Mechanical 2025",
+  "sourceSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+  "desktop": {
+    "errors": [],
+    "csvDownload": true,
+    "ifcExport": {
+      "systems": 5,
+      "ports": 150,
+      "connections": 73,
+      "pipeSegments": 6,
+      "certifiedPipeBodiesPreserved": true
+    },
+    "nativeEvidenceDownload": {
+      "status": "partial",
+      "retainedRecords": 128
+    }
+  },
+  "mobile": {
+    "errors": [],
+    "overflow": false,
+    "download": "ifc-ecs-re1-mechanical-recovered.elements.csv",
+    "mepControl": true,
+    "sourceEvidenceDownloadVisible": true
+  },
+  "scope": "Production build in Chromium; source evidence inspected in a separate worker, no horizontal document overflow at 390x844. Actual camera-link validation is recorded separately."
+}

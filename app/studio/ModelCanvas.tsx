@@ -87,6 +87,7 @@ import {
   SectionToolPanel,
 } from "./ViewerToolPanels.tsx";
 import { ModelCommentLayer, type CommentProjection } from "./ModelCommentLayer.tsx";
+import { encodeViewpointFragment, makeViewpointModelIdentity, resolveViewpointImport, type PortableViewpoint, type PortableSectionState } from "./viewpoint-links.ts";
 import { MarkupLayer, type MarkupProjection, type ScreenPoint } from "./MarkupLayer.tsx";
 import type {
   CameraRequest,
@@ -115,6 +116,7 @@ import {
   type MarkupStroke,
   type MarkupTool,
   type ModelComment,
+  type ModelViewpoint,
   type MeasureMode,
   type MeasureUnit,
   type NewMarkupStroke,
@@ -307,6 +309,10 @@ export function ModelCanvas({
   onActiveComment,
   onCreateComment,
   viewpointRequest,
+  portableViewpointRequest,
+  onPortableViewpointApplied,
+  onCameraCaptureReady,
+  onSectionCaptureReady,
   markup,
   markupSettings,
   onCreateMarkup,
@@ -364,6 +370,11 @@ export function ModelCanvas({
    * no-op, exactly as `focusRequest` does for framing an object.
    */
   viewpointRequest: { commentId: string | null; sequence: number };
+  /** Viewpoint links are verified against source bytes again at application. */
+  portableViewpointRequest?: { viewpoint: PortableViewpoint | null; sequence: number };
+  onPortableViewpointApplied?: (sequence: number) => void;
+  onCameraCaptureReady?: (capture: (() => ModelViewpoint | null) | null) => void;
+  onSectionCaptureReady?: (capture: (() => PortableSectionState) | null) => void;
   /** Strokes already committed to this model, in scene coordinates. */
   markup: readonly MarkupStroke[];
   markupSettings: MarkupSettings;
@@ -429,6 +440,7 @@ export function ModelCanvas({
     }),
   );
   const runtimeRef = useRef<{
+    source: GeometrySource;
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     renderer: THREE.WebGLRenderer;
@@ -1648,6 +1660,7 @@ export function ModelCanvas({
     canvas.addEventListener("dblclick", handleDoubleClick);
     let cancelWalkPrewarm = () => {};
     runtimeRef.current = {
+      source,
       scene,
       camera,
       renderer,
@@ -2787,6 +2800,59 @@ export function ModelCanvas({
     if (comment) restoreCommentViewpoint(comment);
   }, [comments, restoreCommentViewpoint, viewpointRequest]);
 
+  const captureCurrentCamera = useCallback((): ModelViewpoint | null => {
+    const runtime = runtimeRef.current;
+    if (!runtime || runtime.source !== source) return null;
+    // Walking owns orientation and does not keep OrbitControls.target current.
+    const target = walkingRef.current
+      ? runtime.camera.position.clone().add(runtime.camera.getWorldDirection(new THREE.Vector3()))
+      : runtime.controls.target;
+    return { source, position: tuple(runtime.camera.position), target: tuple(target),
+      up: tuple(runtime.camera.up), fov: runtime.camera.fov };
+  }, [source]);
+  useEffect(() => {
+    onCameraCaptureReady?.(captureCurrentCamera);
+    return () => onCameraCaptureReady?.(null);
+  }, [captureCurrentCamera, onCameraCaptureReady]);
+
+  const captureSectionState = useCallback((): PortableSectionState => ({ enabled: sectioning, mode: sectionMode, offset: sectionOffset, reverse: sectionReverse }), [sectioning, sectionMode, sectionOffset, sectionReverse]);
+  useEffect(() => {
+    onSectionCaptureReady?.(captureSectionState);
+    return () => onSectionCaptureReady?.(null);
+  }, [captureSectionState, onSectionCaptureReady]);
+
+  const portableViewpointSequenceRef = useRef(0);
+  useEffect(() => {
+    const request = portableViewpointRequest;
+    const runtime = runtimeRef.current;
+    if (!request?.viewpoint || !runtime || walking || source !== "recovered" || runtime.source !== source ||
+        request.sequence === portableViewpointSequenceRef.current || !result.sourceSha256) return;
+    let imported;
+    try {
+      imported = resolveViewpointImport(encodeViewpointFragment(request.viewpoint), makeViewpointModelIdentity(result, result.sourceSha256));
+    } catch { return; }
+    if (imported.status !== "ready") return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || runtimeRef.current !== runtime) return;
+      portableViewpointSequenceRef.current = request.sequence;
+      if (imported.viewpoint.viewer) {
+        setSectionMode(imported.viewpoint.viewer.section.mode);
+        setSectionOffset(imported.viewpoint.viewer.section.offset);
+        setSectionReverse(imported.viewpoint.viewer.section.reverse);
+      }
+      runtime.camera.position.set(...imported.camera.position);
+      runtime.camera.up.set(...imported.camera.up);
+      runtime.camera.fov = imported.camera.fov;
+      runtime.controls.target.set(...imported.camera.target);
+      runtime.camera.lookAt(runtime.controls.target);
+      runtime.camera.updateProjectionMatrix();
+      runtime.controls.update();
+      runtime.invalidate();
+      onPortableViewpointApplied?.(request.sequence);
+    });
+    return () => { cancelled = true; };
+  }, [onPortableViewpointApplied, portableViewpointRequest, result, sceneEpoch, source, walking]);
   const projectDimension = useCallback((dimension: ReviewDimension): CommentProjection | null => {
     const runtime = runtimeRef.current, canvas = canvasRef.current;
     if (!runtime || !canvas || dimension.space === "drawing-units" || (dimension.space === "model-feet" ? source === "reference-model" : dimension.source !== source || dimension.referenceHash !== referenceHash)) return null;

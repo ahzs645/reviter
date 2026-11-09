@@ -1,0 +1,417 @@
+/**
+ * Original family symbols and exporter type identities (upstream RE-167/B72).
+ * Adapted formulas/layout from helenkwok/rvt-rs at 1c3d337, Apache-2.0:
+ * partition_schema_mvp.rs::attach_original_symbols and
+ * ifc/export_content.rs::door_symbol_flipped. See docs/third-party/rvt-rs.
+ * Complete, checksum-verified objects are required. Split/damaged objects do
+ * not become identity evidence; unknown host/facing never means unflipped.
+ */
+import type { ElementObject } from "./element-objects.ts";
+import type { InstancePlacement } from "./instanced-geometry.ts";
+import type { NativeHostRelation } from "./host-relations.ts";
+import type { ElementBoundsRecord } from "./types.ts";
+import { isIfcGlobalId, nativeIfcGlobalIds, revitDoorWindowTypeGlobalId, revitIfcSubElementGlobalId } from "./ifc-global-id.ts";
+import type { NativeElementIdentity } from "./native-identity.ts";
+import { hypot } from "./deterministic-math.ts";
+import { canonicalClassTag } from "./revit-class-tags.ts";
+import { decodeRevit2027FramedGRepRoot } from "./revit-2027-framed-grep-root.ts";
+import { replayRevit2027GRepFifo } from "./revit-2027-grep-replay.ts";
+import type { Revit2027GInstance, Revit2027InstanceInfo } from "./revit-2027-ginstance.ts";
+
+export type NativeOriginalSymbolEnvelope = {
+  source: "checksum-verified-original-symbol-GElement.m_bBox";
+  /** Stored graphics envelope, not a claim about API geometry options. */
+  apiGeometryOptionsEquivalent: false;
+  minimum: readonly [number, number, number];
+  maximum: readonly [number, number, number];
+  stream: string;
+  chunkIndex: number;
+  rawOffset: number;
+  objectOffset: number;
+};
+export type NativeOriginalSymbolReference = {
+  elementId: number;
+  /** null is Revit's explicitly stored invalid-id/instance-geometry sentinel. */
+  originalSymbolId: number | null;
+  source: "checksum-verified-GElement.original-symbol";
+  revitVersion: number;
+  stream: string;
+  chunkIndex: number;
+  rawOffset: number;
+  objectOffset: number;
+  /** Exact field position obtained by following the owning graphics FIFO. */
+  symbolFieldOffset?: number;
+  /** Embedded instance geometry needs a separately proven exporter recipe. */
+  embeddedSymbolGeometry?: boolean;
+  originalSymbolEnvelope?: NativeOriginalSymbolEnvelope;
+};
+export type NativeIfcTypeIdentityEvidence = NativeOriginalSymbolReference & {
+  flipped?: boolean;
+  flipSource?: "native-instance-facing+native-host-wall-axis";
+  flipEnvelopeComparison?: {
+    status: "agree" | "conflict";
+    instanceEnvelopeCandidate: boolean;
+    originalSymbolEnvelopeCandidate: boolean;
+    apiGeometryOptionsEquivalent: false;
+  };
+};
+export const MAX_NATIVE_IDENTITY_OBJECT_BYTES = 1024 * 1024;
+type Location = { stream: string; chunkIndex: number; rawOffset: number; complete: boolean };
+
+/** The end−20 recipe only reads the symbol when InstanceInfo is the last
+ * deferred object. Follow the existing certified FIFO for larger records.
+ * Only the first direct GInstance of the owner is eligible; nested graphics
+ * and reused pointers cannot borrow another instance's symbol. */
+export function nativeOriginalSymbolFromFifo(data: Uint8Array, frame: ElementObject, revitVersion: number): {
+  originalSymbolId: number | null; symbolFieldOffset: number; embeddedSymbolGeometry: boolean;
+} | null {
+  const verified = verifiedOriginalSymbolObject(data, frame.offset);
+  if (!verified || verified.elementId !== frame.elementId || canonicalClassTag(verified.classTag) !== 2246) return null;
+  const root = decodeRevit2027FramedGRepRoot(data, { ...frame, marker: 2246 }, revitVersion);
+  if (!root.ok || root.value.children.length > 64 || root.value.children[0]?.sourceClassSlot !== 2215) return null;
+  const large = verified.end - frame.offset - 20 > 0xffff;
+  const replay = replayRevit2027GRepFifo(data, root.value, undefined, {
+    maxReplayEntries: large ? 4096 : 1024, maxDescriptors: large ? 16384 : 4096,
+  });
+  if (!replay.ok) return null;
+  const instanceSpan = replay.value.spans.find(span => span.path.length === 1 && span.path[0] === 0 && span.readerId === "Revit2027GInstance");
+  const infoSpan = replay.value.spans.find(span => span.parentReplayIndex === instanceSpan?.replayIndex && span.path.length === 2 && span.path[1] === 0 && span.readerId === "Revit2027InstanceInfo");
+  if (!instanceSpan || !infoSpan) return null;
+  const instance = instanceSpan.value as Revit2027GInstance;
+  const info = infoSpan.value as Revit2027InstanceInfo;
+  const symbol = info.symbolElementId;
+  if (symbol !== -1n && (symbol < 1n || symbol > 0xffff_fffen)) return null;
+  return {
+    originalSymbolId: symbol === -1n ? null : Number(symbol),
+    symbolFieldOffset: info.byteOffset + 96,
+    embeddedSymbolGeometry: instance.embeddedSymbolGRep.token !== 0,
+  };
+}
+
+/** Original symbols can survive outside the current ElemTable inventory.
+ * Admit their validated creation histories for this identity reader only;
+ * actual symbols still require named, checksum-verified source objects. This
+ * does not admit historical records into scene or other semantic decoders. */
+export function nativeOriginalSymbolElementIds(declared: ReadonlySet<number>, identities: readonly NativeElementIdentity[]): ReadonlySet<number> {
+  return new Set([...declared, ...nativeIfcGlobalIds(identities).keys()]);
+}
+
+/** Reads the same verified data-object envelope as upstream RE-153. */
+export function verifiedOriginalSymbolObject(data: Uint8Array, offset: number): { elementId: number; classTag: number; end: number } | null {
+  if (!Number.isInteger(offset) || offset < 0 || offset + 24 > data.length) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(offset + 4, true) !== 0) return null;
+  const size = view.getUint32(offset + 12, true);
+  const end = offset + 20 + size;
+  if (size < 4 || size > MAX_NATIVE_IDENTITY_OBJECT_BYTES || end > data.length || view.getUint32(end - 4, true) !== size) return null;
+  let a = 1, b = 0;
+  for (let cursor = offset + 16; cursor < end - 4; cursor += 1) {
+    a = (a + data[cursor]!) % 65521;
+    b = (b + a) % 65521;
+  }
+  if (((b * 65536 + a) >>> 0) !== view.getUint32(offset + 8, true)) return null;
+  const elementId = view.getUint32(offset, true);
+  return elementId > 0 ? { elementId, classTag: view.getUint16(offset + 16, true), end } : null;
+}
+
+export function createNativeOriginalSymbolCollector(options: {
+  revitVersion: number | null;
+  classes: readonly { tag: number; name: string }[];
+  elementIds: ReadonlySet<number>;
+  /** Validated native table/history ids; named source witnesses are required. */
+  historyElementIds?: ReadonlySet<number>;
+}) {
+  const classes = new Map(options.classes.map(entry => [entry.tag, entry.name]));
+  const admitted = options.revitVersion != null && Number.isInteger(options.revitVersion) && options.revitVersion >= 2024 && options.revitVersion <= 2027;
+  const symbols = new Set<number>();
+  const instances = new Set<number>();
+  const symbolEnvelopes = new Map<number, { partition: number; values: Map<string, NativeOriginalSymbolEnvelope> }>();
+  const held = new Map<number, { partition: number; references: Map<number, NativeOriginalSymbolReference> }>();
+  let checksumWork = 0;
+  let fifoWork = 0;
+  let capped = false;
+  let largeChecksumWork = 0, largeFifoWork = 0, largeCapped = false;
+  let historicalEnvelopeChecksumWork = 0, historicalEnvelopeCapped = false;
+  const MAX_CHECKSUM_BYTES = 128 * 1024 * 1024;
+  const MAX_ELEMENTS = 200_000;
+  const MAX_FIFO_BYTES = 16 * 1024 * 1024;
+  function retainSymbolEnvelope(data: Uint8Array, frame: ElementObject, location: Location, partition: number): void {
+    if (symbolEnvelopes.size >= MAX_ELEMENTS) return;
+    const root = decodeRevit2027FramedGRepRoot(data, { ...frame, marker: 2246 }, options.revitVersion!);
+    if (!root.ok || root.value.ownerElementId !== BigInt(frame.elementId) || root.value.objectType !== 3 || !root.value.localExtents.valid) return;
+    const previousEnvelope = symbolEnvelopes.get(frame.elementId);
+    if (previousEnvelope && previousEnvelope.partition > partition) return;
+    const currentEnvelope = previousEnvelope?.partition === partition ? previousEnvelope : { partition, values: new Map<string, NativeOriginalSymbolEnvelope>() };
+    const { minimum, maximum } = root.value.localExtents;
+    const envelopeKey = JSON.stringify([minimum, maximum]);
+    if (currentEnvelope.values.size < 2 || currentEnvelope.values.has(envelopeKey)) currentEnvelope.values.set(envelopeKey, {
+      source: "checksum-verified-original-symbol-GElement.m_bBox", apiGeometryOptionsEquivalent: false,
+      minimum, maximum, stream: location.stream, chunkIndex: location.chunkIndex,
+      rawOffset: location.rawOffset, objectOffset: frame.offset,
+    });
+    symbolEnvelopes.set(frame.elementId, currentEnvelope);
+  }
+
+  return {
+    consumeObjects(data: Uint8Array, location: Location, objects: readonly ElementObject[]): void {
+      if (!admitted || !location.complete || capped) return;
+      const partitionText = /^Partitions\/(\d+)$/.exec(location.stream)?.[1];
+      if (partitionText == null) return;
+      const partition = Number(partitionText);
+      if (!Number.isSafeInteger(partition)) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      for (const frame of objects) {
+        if (frame.offset + 20 > data.length) continue;
+        const className = classes.get(view.getUint16(frame.offset + 16, true));
+        const isSymbol = className === "FamilySymbol" || className === "SysMullionFamSym" || className === "SysPanelFamSym";
+        const isInstance = className === "FamilyInstance" || className === "CurtainWallMullion" || className === "CurtainWallPanel";
+        // Original symbols can be outside legacy scene admission. Their
+        // source graphics envelope is diagnostic metadata only; separate work
+        // must never exhaust the original identity reader's checksum budget.
+        if (!options.elementIds.has(frame.elementId) && className === "GElement" && symbols.has(frame.elementId) &&
+          options.historyElementIds?.has(frame.elementId) && !historicalEnvelopeCapped) {
+          const size = view.getUint32(frame.offset + 12, true);
+          if (size <= 0xffff) {
+            if (historicalEnvelopeChecksumWork + size > 32 * 1024 * 1024) historicalEnvelopeCapped = true;
+            else {
+              historicalEnvelopeChecksumWork += size;
+              const verifiedEnvelope = verifiedOriginalSymbolObject(data, frame.offset);
+              if (verifiedEnvelope?.elementId === frame.elementId) retainSymbolEnvelope(data, frame, location, partition);
+            }
+          }
+        }
+        // The generic inventory can be narrower than validated native history.
+        // Do not checksum unrelated GElement geometry from the wider domain;
+        // an extra instance needs its own verified named instance object first.
+        if (!options.elementIds.has(frame.elementId) &&
+          !(options.historyElementIds?.has(frame.elementId) &&
+            (isSymbol || isInstance || (className === "GElement" && instances.has(frame.elementId))))) continue;
+        if (isInstance) {
+          if (!options.elementIds.has(frame.elementId)) {
+            const size = view.getUint32(frame.offset + 12, true);
+            if (size > 0xffff) continue;
+            checksumWork += size;
+            if (checksumWork > MAX_CHECKSUM_BYTES) { capped = true; break; }
+            const verified = verifiedOriginalSymbolObject(data, frame.offset);
+            if (!verified || verified.elementId !== frame.elementId) continue;
+          }
+          if (instances.size >= MAX_ELEMENTS) { capped = true; break; }
+          instances.add(frame.elementId);
+          continue;
+        }
+        if (!isSymbol && className !== "GElement") continue;
+        const size = view.getUint32(frame.offset + 12, true);
+        if (size > 0xffff) continue;
+        checksumWork += size;
+        if (checksumWork > MAX_CHECKSUM_BYTES || held.size >= MAX_ELEMENTS || symbols.size >= MAX_ELEMENTS) { capped = true; break; }
+        const verified = verifiedOriginalSymbolObject(data, frame.offset);
+        if (!verified || verified.elementId !== frame.elementId) continue;
+        if (isSymbol) { symbols.add(frame.elementId); continue; }
+        if (symbols.has(frame.elementId)) retainSymbolEnvelope(data, frame, location, partition);
+        const at = verified.end - 20;
+        if (at < frame.offset + 20) continue;
+        const tailSymbolId = view.getUint32(at, true);
+        // Preserve the measured fixed-instance path. Larger complete records
+        // can append geometry after InstanceInfo and need structural replay.
+        let fifo: ReturnType<typeof nativeOriginalSymbolFromFifo> = null;
+        if (size > 300 && instances.has(frame.elementId) && fifoWork + size <= MAX_FIFO_BYTES && checksumWork + size <= MAX_CHECKSUM_BYTES) {
+          fifoWork += size;
+          checksumWork += size; // The standalone structural helper re-verifies.
+          fifo = nativeOriginalSymbolFromFifo(data, frame, options.revitVersion!);
+        }
+        const originalSymbolId = fifo ? fifo.originalSymbolId ?? 0xffff_ffff : tailSymbolId;
+        const previous = held.get(frame.elementId);
+        if (previous && previous.partition > partition) continue;
+        const current = previous?.partition === partition ? previous : { partition, references: new Map<number, NativeOriginalSymbolReference>() };
+        const previousReference = current.references.get(originalSymbolId);
+        current.references.set(originalSymbolId, {
+          elementId: frame.elementId, originalSymbolId: originalSymbolId === 0xffff_ffff ? null : originalSymbolId,
+          source: "checksum-verified-GElement.original-symbol", revitVersion: options.revitVersion!,
+          stream: location.stream, chunkIndex: location.chunkIndex, rawOffset: location.rawOffset, objectOffset: frame.offset,
+          ...(fifo ? { symbolFieldOffset: fifo.symbolFieldOffset, embeddedSymbolGeometry: fifo.embeddedSymbolGeometry } : {}),
+          ...(previousReference?.embeddedSymbolGeometry ? { embeddedSymbolGeometry: true } : {}),
+        });
+        held.set(frame.elementId, current);
+      }
+    },
+    /** Optional source frames already recovered outside the legacy 64-KiB
+     * scanner. They need exact same-page offsets, a verified named instance,
+     * and complete structural replay. Their separate budgets cannot invalidate
+     * an earlier small-object identity or fall back to geometry-tail bytes. */
+    consumeLargeObjects(data: Uint8Array, location: Location, objects: readonly ElementObject[]): void {
+      if (!admitted || !location.complete || largeCapped) return;
+      const partitionText = /^Partitions\/(\d+)$/.exec(location.stream)?.[1];
+      if (partitionText == null) return;
+      const partition = Number(partitionText);
+      if (!Number.isSafeInteger(partition)) return;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      for (const frame of objects) {
+        if (!instances.has(frame.elementId) || frame.offset < 0 || frame.offset + 20 > data.length ||
+          classes.get(view.getUint16(frame.offset + 16, true)) !== "GElement") continue;
+        const size = view.getUint32(frame.offset + 12, true);
+        if (size <= 0xffff || size > MAX_NATIVE_IDENTITY_OBJECT_BYTES || frame.objectLength !== size) continue;
+        if (largeChecksumWork + size * 2 > 16 * 1024 * 1024 || largeFifoWork + size > 8 * 1024 * 1024 || held.size >= MAX_ELEMENTS) {
+          largeCapped = true; break;
+        }
+        largeChecksumWork += size * 2; largeFifoWork += size;
+        const verified = verifiedOriginalSymbolObject(data, frame.offset);
+        if (!verified || verified.elementId !== frame.elementId) continue;
+        const fifo = nativeOriginalSymbolFromFifo(data, frame, options.revitVersion!);
+        if (!fifo) continue;
+        const previous = held.get(frame.elementId);
+        if (previous && previous.partition > partition) continue;
+        const current = previous?.partition === partition ? previous : { partition, references: new Map<number, NativeOriginalSymbolReference>() };
+        const key = fifo.originalSymbolId ?? 0xffff_ffff;
+        const previousReference = current.references.get(key);
+        current.references.set(key, {
+          elementId: frame.elementId, originalSymbolId: fifo.originalSymbolId,
+          source: "checksum-verified-GElement.original-symbol", revitVersion: options.revitVersion!,
+          stream: location.stream, chunkIndex: location.chunkIndex, rawOffset: location.rawOffset, objectOffset: frame.offset,
+          symbolFieldOffset: fifo.symbolFieldOffset,
+          embeddedSymbolGeometry: fifo.embeddedSymbolGeometry || previousReference?.embeddedSymbolGeometry === true,
+        });
+        held.set(frame.elementId, current);
+      }
+    },
+    finish(): NativeOriginalSymbolReference[] {
+      if (!admitted || capped) return [];
+      return [...held.values()].flatMap(({ references }) => {
+        if (references.size !== 1) return [];
+        const reference = [...references.values()][0]!;
+        if (!instances.has(reference.elementId) || (reference.originalSymbolId != null && !symbols.has(reference.originalSymbolId))) return [];
+        const envelopes = reference.originalSymbolId == null ? undefined : symbolEnvelopes.get(reference.originalSymbolId)?.values;
+        return [{ ...reference, ...(envelopes?.size === 1 ? { originalSymbolEnvelope: [...envelopes.values()][0]! } : {}) }];
+      }).sort((a, b) => a.elementId - b.elementId);
+    },
+    get capped(): boolean { return capped; },
+    get historicalEnvelopeWork(): { checksumBytes: number; capped: boolean } {
+      return { checksumBytes: historicalEnvelopeChecksumWork, capped: historicalEnvelopeCapped };
+    },
+    get largeObjectWork(): { checksumBytes: number; fifoBytes: number; capped: boolean } {
+      return { checksumBytes: largeChecksumWork, fifoBytes: largeFifoWork, capped: largeCapped };
+    },
+  };
+}
+
+/** Explicit native facing and straight host axis; no AABB direction inference. */
+export function doorWindowSymbolFlipped(opening: [number, number], wall: [number, number], direction: [number, number], facing: [number, number]): boolean | null {
+  if (![...opening, ...wall, ...direction, ...facing].every(Number.isFinite)) return null;
+  const length = hypot(...direction), facingLength = hypot(...facing);
+  if (length < 1e-9 || facingLength < 1e-9) return null;
+  const normal = [-direction[1] / length, direction[0] / length];
+  const offset = (opening[0] - wall[0]) * normal[0]! + (opening[1] - wall[1]) * normal[1]!;
+  const facingSide = normal[0]! * facing[0] + normal[1]! * facing[1];
+  return (offset > -1e-9) !== (facingSide > -1e-9);
+}
+
+export function resolveNativeIfcTypeIdentityEvidence(options: {
+  references: readonly NativeOriginalSymbolReference[];
+  placements: Iterable<InstancePlacement>;
+  elementBounds: readonly ElementBoundsRecord[];
+  hostRelations: readonly NativeHostRelation[];
+  /** Owners of certified native triangles may have no duplicated bounds. */
+  certifiedMeshElementIds?: ReadonlySet<number>;
+  revitVersion: number;
+}): NativeIfcTypeIdentityEvidence[] {
+  const records = new Map(options.elementBounds.map(record => [record.elementId, record]));
+  const placements = new Map<number, InstancePlacement | null>();
+  for (const placement of options.placements) {
+    const previous = placements.get(placement.elementId);
+    if (previous === undefined) placements.set(placement.elementId, placement);
+    else if (previous && JSON.stringify([previous.basis, previous.origin]) !== JSON.stringify([placement.basis, placement.origin])) placements.set(placement.elementId, null);
+  }
+  const hostIds = new Map<number, number | null>();
+  for (const relation of options.hostRelations) {
+    if (relation.source !== "Partitions/InsertableInst.m_hostId" || relation.evidence !== "persisted") continue;
+    const previous = hostIds.get(relation.elementId);
+    hostIds.set(relation.elementId, previous === undefined || previous === relation.hostId ? relation.hostId : null);
+  }
+  return options.references.filter(reference => reference.revitVersion === options.revitVersion &&
+    (records.has(reference.elementId) || options.certifiedMeshElementIds?.has(reference.elementId))).map(reference => {
+    const own = records.get(reference.elementId);
+    if (own?.categoryId !== -2_000_023 && own?.categoryId !== -2_000_014) return { ...reference };
+    const placement = placements.get(reference.elementId);
+    const hostId = hostIds.get(reference.elementId);
+    const host = hostId == null ? undefined : records.get(hostId);
+    const solid = host?.solid ?? (host?.solids?.length === 1 ? host.solids[0] : undefined);
+    if (!placement || placement.basis.length !== 9 || !solid || host?.categoryId !== -2_000_011) return { ...reference };
+    if (!placement.basis.every(Number.isFinite) ||
+      Math.abs(hypot(placement.basis[1]!, placement.basis[4]!, placement.basis[7]!) - 1) > 1e-6) return { ...reference };
+    const { min, max } = own.boundsFeet;
+    const flipped = doorWindowSymbolFlipped(
+      [(min.x + max.x) / 2, (min.y + max.y) / 2],
+      [solid.start.x, solid.start.y], [solid.end.x - solid.start.x, solid.end.y - solid.start.y],
+      [placement.basis[1]!, placement.basis[4]!],
+    );
+    if (flipped == null) return { ...reference };
+    const envelope = reference.originalSymbolEnvelope;
+    const localCentre = envelope && Array.isArray(envelope.minimum) && Array.isArray(envelope.maximum) && envelope.minimum.length === 3 && envelope.maximum.length === 3 &&
+      envelope.source === "checksum-verified-original-symbol-GElement.m_bBox" &&
+      envelope.minimum.every((value, index) => Number.isFinite(value) && value <= envelope.maximum[index]!) && envelope.maximum.every(Number.isFinite)
+      ? envelope.minimum.map((value, index) => (value + envelope.maximum[index]!) / 2) : undefined;
+    const originalCentre = localCentre && [0, 1].map(axis => placement.origin[axis]! + placement.basis[axis * 3]! * localCentre[0]! +
+      placement.basis[axis * 3 + 1]! * localCentre[1]! + placement.basis[axis * 3 + 2]! * localCentre[2]!);
+    const originalCandidate = originalCentre && doorWindowSymbolFlipped(
+      [originalCentre[0]!, originalCentre[1]!], [solid.start.x, solid.start.y],
+      [solid.end.x - solid.start.x, solid.end.y - solid.start.y], [placement.basis[1]!, placement.basis[4]!],
+    );
+    const flipEnvelopeComparison = typeof originalCandidate === "boolean" ? {
+      status: originalCandidate === flipped ? "agree" as const : "conflict" as const,
+      instanceEnvelopeCandidate: flipped, originalSymbolEnvelopeCandidate: originalCandidate, apiGeometryOptionsEquivalent: false as const,
+    } : undefined;
+    if (flipEnvelopeComparison?.status === "conflict") return { ...reference, flipped: undefined, flipSource: undefined, flipEnvelopeComparison };
+    return { ...reference, flipped, flipSource: "native-instance-facing+native-host-wall-axis", ...(flipEnvelopeComparison ? { flipEnvelopeComparison } : {}) };
+  });
+}
+
+export type NativeFamilyTypeIdentityOptions = {
+  evidence: NativeIfcTypeIdentityEvidence | undefined;
+  nativeGuids: ReadonlyMap<number, string>;
+  instanceEntity: string;
+  exporterVersion: number;
+  inAssembly?: boolean;
+};
+
+/** A withheld source recipe is distinguishable from an absent native GUID.
+ * In particular the stored embedded-symbol pointer does not prove Autodesk's
+ * UsesInstanceGeometry decision, which compares API geometry summaries. */
+export type NativeFamilyTypeIdentityResolution =
+  | { status: "resolved"; globalId: string; recipe: "original-symbol" | "instance-as-type" | "door-window-flip" }
+  | { status: "withheld"; reason: "missing-source-reference" | "invalid-source-reference" |
+      "embedded-geometry-summary-unproven" | "missing-native-creation-identity" |
+      "door-window-flip-unproven" | "original-geometry-envelope-conflict" | "unsupported-exporter-recipe" };
+
+export function resolveNativeFamilyTypeIdentity(options: NativeFamilyTypeIdentityOptions): NativeFamilyTypeIdentityResolution {
+  const evidence = options.evidence;
+  if (!evidence) return { status: "withheld", reason: "missing-source-reference" };
+  if (evidence.source !== "checksum-verified-GElement.original-symbol" ||
+    !Number.isInteger(evidence.revitVersion) || evidence.revitVersion < 2024 || evidence.revitVersion > 2027 ||
+    !Number.isSafeInteger(evidence.elementId) || evidence.elementId < 1 ||
+    (evidence.originalSymbolId !== null && (!Number.isSafeInteger(evidence.originalSymbolId) || evidence.originalSymbolId < 1 || evidence.originalSymbolId > 0xffff_fffe))) {
+    return { status: "withheld", reason: "invalid-source-reference" };
+  }
+  if (evidence.embeddedSymbolGeometry === true) return { status: "withheld", reason: "embedded-geometry-summary-unproven" };
+  if (evidence.originalSymbolId == null) {
+    const own = options.nativeGuids.get(evidence.elementId);
+    const globalId = own ? revitIfcSubElementGlobalId(own, 2048) : null;
+    return globalId ? { status: "resolved", globalId, recipe: "instance-as-type" } :
+      { status: "withheld", reason: "missing-native-creation-identity" };
+  }
+  const original = options.nativeGuids.get(evidence.originalSymbolId);
+  if (!isIfcGlobalId(original)) return { status: "withheld", reason: "missing-native-creation-identity" };
+  if (options.instanceEntity === "IFCDOOR" || options.instanceEntity === "IFCWINDOW") {
+    if (evidence.flipEnvelopeComparison?.status === "conflict") return { status: "withheld", reason: "original-geometry-envelope-conflict" };
+    if (typeof evidence.flipped !== "boolean" || evidence.flipSource !== "native-instance-facing+native-host-wall-axis") {
+      return { status: "withheld", reason: "door-window-flip-unproven" };
+    }
+    const globalId = revitDoorWindowTypeGlobalId(original, evidence.flipped, options.inAssembly ?? false, options.exporterVersion);
+    return globalId ? { status: "resolved", globalId, recipe: "door-window-flip" } :
+      { status: "withheld", reason: "unsupported-exporter-recipe" };
+  }
+  return { status: "resolved", globalId: original, recipe: "original-symbol" };
+}
+
+export function nativeFamilyTypeGlobalId(options: NativeFamilyTypeIdentityOptions): string | null {
+  const result = resolveNativeFamilyTypeIdentity(options);
+  return result.status === "resolved" ? result.globalId : null;
+}

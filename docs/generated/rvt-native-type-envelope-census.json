@@ -1,0 +1,2472 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/summarize-native-type-envelopes.ts",
+  "priorCampaignCommit": "2d42a9c",
+  "reference": {
+    "sha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+    "scope": "UNBC paired IFC only; exact product decimal Tags through RelDefinesByType, duplicate joins excluded."
+  },
+  "models": [
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "matchingConversionAndExportSettings": true,
+      "priorIfcSha256": "b2bf8058485f4db63482807ae33a04b24e686d46c468551f883d2123fb0c8149",
+      "currentIfcSha256": "94cae356716b534785098d47ac396f0e5d717a59d6681f4e2bab053e0e5c788c",
+      "nativeEvidenceSha256": "97a58ffa976ca4c0735ac92bda35a3a8c84bc32be53808e2e053b467f81814e1",
+      "nativeEvidenceReferences": 358,
+      "originalEnvelopeReferences": 289,
+      "counters": {
+        "legacyCapped": false,
+        "historicalEnvelope": {
+          "checksumBytes": 0,
+          "capped": false
+        },
+        "largeObjects": {
+          "checksumBytes": 0,
+          "fifoBytes": 0,
+          "capped": false
+        }
+      },
+      "censusState": "complete-for-retained-evidence",
+      "allTypedRelationships": {
+        "comparedToPrior": 462,
+        "sameTypeGlobalId": 462
+      },
+      "envelopeCandidates": {
+        "agree": 12,
+        "conflicts": 0
+      },
+      "upstreamComparison": {
+        "upstreamIfcSha256": "926451fc6d4e445c5b82af2e24b6d339c2c9588a1b4524dc64bb059eafd4cb82",
+        "prior": {
+          "compared": 433,
+          "matched": 414,
+          "mismatched": 19
+        },
+        "current": {
+          "compared": 433,
+          "matched": 414,
+          "mismatched": 19
+        },
+        "previousMatchesLost": 0,
+        "mismatchesNowMatching": 0,
+        "newlyComparedMatches": 0,
+        "populationChanges": []
+      },
+      "vetoImpact": {
+        "previouslyMatchingReference": 0,
+        "previouslyMismatchingReference": 0,
+        "currentReferenceMatches": 0,
+        "referenceComparisonUnavailable": 0,
+        "typeGuidChangedFromPrior": 0
+      },
+      "cases": []
+    },
+    {
+      "model": "school.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "matchingConversionAndExportSettings": true,
+      "priorIfcSha256": "db93871d67548db2e27cbf22450fc281ff8c2dfd4bbc36390c8c3cd028bec5ae",
+      "currentIfcSha256": "e64e207432f1372664aa5b9d73a2166ebacfa23d149d16043c18df36d81a218f",
+      "nativeEvidenceSha256": "6fd2221d264199dca1257107fff8972c527e403ae72dc3f89f32b7f2f63a4ce5",
+      "nativeEvidenceReferences": 5128,
+      "originalEnvelopeReferences": 5112,
+      "counters": {
+        "legacyCapped": false,
+        "historicalEnvelope": {
+          "checksumBytes": 0,
+          "capped": false
+        },
+        "largeObjects": {
+          "checksumBytes": 0,
+          "fifoBytes": 0,
+          "capped": false
+        }
+      },
+      "censusState": "complete-for-retained-evidence",
+      "allTypedRelationships": {
+        "comparedToPrior": 5497,
+        "sameTypeGlobalId": 5479
+      },
+      "envelopeCandidates": {
+        "agree": 66,
+        "conflicts": 18
+      },
+      "upstreamComparison": {
+        "upstreamIfcSha256": "2c82cad0075bb2cd27524e3eff116e76fd95c826136380b86a7191936b289308",
+        "prior": {
+          "compared": 5457,
+          "matched": 5345,
+          "mismatched": 112
+        },
+        "current": {
+          "compared": 5463,
+          "matched": 5351,
+          "mismatched": 112
+        },
+        "previousMatchesLost": 0,
+        "mismatchesNowMatching": 0,
+        "newlyComparedMatches": 6,
+        "populationChanges": [
+          {
+            "elementId": "135386",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          },
+          {
+            "elementId": "135390",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          },
+          {
+            "elementId": "135392",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          },
+          {
+            "elementId": "135402",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          },
+          {
+            "elementId": "135406",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          },
+          {
+            "elementId": "135408",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCBUILDINGELEMENTPROXY",
+              "typeGlobalId": "06bOOBatjAFflKi98Awodb",
+              "typeEntity": "IFCBUILDINGELEMENTPROXYTYPE"
+            }
+          }
+        ]
+      },
+      "vetoImpact": {
+        "previouslyMatchingReference": 0,
+        "previouslyMismatchingReference": 0,
+        "currentReferenceMatches": 0,
+        "referenceComparisonUnavailable": 18,
+        "typeGuidChangedFromPrior": 18
+      },
+      "cases": [
+        {
+          "elementId": 198996,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 77369
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199047,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 77689
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199097,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 78009
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199141,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 78329
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199187,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 78649
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199217,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 78969
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199255,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 79289
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199291,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 79609
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199317,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 79929
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199360,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 80249
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199402,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 80569
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199436,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 80889
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199468,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 81209
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199510,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 81529
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199558,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 81849
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199584,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 82169
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199614,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 82489
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 199640,
+          "originalSymbolId": 182280,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685608,
+              -0.45439632545929515,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/15",
+            "chunkIndex": 414,
+            "rawOffset": 8851477,
+            "objectOffset": 22988
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/15",
+            "chunkIndex": 420,
+            "rawOffset": 8988782,
+            "objectOffset": 82809
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3wXC02uafKdggsxU4XUWVP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "31vfnGYMrGJJKZNTAGk7zM",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        }
+      ]
+    },
+    {
+      "model": "snowdon.rvt",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "matchingConversionAndExportSettings": true,
+      "priorIfcSha256": "e86003dc9d7e7dbf9a0be3ba2dae52f51cf2137e6c70e18caeeb3b7baed257d6",
+      "currentIfcSha256": "127be75a7522c223fc5f29a6ffc428fba69e5e8900cc964ee823edb9312c1afb",
+      "nativeEvidenceSha256": "1074acaf1a113c0461caa5acaa33ae20b0bddc8f9187293fb974329f3a99fa0e",
+      "nativeEvidenceReferences": 6731,
+      "originalEnvelopeReferences": 6167,
+      "counters": {
+        "legacyCapped": false,
+        "historicalEnvelope": {
+          "checksumBytes": 0,
+          "capped": false
+        },
+        "largeObjects": {
+          "checksumBytes": 1196114,
+          "fifoBytes": 598057,
+          "capped": false
+        }
+      },
+      "censusState": "complete-for-retained-evidence",
+      "allTypedRelationships": {
+        "comparedToPrior": 8830,
+        "sameTypeGlobalId": 8813
+      },
+      "envelopeCandidates": {
+        "agree": 37,
+        "conflicts": 17
+      },
+      "upstreamComparison": {
+        "upstreamIfcSha256": "5713005a22552d1beb64d68f54d51f2580a846bce7b61b19b71ae7cb907154f0",
+        "prior": {
+          "compared": 5823,
+          "matched": 5558,
+          "mismatched": 265
+        },
+        "current": {
+          "compared": 5839,
+          "matched": 5574,
+          "mismatched": 265
+        },
+        "previousMatchesLost": 0,
+        "mismatchesNowMatching": 0,
+        "newlyComparedMatches": 16,
+        "populationChanges": [
+          {
+            "elementId": "620883",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "621690",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "622037",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "622384",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "688457",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "695423",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "700016",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "881948",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "882136",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "882250",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "882827",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "1616455",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "1620391",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "1644692",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "3M2uC53CfB9eZuY1_Q0rWX",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "746421",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "1XeopoEmL4fQChMRbpTcTD",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "1XeopoEmL4fQChMRbpTcTD",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          },
+          {
+            "elementId": "2270380",
+            "priorMatch": null,
+            "currentMatch": true,
+            "prior": null,
+            "current": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "2DlOjOyRTFpQxc_0Rnt1X4",
+              "typeEntity": "IFCSTAIRTYPE"
+            },
+            "upstream": {
+              "productEntity": "IFCSTAIR",
+              "typeGlobalId": "2DlOjOyRTFpQxc_0Rnt1X4",
+              "typeEntity": "IFCSTAIRTYPE"
+            }
+          }
+        ]
+      },
+      "vetoImpact": {
+        "previouslyMatchingReference": 0,
+        "previouslyMismatchingReference": 0,
+        "currentReferenceMatches": 0,
+        "referenceComparisonUnavailable": 17,
+        "typeGuidChangedFromPrior": 17
+      },
+      "cases": [
+        {
+          "elementId": 1450232,
+          "originalSymbolId": 1873348,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              9.499999999999996
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 123262
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 16131
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0VGhEr7ANedb2b5WquUvvP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1az9lqkZLXwZfcVfyEzeez",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1452001,
+          "originalSymbolId": 1873348,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              9.499999999999996
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 123262
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 16451
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0VGhEr7ANedb2b5WquUvvP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1az9lqkZLXwZfcVfyEzeez",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1452013,
+          "originalSymbolId": 1873348,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              9.499999999999996
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 123262
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 16771
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0VGhEr7ANedb2b5WquUvvP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1az9lqkZLXwZfcVfyEzeez",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1452023,
+          "originalSymbolId": 1873348,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              9.499999999999996
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 123262
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 17091
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0VGhEr7ANedb2b5WquUvvP",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1az9lqkZLXwZfcVfyEzeez",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454224,
+          "originalSymbolId": 1873345,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666667544,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.833333333333329
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 105058
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 71475
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2zAEHPhO3Yy6jaI11dDEnm",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3yVAdTf8cyjsTDbnepGjnY",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454225,
+          "originalSymbolId": 1873345,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666667544,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.833333333333329
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 105058
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 71795
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2zAEHPhO3Yy6jaI11dDEnm",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3yVAdTf8cyjsTDbnepGjnY",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454226,
+          "originalSymbolId": 1873345,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666667544,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.833333333333329
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 105058
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 72115
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2zAEHPhO3Yy6jaI11dDEnm",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3yVAdTf8cyjsTDbnepGjnY",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454227,
+          "originalSymbolId": 1873345,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666667544,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.833333333333329
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 105058
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1642,
+            "rawOffset": 46225005,
+            "objectOffset": 72435
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2zAEHPhO3Yy6jaI11dDEnm",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3yVAdTf8cyjsTDbnepGjnY",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454636,
+          "originalSymbolId": 1873346,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.958333333333332
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 111126
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1643,
+            "rawOffset": 46252772,
+            "objectOffset": 0
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0i2ptQzCdf2tCVz9J5OiFE",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0QNhuvJK4kg4iPOWHjyvMx",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454637,
+          "originalSymbolId": 1873346,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.958333333333332
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 111126
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1643,
+            "rawOffset": 46252772,
+            "objectOffset": 320
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0i2ptQzCdf2tCVz9J5OiFE",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0QNhuvJK4kg4iPOWHjyvMx",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454638,
+          "originalSymbolId": 1873346,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.958333333333332
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 111126
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1643,
+            "rawOffset": 46252772,
+            "objectOffset": 640
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0i2ptQzCdf2tCVz9J5OiFE",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0QNhuvJK4kg4iPOWHjyvMx",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1454639,
+          "originalSymbolId": 1873346,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7916666666666947,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.791666666666643,
+              1.5457764632267603,
+              10.958333333333332
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1874,
+            "rawOffset": 51684051,
+            "objectOffset": 111126
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1643,
+            "rawOffset": 46252772,
+            "objectOffset": 960
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0i2ptQzCdf2tCVz9J5OiFE",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0QNhuvJK4kg4iPOWHjyvMx",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1502355,
+          "originalSymbolId": 1873349,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.7500000000000269,
+              -0.2760416666666667,
+              2.5
+            ],
+            "maximum": [
+              1.7499999999999751,
+              1.5457764632267603,
+              11.666666666666663
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1875,
+            "rawOffset": 51714157,
+            "objectOffset": 0
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1656,
+            "rawOffset": 46584967,
+            "objectOffset": 118882
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0ClHVVKuSFuhpMMRNWFQ1_",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0OLNgBEO54gxnz5b8jEr2E",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1502356,
+          "originalSymbolId": 1873350,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.1250000000000266,
+              -0.2760416666666667,
+              2.5
+            ],
+            "maximum": [
+              1.1249999999999751,
+              1.5457764632267603,
+              11.666666666666663
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1875,
+            "rawOffset": 51714157,
+            "objectOffset": 6002
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1656,
+            "rawOffset": 46584967,
+            "objectOffset": 119202
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "233J7qGNn1SYv9PhtKf4Qv",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3nT8pHeg83kJMn8Fb4lql8",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1502684,
+          "originalSymbolId": 1873350,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.1250000000000266,
+              -0.2760416666666667,
+              2.5
+            ],
+            "maximum": [
+              1.1249999999999751,
+              1.5457764632267603,
+              11.666666666666663
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1875,
+            "rawOffset": 51714157,
+            "objectOffset": 6002
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1656,
+            "rawOffset": 46584967,
+            "objectOffset": 119522
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "233J7qGNn1SYv9PhtKf4Qv",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3nT8pHeg83kJMn8Fb4lql8",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1502780,
+          "originalSymbolId": 1873352,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5833333333333608,
+              -0.27604166666666674,
+              2.5
+            ],
+            "maximum": [
+              1.5833333333333084,
+              1.5457764632267603,
+              9.999999999999996
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1875,
+            "rawOffset": 51714157,
+            "objectOffset": 18006
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1657,
+            "rawOffset": 46614597,
+            "objectOffset": 21264
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2IRjpu7Aztzr86sE5TmLOk",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1fOGK5yjYl9ys9bmP4aTiQ",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        },
+        {
+          "elementId": 1589899,
+          "originalSymbolId": 1873351,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": false,
+            "originalSymbolEnvelopeCandidate": true,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.0000000000000275,
+              -1.5457764632267603,
+              2.5
+            ],
+            "maximum": [
+              0.9999999999999754,
+              0.2760416666666667,
+              5.33333333333333
+            ],
+            "stream": "Partitions/68",
+            "chunkIndex": 1875,
+            "rawOffset": 51714157,
+            "objectOffset": 12004
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/68",
+            "chunkIndex": 1694,
+            "rawOffset": 47324765,
+            "objectOffset": 31290
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "0gFY$VlgArdr$l2xxpBQba",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "03Dv$kCBJBc137XVmGbuOx",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": null,
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": null,
+          "currentlyMatchesReference": null
+        }
+      ]
+    },
+    {
+      "model": "unbc.rvt",
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "matchingConversionAndExportSettings": true,
+      "priorIfcSha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426",
+      "currentIfcSha256": "c541078801c77b79b4c0581dd8f8b560ad675940b3ae7ce6dadc894fe454eda9",
+      "nativeEvidenceSha256": "d9ae9f359df9d07ee35402b1f8c475993c4fda236f0fad6aae3a1401e75f48ee",
+      "nativeEvidenceReferences": 27777,
+      "originalEnvelopeReferences": 21073,
+      "counters": {
+        "legacyCapped": false,
+        "historicalEnvelope": {
+          "checksumBytes": 33552587,
+          "capped": true
+        },
+        "largeObjects": {
+          "checksumBytes": 2597626,
+          "fifoBytes": 1298813,
+          "capped": false
+        }
+      },
+      "censusState": "complete-for-retained-evidence",
+      "allTypedRelationships": {
+        "comparedToPrior": 37376,
+        "sameTypeGlobalId": 37373
+      },
+      "envelopeCandidates": {
+        "agree": 542,
+        "conflicts": 3
+      },
+      "upstreamComparison": {
+        "upstreamIfcSha256": "b152c6669b4cd822e1d3bd1a391e0413f6c4af1df20743695cea3a6e6f58ba24",
+        "prior": {
+          "compared": 0,
+          "matched": 0,
+          "mismatched": 0
+        },
+        "current": {
+          "compared": 0,
+          "matched": 0,
+          "mismatched": 0
+        },
+        "previousMatchesLost": 0,
+        "mismatchesNowMatching": 0,
+        "newlyComparedMatches": 0,
+        "populationChanges": []
+      },
+      "vetoImpact": {
+        "previouslyMatchingReference": 0,
+        "previouslyMismatchingReference": 3,
+        "currentReferenceMatches": 0,
+        "referenceComparisonUnavailable": 0,
+        "typeGuidChangedFromPrior": 3
+      },
+      "cases": [
+        {
+          "elementId": 1812247,
+          "originalSymbolId": 1812290,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685603,
+              -0.15419947506559423,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2809,
+            "rawOffset": 55036398,
+            "objectOffset": 47444
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/325",
+            "chunkIndex": 1876,
+            "rawOffset": 36399992,
+            "objectOffset": 64060
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3JPKTB16Tl1bBZKayVXBWt",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1rQnkzZHve5SoWPleWu4q_",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2a91RLkDjL$RKO9QkXvhh7",
+            "typeEntity": "IFCWINDOWSTYLE"
+          },
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": false,
+          "currentlyMatchesReference": false
+        },
+        {
+          "elementId": 1812300,
+          "originalSymbolId": 1812290,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685603,
+              -0.15419947506559423,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2809,
+            "rawOffset": 55036398,
+            "objectOffset": 47444
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/325",
+            "chunkIndex": 1876,
+            "rawOffset": 36399992,
+            "objectOffset": 64380
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3JPKTB16Tl1bBZKayVXBWt",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1rQnkzZHve5SoWPleWu4q_",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2a91RLkDjL$RKO9QkXvhh7",
+            "typeEntity": "IFCWINDOWSTYLE"
+          },
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": false,
+          "currentlyMatchesReference": false
+        },
+        {
+          "elementId": 1812335,
+          "originalSymbolId": 1812290,
+          "sourceComparison": {
+            "status": "conflict",
+            "instanceEnvelopeCandidate": true,
+            "originalSymbolEnvelopeCandidate": false,
+            "apiGeometryOptionsEquivalent": false
+          },
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.5009842519685603,
+              -0.15419947506559423,
+              3.0019685039370225
+            ],
+            "maximum": [
+              1.5009842519684793,
+              1.5457764632267603,
+              7.004593175853056
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2809,
+            "rawOffset": 55036398,
+            "objectOffset": 47444
+          },
+          "sourceReference": {
+            "source": "checksum-verified-GElement.original-symbol",
+            "stream": "Partitions/325",
+            "chunkIndex": 1876,
+            "rawOffset": 36399992,
+            "objectOffset": 64700
+          },
+          "prior": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "3JPKTB16Tl1bBZKayVXBWt",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "current": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "1rQnkzZHve5SoWPleWu4q_",
+            "typeEntity": "IFCWINDOWTYPE"
+          },
+          "reference": {
+            "productEntity": "IFCWINDOW",
+            "typeGlobalId": "2a91RLkDjL$RKO9QkXvhh7",
+            "typeEntity": "IFCWINDOWSTYLE"
+          },
+          "typeGuidChanged": true,
+          "previouslyMatchedReference": false,
+          "currentlyMatchesReference": false
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Veto counts refer to source owners and product-to-type relationships, not distinct type objects or unique type GUIDs.",
+    "A stored-envelope contradiction is a conservative confidence veto, not proof of an incorrect previous IFC identity or improved reference accuracy.",
+    "Stored graphics envelopes are not proven API GetOriginalGeometry equivalents under IFC geometry options.",
+    "A capped historical-envelope scan has partial coverage; the census includes every retained conflict, not every possible original-geometry conflict."
+  ]
+}

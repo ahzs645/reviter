@@ -1,0 +1,205 @@
+{
+  "date": "2026-10-14",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "localPatches": [
+    {
+      "path": "lib/rvt-wasm/patches/native-evidence.patch",
+      "sha256": "cf468bbcb0c0aa573fda9390f856b2d8bbd30c3b240eb4e1a40d4f7198755c13",
+      "purpose": "Expose bounded opt-in native owner graphs, parameter definitions, units, annotations and extensible-storage metadata through openNativeEvidence.",
+      "files": [
+        "Cargo.lock",
+        "rvt-wasm/Cargo.toml",
+        "rvt-wasm/src/lib.rs",
+        "rvt-wasm/src/native_evidence.rs"
+      ]
+    }
+  ],
+  "wasmSha256": "c99646e6ede3b1bb58b45d13df8fd11e28b860527ec48d34758ef822d88d6662",
+  "implementation": "Actual rebuilt openNativeEvidence WASM binding, called through the Node/browser shared readNativeSourceEvidence adapter. Uploaded source bytes are unchanged; raw reports remain outside Git.",
+  "commands": [
+    "npm run inspect:rvt-evidence -- /workspace/models/rac.rvt --classes UnitsElem,ProjectPhase,ParamElemExternal,ParamElemProject,ParamElemFamily,DataStorage --out /workspace/scratch/rac-native-evidence-wasm.json",
+    "npm run inspect:rvt-evidence -- /workspace/models/rac.rvt --classes UnitsElem,ProjectPhase,DataStorage --out /workspace/scratch/rac-native-metadata-wasm.json",
+    "npm run inspect:rvt-evidence -- /workspace/models/snowdon.rvt --classes UnitsElem,ProjectPhase,ParamElemExternal,ParamElemProject,ParamElemFamily,DataStorage --out /workspace/scratch/snowdon-native-evidence-wasm.json"
+  ],
+  "probes": [
+    {
+      "label": "RAC definitions and family owners",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "release": 2025,
+      "selection": {
+        "classes": [
+          "DataStorage",
+          "ParamElemExternal",
+          "ParamElemFamily",
+          "ParamElemProject",
+          "ProjectPhase",
+          "UnitsElem"
+        ],
+        "ids": []
+      },
+      "status": "partial",
+      "parameterDefinitions": 774,
+      "definitionDiagnostics": 8,
+      "unitFormats": 136,
+      "nativeParameterBindings": 2,
+      "extensibleStorageSchemas": 0,
+      "completeGraphRecords": 706,
+      "projectedMetadataRecords": 706,
+      "unsupportedGraphRecords": 0,
+      "unsupportedMetadataRecords": 0,
+      "retainedRecords": 128,
+      "retainedClasses": {
+        "ParamElemFamily": 128
+      },
+      "droppedRecords": 578,
+      "summaryTruncated": false,
+      "inflatedBytesPreflight": 109837860,
+      "gzipMembersPreflight": 1163,
+      "error": null,
+      "limits": {
+        "maxDecodedRecords": 4096,
+        "maxFileBytes": 268435456,
+        "maxGraphObjects": 2048,
+        "maxGraphValues": 20000,
+        "maxGroupBytes": 134217728,
+        "maxGzipMembers": 20000,
+        "maxInflatedBytes": 805306368,
+        "maxMemberBytes": 16777216,
+        "maxOutputBytes": 33554432,
+        "maxRecordBytes": 1048576,
+        "maxRecords": 128,
+        "maxStreamBytes": 134217728,
+        "maxSummaryBytes": 8388608
+      },
+      "rawReportSha256": "e72a28f51c7bda79b4f946491043c8158c07bc809a411375ceecc7a81258079f"
+    },
+    {
+      "label": "RAC units and phases",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "release": 2025,
+      "selection": {
+        "classes": [
+          "DataStorage",
+          "ProjectPhase",
+          "UnitsElem"
+        ],
+        "ids": []
+      },
+      "status": "complete",
+      "parameterDefinitions": 774,
+      "definitionDiagnostics": 8,
+      "unitFormats": 136,
+      "nativeParameterBindings": 2,
+      "extensibleStorageSchemas": 0,
+      "completeGraphRecords": 4,
+      "projectedMetadataRecords": 4,
+      "unsupportedGraphRecords": 0,
+      "unsupportedMetadataRecords": 0,
+      "retainedRecords": 4,
+      "retainedClasses": {
+        "ProjectPhase": 3,
+        "UnitsElem": 1
+      },
+      "droppedRecords": 0,
+      "summaryTruncated": false,
+      "inflatedBytesPreflight": 109837860,
+      "gzipMembersPreflight": 1163,
+      "error": null,
+      "limits": {
+        "maxDecodedRecords": 4096,
+        "maxFileBytes": 268435456,
+        "maxGraphObjects": 2048,
+        "maxGraphValues": 20000,
+        "maxGroupBytes": 134217728,
+        "maxGzipMembers": 20000,
+        "maxInflatedBytes": 805306368,
+        "maxMemberBytes": 16777216,
+        "maxOutputBytes": 33554432,
+        "maxRecordBytes": 1048576,
+        "maxRecords": 128,
+        "maxStreamBytes": 134217728,
+        "maxSummaryBytes": 8388608
+      },
+      "rawReportSha256": "41398a52e3e63069f5b70d5da5c1207201121c716e955e363939354e9a78ec55"
+    },
+    {
+      "label": "Snowdon definitions, units and extensible storage",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "release": 2024,
+      "selection": {
+        "classes": [
+          "DataStorage",
+          "ParamElemExternal",
+          "ParamElemFamily",
+          "ParamElemProject",
+          "ProjectPhase",
+          "UnitsElem"
+        ],
+        "ids": []
+      },
+      "status": "partial",
+      "parameterDefinitions": 1604,
+      "definitionDiagnostics": 2,
+      "unitFormats": 136,
+      "nativeParameterBindings": 166,
+      "extensibleStorageSchemas": 9,
+      "completeGraphRecords": 1517,
+      "projectedMetadataRecords": 1517,
+      "unsupportedGraphRecords": 0,
+      "unsupportedMetadataRecords": 0,
+      "retainedRecords": 128,
+      "retainedClasses": {
+        "ParamElemFamily": 126,
+        "UnitsElem": 2
+      },
+      "droppedRecords": 1389,
+      "summaryTruncated": false,
+      "inflatedBytesPreflight": 447805014,
+      "gzipMembersPreflight": 4629,
+      "error": null,
+      "limits": {
+        "maxDecodedRecords": 4096,
+        "maxFileBytes": 268435456,
+        "maxGraphObjects": 2048,
+        "maxGraphValues": 20000,
+        "maxGroupBytes": 134217728,
+        "maxGzipMembers": 20000,
+        "maxInflatedBytes": 805306368,
+        "maxMemberBytes": 16777216,
+        "maxOutputBytes": 33554432,
+        "maxRecordBytes": 1048576,
+        "maxRecords": 128,
+        "maxStreamBytes": 134217728,
+        "maxSummaryBytes": 8388608
+      },
+      "rawReportSha256": "e2af0c740fa8a7e734e3c8dd8cefb6a10f2d12dc21430cfb6c37288d63ab8337"
+    }
+  ],
+  "checks": {
+    "rustAdapterTests": {
+      "passed": 5,
+      "failed": 0,
+      "command": "cargo test --locked -p rvt-wasm native_evidence::tests -- --nocapture",
+      "note": "Real-model optional Rust test is a no-op without REVITER_NATIVE_EVIDENCE_MODEL; actual source positives above ran through WASM."
+    },
+    "wasmAndProvenanceTests": {
+      "passed": 7,
+      "failed": 0,
+      "command": "node --experimental-strip-types --import ./scripts/register-test-typescript.mjs --test tests/native-evidence-wasm.test.ts tests/rvt-wasm-provenance.test.ts",
+      "coverage": [
+        "Malformed and oversized source responses",
+        "Safe numeric vs exact decimal u64 IDs",
+        "Bounded selections and invalid resource limits",
+        "Compressed-member, aggregate inflated-byte and gzip-member preflight limits",
+        "Exact source SHA binding and declared patch/build hashes"
+      ]
+    }
+  },
+  "limitations": [
+    "Complete means complete within the selected stored-owner scope, not complete geometry or semantic recovery.",
+    "Definitions have explicit unresolved diagnostic counts; built-in catalog is disabled.",
+    "Catalog counts show stored schemas, not evaluated extensible-storage values or app behavior.",
+    "Family-owner probes intentionally hit the retained-record cap and return partial while retaining the full bounded summary.",
+    "No formula evaluation, annotation rendering, navigation boundary certification, historical record or embedded-group recovery."
+  ]
+}

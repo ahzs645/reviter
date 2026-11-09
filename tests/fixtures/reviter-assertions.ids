@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Integrity of the reviewer assertions in a Reviter export.
+
+  A separate document from `reviter-recovery.ids` on purpose. That one states
+  what is true of every product in every export and must never pass vacuously.
+  This one applies only where a reviewer asserted something, so on an export
+  with no assertions it correctly matches nothing — which is why it is not
+  folded into the always-on document, whose gate fails a specification that
+  matched no entities.
+
+  What it enforces is the thing that makes an assertion safe to ship: a value a
+  person put into a recovered model must be attributable and must not erase what
+  the decoder had said. An export where `AssertedFields` names a category but
+  `DecodedRevitCategory` is missing has replaced evidence with an opinion and
+  left no way back to the measurement.
+-->
+<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd">
+  <info>
+    <title>Reviter assertion integrity</title>
+    <description>Anything a reviewer asserted names who asserted it, when, and what the decoder had said.</description>
+    <author>ahzs645@gmail.com</author>
+  </info>
+  <specifications>
+
+    <specification name="An assertion names its author" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>AssertedFields</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>AssertedBy</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="An assertion is dated" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>AssertedFields</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>AssertedAt</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+    <specification name="An asserted category keeps what the decoder said" ifcVersion="IFC4" minOccurs="1" maxOccurs="unbounded">
+      <applicability minOccurs="1" maxOccurs="unbounded">
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>DecodedCategoryEvidence</simpleValue></baseName>
+        </property>
+      </applicability>
+      <requirements>
+        <property dataType="IFCTEXT">
+          <propertySet><simpleValue>Reviter_Recovery</simpleValue></propertySet>
+          <baseName><simpleValue>DecodedRevitCategory</simpleValue></baseName>
+        </property>
+      </requirements>
+    </specification>
+
+  </specifications>
+</ids>

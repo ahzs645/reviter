@@ -59,6 +59,20 @@ function evidenceRank(record: ElementBoundsRecord): number {
   );
 }
 
+/** Select source evidence before any reviewer overlay changes its fields. */
+export function preferredElementBounds(
+  records: readonly ElementBoundsRecord[],
+): Map<number, ElementBoundsRecord> {
+  const bestByElement = new Map<number, ElementBoundsRecord>();
+  for (const record of records) {
+    const previous = bestByElement.get(record.elementId);
+    if (!previous || evidenceRank(record) > evidenceRank(previous)) {
+      bestByElement.set(record.elementId, record);
+    }
+  }
+  return bestByElement;
+}
+
 /**
  * One client-side semantic record per recovered Revit element.
  *
@@ -75,13 +89,7 @@ export function elementManifest(result: ConvertResult) {
       identity,
     ]) ?? [],
   );
-  const bestByElement = new Map<number, ElementBoundsRecord>();
-  for (const record of result.elementBounds) {
-    const previous = bestByElement.get(record.elementId);
-    if (!previous || evidenceRank(record) > evidenceRank(previous)) {
-      bestByElement.set(record.elementId, record);
-    }
-  }
+  const bestByElement = preferredElementBounds(result.elementBounds);
   const drawnIds = new Set<number>();
   for (const mesh of result.meshes) {
     for (const elementId of mesh.elementIds ?? []) drawnIds.add(elementId);
@@ -252,7 +260,7 @@ export function makeReport(
         nativeUniqueIds: result.decoderCoverage.nativeUniqueIds ?? 0,
         ...modelTreeFidelity(result),
       },
-      file: { name: result.fileName, byteLength: result.byteLength, metadata: safeMetadata },
+      file: { name: result.fileName, byteLength: result.byteLength, sourceSha256: result.sourceSha256 ?? null, metadata: safeMetadata },
       originFeet: result.origin,
       boundsLocalFeet: result.bbox,
       levels: result.levels,
@@ -267,6 +275,25 @@ export function makeReport(
       modelTree: modelTreeReport(result),
       nativeMaterialDefinitions: result.nativeMaterialDefinitions ?? [],
       nativeFamilyDefinitions: result.nativeFamilyDefinitions ?? [],
+      nativeSourceRooms: result.nativeSourceRooms ?? [],
+      nativeStructuralSections: result.nativeStructuralSections ?? [],
+      nativeInstancePlacements: result.nativeInstancePlacements ?? [],
+      nativeSpatialOrganization: result.nativeSpatialOrganization ?? null,
+      nativeMepEvidence: result.nativeMepEvidence ?? null,
+      nativeDesignOptions: result.nativeDesignOptions ?? null,
+      nativeDesignOptionMembership: result.nativeDesignOptionMembership ?? [],
+      nativePhaseEvidence: result.nativePhaseEvidence ?? null,
+      nativeIfcTypeIdentityEvidence: result.nativeIfcTypeIdentityEvidence ?? [],
+      fullElementInventory: result.fullElementInventory?.status === "decoded" ? {
+        ...result.fullElementInventory,
+        elementIds: Array.from(result.fullElementInventory.elementIds),
+        primaryElementIds: Array.from(result.fullElementInventory.primaryElementIds),
+        ownerElementIds: Array.from(result.fullElementInventory.ownerElementIds),
+        declaredElementIds: Array.from(result.fullElementInventory.declaredElementIds),
+        scope: "Complete validated source table; this inventory does not widen scene geometry admission.",
+      } : result.fullElementInventory ?? null,
+      documentMetadata: result.documentMetadata ?? null,
+      nativeIfcSemanticEvidence: result.nativeIfcSemanticEvidence ?? null,
       streamCoverage: result.coverage ?? null,
       nativeProfiles: result.nativeProfiles,
       elementManifest: {
@@ -288,6 +315,7 @@ export function makeReport(
       },
       materials: result.materials,
       standardsAwareReader: result.readerDiagnostics ?? null,
+      standardsReaderMaterials: result.standardsReaderMaterials ?? [],
       warnings: result.warnings,
     },
     null,
