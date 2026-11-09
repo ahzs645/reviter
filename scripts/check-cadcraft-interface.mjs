@@ -31,7 +31,9 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(ready => server.listen(0, "127.0.0.1", ready));
 const url = `http://127.0.0.1:${server.address().port}/?navigation-test=1`;
-const browser = await chromium.launch({ headless: true, args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+const browser = await chromium.launch({ headless: true,
+  ...(process.env.REVITER_BROWSER_EXECUTABLE ? { executablePath: process.env.REVITER_BROWSER_EXECUTABLE } : {}),
+  args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 const results = [], errors = [];
 let activePage;
 function record(name) { results.push(name); console.log(`PASS ${name}`); }
@@ -117,6 +119,69 @@ try {
   await desktop.getByRole("button", { name: "Top section review", exact: true }).click();
   await waitUntil(desktop, expected => document.querySelector('section[aria-label="Section options"] input[type=range]')?.value === "30" && document.querySelector("canvas")?.dataset.cameraPosition?.split(",").every((n, i) => Math.abs(Number(n) - expected[i]) < .0001), saved.camera.position);
   assert.equal(await categories.getByLabel("Walls", { exact: true }).isChecked(), false); record("Saved view restores camera, source, section and visibility");
+
+  await command(desktop, "Show all objects");
+  await command(desktop, "Select object by ID", 1049);
+  const viewpointPanel = desktop.locator(".viewer-viewpoint-panel");
+  if (!await viewpointPanel.evaluate(node => node.open)) await viewpointPanel.locator("summary").click();
+  await viewpointPanel.getByRole("button", { name: "Copy viewpoint link", exact: true }).click();
+  const viewpointInput = viewpointPanel.getByRole("textbox", { name: "Viewpoint link", exact: true });
+  await waitUntil(desktop, () => document.querySelector('input[aria-label="Viewpoint link"]')?.value.includes("#reviter-view="));
+  const portableLink = await viewpointInput.inputValue();
+  const portableState = JSON.parse(Buffer.from(new URL(portableLink).hash.slice("#reviter-view=".length), "base64url").toString("utf8"));
+  const portablePose = await pose(desktop);
+  assert.match(portableState.sourceFingerprint, /^sha256-[a-f0-9]{64}$/);
+  assert.equal(portableState.viewer.selectedElementId, 1049);
+  assert.equal(portableState.viewer.section.enabled, true);
+  assert.equal(portableState.viewer.section.offset, .3);
+  await command(desktop, "Hide selection");
+  assert.match(await desktop.locator(".review-quick-actions").innerText(), /\b1 hidden\b/);
+  await viewpointPanel.getByRole("button", { name: "Copy viewpoint link", exact: true }).click();
+  await viewpointPanel.getByRole("status").filter({ hasText: "Restore hidden objects before copying a viewpoint link. Links cannot preserve individual object visibility." }).waitFor();
+  assert.equal(await viewpointInput.inputValue(), portableLink);
+  await viewpointPanel.getByRole("button", { name: "Restore viewpoint", exact: true }).click();
+  await waitUntil(desktop, () => /\b1 selected\b/.test(document.querySelector(".review-quick-actions")?.textContent ?? "") && /\b0 hidden\b/.test(document.querySelector(".review-quick-actions")?.textContent ?? ""));
+  const restoredObject = desktop.locator(".object-row").filter({ has: desktop.locator("em", { hasText: /^1049$/ }) });
+  assert.equal(await restoredObject.isVisible(), true);
+  assert.equal(await restoredObject.getAttribute("aria-selected"), "true");
+  await desktop.getByRole("button", { name: /^Commands/ }).first().click();
+  const visibilityDialog = desktop.getByRole("dialog", { name: "Commands" });
+  await visibilityDialog.getByRole("searchbox", { name: "Search commands" }).fill("Restore previous visibility");
+  assert.equal(await visibilityDialog.getByRole("button").filter({ hasText: "Restore previous visibility" }).getAttribute("aria-disabled"), "true");
+  await desktop.keyboard.press("Escape");
+  record("Portable copy refuses individual hiding; restoring clears hidden objects and visibility history");
+  await desktop.getByRole("button", { name: "Orient model home" }).click();
+  await desktop.getByRole("region", { name: "Section options" }).getByRole("slider").fill("70");
+  await command(desktop, "Select object by ID", 2048);
+  await waitUntil(desktop, previous => document.querySelector("canvas")?.dataset.cameraPosition !== previous.position, portablePose);
+  await viewpointInput.fill(portableLink);
+  await viewpointPanel.getByRole("button", { name: "Restore viewpoint", exact: true }).click();
+  await waitUntil(desktop, expected => {
+    const canvas = document.querySelector("canvas");
+    return canvas?.dataset.activeSource === "recovered" &&
+      document.querySelector('section[aria-label="Section options"] input[type=range]')?.value === "30" &&
+      ["position", "target"].every(key => canvas.dataset[key === "position" ? "cameraPosition" : "cameraTarget"]?.split(",").every((n, i) => Math.abs(Number(n) - Number(expected[key].split(",")[i])) < .0001));
+  }, portablePose);
+  assert.equal(await desktop.locator(".object-row").filter({ has: desktop.locator("em", { hasText: /^1049$/ }) }).getAttribute("aria-selected"), "true");
+  assert.equal(await desktop.locator(".object-row").filter({ has: desktop.locator("em", { hasText: /^2048$/ }) }).getAttribute("aria-selected"), "false");
+  assert.equal(await desktop.getByRole("button", { name: "Top section review", exact: true }).isVisible(), true);
+  assert.equal(await viewpointPanel.getByRole("button", { name: "Copy viewpoint link", exact: true }).isVisible(), true);
+  record("Portable viewpoint restores camera, selection and section alongside existing saved views");
+
+  const wrongSourceLink = new URL(portableLink);
+  wrongSourceLink.hash = `reviter-view=${Buffer.from(JSON.stringify({ ...portableState, sourceFingerprint: `sha256-${"0".repeat(64)}` })).toString("base64url")}`;
+  const beforeWrongSource = await pose(desktop);
+  await viewpointInput.fill(wrongSourceLink.toString());
+  await viewpointPanel.getByRole("button", { name: "Restore viewpoint", exact: true }).click();
+  await viewpointPanel.getByRole("status").filter({ hasText: "different model bytes" }).waitFor();
+  assert.deepEqual(await pose(desktop), beforeWrongSource);
+  assert.equal(await desktop.locator(".object-row").filter({ has: desktop.locator("em", { hasText: /^1049$/ }) }).getAttribute("aria-selected"), "true");
+  assert.equal(await desktop.getByRole("region", { name: "Section options" }).getByRole("slider").inputValue(), "30");
+  assert.equal((await session(desktop)).views.length, 1);
+  record("Foreign-source viewpoint is rejected without changing camera, selection, section or saved views");
+  await viewpointInput.fill(portableLink);
+  await viewpointPanel.locator("summary").click();
+  await desktop.getByRole("button", { name: "Top section review", exact: true }).click();
   await command(desktop, "Show all objects"); await command(desktop, "Section tool");
   await command(desktop, "Select object by ID", 1049); await command(desktop, "Clear selection"); await command(desktop, "Zoom extents");
   await desktop.getByRole("button", { name: "Orient model top" }).click();

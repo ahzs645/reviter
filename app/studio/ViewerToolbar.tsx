@@ -24,6 +24,7 @@ import {
   Rotate3d,
   Ruler,
   Scissors,
+  SquarePen,
   X,
   ZoomIn,
 } from "lucide-react";
@@ -90,6 +91,9 @@ export function ViewerToolbar({
   onPairIfc,
   onPairReferenceModel,
   onCloseModel,
+  editEnabled,
+  onEditEnabled,
+  assertionCount,
 }: {
   sources: readonly SourceOption[];
   geometrySource: GeometrySource;
@@ -116,6 +120,17 @@ export function ViewerToolbar({
   onPairIfc: () => void;
   onPairReferenceModel: () => void;
   onCloseModel: () => void;
+  /**
+   * Whether the reviewer is asserting over the recovery rather than reading it.
+   *
+   * One switch rather than a toggle per panel, because the question a reader
+   * needs answered is "am I editing anything?" and a dozen independent toggles
+   * cannot answer it. Everything that writes an assertion is gated on this.
+   */
+  editEnabled: boolean;
+  onEditEnabled: (enabled: boolean) => void;
+  /** Elements currently carrying a reviewer assertion. */
+  assertionCount: number;
 }) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
@@ -237,6 +252,26 @@ export function ViewerToolbar({
             );
           })}
         </div>
+
+        <span className="toolbar-divider" />
+
+        {/* The edit switch. It is deliberately the only thing in its group: a
+            reviewer who cannot see at a glance whether they are annotating a
+            recovery or reading one will eventually mistake one for the other,
+            and the export carries the consequence. */}
+        <button
+          type="button"
+          className={`rv-button edit-pill${editEnabled ? " active" : ""}`}
+          aria-pressed={editEnabled}
+          title={editEnabled
+            ? "Editing — property assertions are being recorded"
+            : "Read only — turn on to assert over the recovery"}
+          onClick={() => onEditEnabled(!editEnabled)}
+        >
+          <SquarePen size={15} aria-hidden />
+          {editEnabled ? "Editing" : "Edit"}
+          {assertionCount > 0 && <span className="edit-pill-count">{assertionCount}</span>}
+        </button>
 
         <span className="toolbar-divider" />
 

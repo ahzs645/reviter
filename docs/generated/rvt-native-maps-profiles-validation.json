@@ -1,0 +1,117 @@
+{
+  "apiVersion": 1,
+  "generatedBy": "scripts/audit-ifc-native-maps-profiles.ts",
+  "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "scope": "Optional IFC representation-map preservation and native section evidence; source RVTs, IFCs and raw graphs remain outside Git. Actual positive-profile emission is qualified by synthetic owned-source fixtures; model profiles stay withheld where owner, shape or material conflict evidence is unresolved.",
+  "models": [
+    {
+      "fileName": "school.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "nativePlacements": 5327,
+      "nativeSections": 13,
+      "shapeResolvedSections": 3,
+      "profileCandidates": 0,
+      "emittedProfiles": 0,
+      "profileUsages": 0,
+      "materialAssociations": 5046,
+      "sourceProfileDimensions": [],
+      "profileOwnersCompared": 0,
+      "profileMismatches": [],
+      "representationMaps": 78,
+      "mapsWithDifferentRotations": 4,
+      "mappedItems": 250,
+      "mappedProducts": 250,
+      "compared": 250,
+      "mismatches": [],
+      "mismatchDetails": [],
+      "maxCoordinateDifferenceMetres": 1.9073686274850843e-06,
+      "maxAttributeCoordinateDifferenceMetres": 9.729816952130932e-11,
+      "ordinaryIfcBytes": 47868153,
+      "mappedIfcBytes": 46446458,
+      "reader": "web-ifc 0.0.77 double-attribute world triangles(1nm gate) and Float32preview triangles+materials(10um gate), actualmaximumdifferences reported; IFC-Lite schema/entity parse",
+      "independentSchema": "IFC4",
+      "limitations": [
+        "Mapping validates unchanged mesh placement, not source-model geometry equivalence.",
+        "Material profile associations retain measured type section parameters; body tessellation remains unchanged.",
+        "No missing profile or cardinal point is synthesized."
+      ]
+    },
+    {
+      "fileName": "snowdon-structural.rvt",
+      "sourceSha256": "6dc833f9fe9fa702607265f2e3d581a6d2a928ea56133db8225c9b5e0f79a44f",
+      "nativePlacements": 321,
+      "nativeSections": 287,
+      "shapeResolvedSections": 0,
+      "profileCandidates": 0,
+      "emittedProfiles": 0,
+      "profileUsages": 0,
+      "materialAssociations": 66,
+      "sourceProfileDimensions": [],
+      "profileOwnersCompared": 0,
+      "profileMismatches": [],
+      "representationMaps": 141,
+      "mapsWithDifferentRotations": 0,
+      "mappedItems": 460,
+      "mappedProducts": 460,
+      "compared": 460,
+      "mismatches": [],
+      "ordinaryIfcBytes": 45607686,
+      "mappedIfcBytes": 25904087,
+      "reader": "web-ifc 0.0.77 transformed ordered triangles+materials rounded to1micrometre; IFC-Lite schema/entity parse",
+      "independentSchema": "IFC4",
+      "limitations": [
+        "Mapping validates unchanged mesh placement, not source-model geometry equivalence.",
+        "Material profile associations retain measured type section parameters; body tessellation remains unchanged.",
+        "No missing profile or cardinal point is synthesized."
+      ]
+    },
+    {
+      "fileName": "rst-basic-2025.rvt",
+      "sourceSha256": "5089b2c661573cef8fd0741d044535497ae8f52bdb76973ceb47626483131acb",
+      "nativePlacements": 79,
+      "nativeSections": 0,
+      "profileCandidates": 0,
+      "emittedProfiles": 0,
+      "profileUsages": 0,
+      "materialAssociations": 15,
+      "sourceProfileDimensions": [],
+      "representationMaps": 0,
+      "mapsWithDifferentRotations": 0,
+      "mappedItems": 0,
+      "mappedProducts": 0,
+      "compared": 0,
+      "mismatches": [],
+      "ordinaryIfcBytes": 5681510,
+      "mappedIfcBytes": 5681510,
+      "reader": "web-ifc 0.0.77 transformed ordered triangles+materials rounded to1micrometre; IFC-Lite schema/entity parse",
+      "independentSchema": "IFC4",
+      "limitations": [
+        "Mapping validates unchanged mesh placement, not source-model geometry equivalence.",
+        "Material profile associations retain measured type section parameters; body tessellation remains unchanged.",
+        "No missing profile or cardinal point is synthesized."
+      ]
+    }
+  ],
+  "tests": {
+    "scopedTests": 11,
+    "independentReaders": [
+      "web-ifc 0.0.77",
+      "IFC-Lite 4.1.0"
+    ],
+    "syntheticRotations": 16,
+    "profileSourceShapeCodes": [
+      6,
+      8
+    ],
+    "profileMaterialCases": [
+      "one declared material",
+      "absent explicitly unresolved material",
+      "conflicting/invalid material refused"
+    ]
+  },
+  "primarySources": [
+    "https://help.autodesk.com/cloudhelp/2024/ENU/Revit-GetStarted/files/GUID-61EF2F22-3A1F-4317-B925-1E85F138BE88.htm",
+    "https://github.com/ADN-DevTech/revit-api-chms/blob/main/html/2025/html/daaa1d33-7ee8-738a-5ab7-b93f056deaf8.htm",
+    "https://standards.buildingsmart.org/IFC/RELEASE/IFC4/ADD2_TC1/HTML/schema/ifcmaterialresource/lexical/ifcmaterialprofile.htm"
+  ]
+}

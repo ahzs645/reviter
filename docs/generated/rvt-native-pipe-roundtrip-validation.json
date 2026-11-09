@@ -1,0 +1,26 @@
+[
+  {
+    "name": "mechanical",
+    "circleSegments": 64,
+    "sourceAxes": 6,
+    "accepted": 6,
+    "rejected": 0,
+    "webIfcTriangulated": 6,
+    "triangles": 3048,
+    "nonfinite": [],
+    "worstBoundsErrorFeet": 0.00006474036370107683,
+    "independentReaderProductsWithGeometry": 6
+  },
+  {
+    "name": "plumbing",
+    "circleSegments": 64,
+    "sourceAxes": 63,
+    "accepted": 63,
+    "rejected": 0,
+    "webIfcTriangulated": 63,
+    "triangles": 32004,
+    "nonfinite": [],
+    "worstBoundsErrorFeet": 0.0002330799697179975,
+    "independentReaderProductsWithGeometry": 63
+  }
+]

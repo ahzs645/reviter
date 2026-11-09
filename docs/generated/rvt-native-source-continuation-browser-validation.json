@@ -1,0 +1,22 @@
+{
+  "model": "rac.rvt",
+  "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "scope": "Production app and workers on actual model; independent reopening of downloaded cached HTML and source SVG. Cached content is not a refreshed schedule or full drawing.",
+  "storedSchedules": 8,
+  "selectedScheduleId": "959491",
+  "defaultSections": 2,
+  "includedHiddenSections": 2,
+  "mergedCells": 1,
+  "htmlDownloads": 3,
+  "mobileHtmlMatchesDesktop": true,
+  "sourceCircle": {
+    "viewId": "245424",
+    "elementId": "941493",
+    "radiusFeet": 0.4880464958558832,
+    "sourceSha256Verified": true
+  },
+  "desktopAndMobileControls": true,
+  "mobileHorizontalOverflow": false,
+  "remoteArtifactRequests": 0,
+  "browserErrors": []
+}

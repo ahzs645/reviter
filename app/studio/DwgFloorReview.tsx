@@ -30,7 +30,8 @@ export function DwgFloorReview({onClose,initialFile}:{onClose:()=>void;initialFi
   setPathPreview(null);setDocument(null);setCoverage('');setAudit(null);setBuildings([]);setMode('plans');
   try{
    if(file.size>256*1024*1024)throw new Error('CAD ZIP exceeds 256 MB.');
-   const w=new Worker((globalThis as ReviterGlobal).__REVITER_STATIC_WORKERS__?.cadReview ?? new URL('./cad-review.worker.ts',import.meta.url),{type:'module'});worker.current=w;
+   const deployed=(globalThis as ReviterGlobal).__REVITER_STATIC_WORKERS__?.cadReview;
+   const w=deployed?new Worker(deployed,{type:'module'}):new Worker(new URL('./cad-review.worker.ts',import.meta.url),{type:'module'});worker.current=w;
    w.onmessage=event=>{if(token!==sequence.current)return;w.terminate();worker.current=null;setBusy(false);
     if(!event.data.ok){setStatus(event.data.error);return;}
     try{setDocument(event.data.document);setBuildings(event.data.buildings);

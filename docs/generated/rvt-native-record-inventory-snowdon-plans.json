@@ -1,0 +1,46 @@
+{
+  "kind": "native-record-inventory-validation",
+  "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+  "readerCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "readerPatch": "native-evidence",
+  "revitVersion": 2024,
+  "sourceStatus": "partial",
+  "inventoryStatus": "partial",
+  "retainedSourceRecords": 199,
+  "projectedRecords": 197,
+  "fallbackRecords": 2,
+  "comparedFields": 3924,
+  "comparedPointerEdges": 0,
+  "mismatches": 0,
+  "classCounts": {
+    "DBViewPlan": 115,
+    "DBViewSection": 82
+  },
+  "classFieldCounts": {
+    "DBViewPlan": 2530,
+    "DBViewSection": 1394
+  },
+  "projectedValueAndWitnessSha256": "8b127074046a6314ba5937fbb90d8848e617b983c0f72d475e469f369bef27e5",
+  "sourceClassCoverage": {
+    "DBViewPlan": {
+      "body_bytes": 1010309,
+      "complete_graph_body_bytes": 870080,
+      "complete_graphs": 115,
+      "diagnostics": {
+        "graph Edge starts57188: GEdge.m_firstAndLastEdgePnts at 57268: EdgePnt.uv at 57268: native field value budget exceeded (20000)": 1,
+        "graph Edge starts57968: GNode.m_GInfo at 57968: GInfo.m_categoryId at 57968: ElementId.m_id at 57968: Identifier.m_id64 at 57968: native field value budget exceeded (20000)": 1
+      },
+      "records": 117,
+      "unsupported_graphs": 2
+    },
+    "DBViewSection": {
+      "body_bytes": 326058,
+      "complete_graph_body_bytes": 326058,
+      "complete_graphs": 82,
+      "diagnostics": {},
+      "records": 82,
+      "unsupported_graphs": 0
+    }
+  },
+  "scope": "Every retained typed value and owner/pointer witness compared against independently reopened source graph JSON, bound to the original RVT bytes. This validates serialized projection; paired API drawing/space/coordinate truth is unavailable."
+}

@@ -1,0 +1,901 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Fresh isolated scripts/compare-rvt-readers.ts workers plus independently reopened scripts/audit-ifc-owner-geometry.ts measurements",
+  "models": [
+    {
+      "model": "rac.rvt",
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "sameInputAsUpstream": true,
+      "beforeTriangles": 195555,
+      "afterTriangles": 195167,
+      "afterGeometryHash": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
+      "geometryBaseline": {
+        "path": "/workspace/models/rac-base.json",
+        "state": "compared",
+        "checks": {
+          "geometryHash": {
+            "expected": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+            "actual": "9e973b5486547e4d2f7b1a7c9ae9a02f386f25affbb6cc135ac525d400e99638",
+            "matches": false
+          },
+          "triangles": {
+            "expected": 195555,
+            "actual": 195167,
+            "matches": false
+          },
+          "meshes": {
+            "expected": 97,
+            "actual": 97,
+            "matches": true
+          },
+          "bounds": {
+            "expected": 959,
+            "actual": 959,
+            "matches": true
+          },
+          "origin": {
+            "expected": {
+              "x": 6.454918501214529,
+              "y": 5.921607681818255,
+              "z": -23.300524934383194
+            },
+            "actual": {
+              "x": 6.454918501214529,
+              "y": 5.921607681818255,
+              "z": -23.300524934383194
+            },
+            "matches": true
+          },
+          "bbox": {
+            "expected": {
+              "min": {
+                "x": -76.6657086141688,
+                "y": -66.30085301837279,
+                "z": 0
+              },
+              "max": {
+                "x": 76.6657086141688,
+                "y": 66.30085301837279,
+                "z": 58.869422572178095
+              }
+            },
+            "actual": {
+              "min": {
+                "x": -76.6657086141688,
+                "y": -66.30085301837279,
+                "z": 0
+              },
+              "max": {
+                "x": 76.6657086141688,
+                "y": 66.30085301837279,
+                "z": 58.869422572178095
+              }
+            },
+            "matches": true
+          }
+        }
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "ownerComparison": {
+        "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+        "priorIfcSha256": "83ecb05f0dd93bb8f46e628383d8325b421b305308ecaa22b753011a3cccc486",
+        "currentIfcSha256": "b2bf8058485f4db63482807ae33a04b24e686d46c468551f883d2123fb0c8149",
+        "coverage": {
+          "compared": 461,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 0,
+          "referenceOnly": 0
+        },
+        "changedTriangleCountOwners": 10,
+        "changedOwnerClasses": {
+          "IfcColumn": 2,
+          "IfcRailing": 8
+        },
+        "maximumWorldBoundsDifferenceFeet": 0,
+        "changedOwnerSamples": [
+          {
+            "tag": "708715",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 204,
+            "currentTriangles": 100,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.45115475156111523
+          },
+          {
+            "tag": "709725",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 204,
+            "currentTriangles": 100,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.3922513737498977
+          },
+          {
+            "tag": "566588",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 968,
+            "currentTriangles": 948,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.09371599533532193
+          },
+          {
+            "tag": "567887",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 1020,
+            "currentTriangles": 1000,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.11395015418438306
+          },
+          {
+            "tag": "931377",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 1044,
+            "currentTriangles": 1024,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.06996615757344422
+          },
+          {
+            "tag": "931569",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 1044,
+            "currentTriangles": 1024,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.06996599325642998
+          },
+          {
+            "tag": "931630",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 892,
+            "currentTriangles": 872,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.10157613007141748
+          },
+          {
+            "tag": "932401",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 1122,
+            "currentTriangles": 1092,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.20517622710539532
+          },
+          {
+            "tag": "932862",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 996,
+            "currentTriangles": 976,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.2132818306112032
+          },
+          {
+            "tag": "933811",
+            "ifcClass": "IfcRailing",
+            "priorTriangles": 1170,
+            "currentTriangles": 1140,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.20485442261617617
+          }
+        ],
+        "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+      },
+      "independentReopens": {
+        "upstream": {
+          "schema": "IFC4",
+          "sha256": "926451fc6d4e445c5b82af2e24b6d339c2c9588a1b4524dc64bb059eafd4cb82",
+          "bytes": 1589399
+        },
+        "reviter": {
+          "schema": "IFC4",
+          "sha256": "b2bf8058485f4db63482807ae33a04b24e686d46c468551f883d2123fb0c8149",
+          "bytes": 14715887
+        }
+      }
+    },
+    {
+      "model": "school.rvt",
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "sameInputAsUpstream": true,
+      "beforeTriangles": 393145,
+      "afterTriangles": 378957,
+      "afterGeometryHash": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
+      "geometryBaseline": {
+        "path": "/workspace/models/school-base.json",
+        "state": "compared",
+        "checks": {
+          "geometryHash": {
+            "expected": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
+            "actual": "f13c83ac589e6c8012d2754fdb9bde87ac7ee4e43d4c4a8f78a710ee3a5d981e",
+            "matches": false
+          },
+          "triangles": {
+            "expected": 393145,
+            "actual": 378957,
+            "matches": false
+          },
+          "meshes": {
+            "expected": 47,
+            "actual": 47,
+            "matches": true
+          },
+          "bounds": {
+            "expected": 6420,
+            "actual": 6420,
+            "matches": true
+          },
+          "origin": {
+            "expected": {
+              "x": 66.8335267332647,
+              "y": -27.355299260846756,
+              "z": -4
+            },
+            "actual": {
+              "x": 66.8335267332647,
+              "y": -27.355299260846756,
+              "z": -4
+            },
+            "matches": true
+          },
+          "bbox": {
+            "expected": {
+              "min": {
+                "x": -119.18719944191122,
+                "y": -128.4661259681448,
+                "z": 0
+              },
+              "max": {
+                "x": 119.18719944191122,
+                "y": 128.4661259681448,
+                "z": 44.96271327688179
+              }
+            },
+            "actual": {
+              "min": {
+                "x": -119.18719944191122,
+                "y": -128.4661259681448,
+                "z": 0
+              },
+              "max": {
+                "x": 119.18719944191122,
+                "y": 128.4661259681448,
+                "z": 44.96271327688179
+              }
+            },
+            "matches": true
+          }
+        }
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "ownerComparison": {
+        "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+        "priorIfcSha256": "46802aef3ae53cd8ec2a174e81f223fdae6dc9d902ef950111d1f1bb1dab08fd",
+        "currentIfcSha256": "db93871d67548db2e27cbf22450fc281ff8c2dfd4bbc36390c8c3cd028bec5ae",
+        "coverage": {
+          "compared": 5507,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 0,
+          "referenceOnly": 0
+        },
+        "changedTriangleCountOwners": 113,
+        "changedOwnerClasses": {
+          "IfcColumn": 113
+        },
+        "maximumWorldBoundsDifferenceFeet": 0,
+        "changedOwnerSamples": [
+          {
+            "tag": "140949",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172907147113
+          },
+          {
+            "tag": "140950",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831729071471063
+          },
+          {
+            "tag": "140951",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831730090364544
+          },
+          {
+            "tag": "140952",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831729289457853
+          },
+          {
+            "tag": "140953",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831729580937843
+          },
+          {
+            "tag": "140954",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172960094128
+          },
+          {
+            "tag": "140955",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831729591386274
+          },
+          {
+            "tag": "140956",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41831729699813286
+          },
+          {
+            "tag": "140957",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172960094117
+          },
+          {
+            "tag": "140958",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172932196044
+          },
+          {
+            "tag": "140960",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172907147115
+          },
+          {
+            "tag": "140961",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172907147109
+          },
+          {
+            "tag": "140962",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183173009036455
+          },
+          {
+            "tag": "140963",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.418317292894579
+          },
+          {
+            "tag": "140964",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172958093789
+          },
+          {
+            "tag": "140965",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 212,
+            "currentTriangles": 84,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4183172960094121
+          }
+        ],
+        "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+      },
+      "independentReopens": {
+        "upstream": {
+          "schema": "IFC4",
+          "sha256": "2c82cad0075bb2cd27524e3eff116e76fd95c826136380b86a7191936b289308",
+          "bytes": 16802612
+        },
+        "reviter": {
+          "schema": "IFC4",
+          "sha256": "db93871d67548db2e27cbf22450fc281ff8c2dfd4bbc36390c8c3cd028bec5ae",
+          "bytes": 48051510
+        }
+      }
+    },
+    {
+      "model": "snowdon.rvt",
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "sameInputAsUpstream": true,
+      "beforeTriangles": 1596168,
+      "afterTriangles": 1594784,
+      "afterGeometryHash": "f8ec1a37de7b41db30938517ae1375630a31287dc27d4315f2f89e8a17865e72",
+      "geometryBaseline": {
+        "path": "/workspace/models/snowdon-base.json",
+        "state": "compared",
+        "checks": {
+          "geometryHash": {
+            "expected": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
+            "actual": "f8ec1a37de7b41db30938517ae1375630a31287dc27d4315f2f89e8a17865e72",
+            "matches": false
+          },
+          "triangles": {
+            "expected": 1596168,
+            "actual": 1594784,
+            "matches": false
+          },
+          "meshes": {
+            "expected": 143,
+            "actual": 143,
+            "matches": true
+          },
+          "bounds": {
+            "expected": 12386,
+            "actual": 12386,
+            "matches": true
+          },
+          "origin": {
+            "expected": {
+              "x": -19.777534651013887,
+              "y": 7.618391906695987,
+              "z": -20.91666666666668
+            },
+            "actual": {
+              "x": -19.777534651013887,
+              "y": 7.618391906695987,
+              "z": -20.91666666666668
+            },
+            "matches": true
+          },
+          "bbox": {
+            "expected": {
+              "min": {
+                "x": -91.72246534898622,
+                "y": -40.57952475997108,
+                "z": 0
+              },
+              "max": {
+                "x": 91.72246534898622,
+                "y": 40.57952475997108,
+                "z": 94.46082173066117
+              }
+            },
+            "actual": {
+              "min": {
+                "x": -91.72246534898622,
+                "y": -40.57952475997108,
+                "z": 0
+              },
+              "max": {
+                "x": 91.72246534898622,
+                "y": 40.57952475997108,
+                "z": 94.46082173066117
+              }
+            },
+            "matches": true
+          }
+        }
+      },
+      "enrichmentGeometryVerification": {
+        "state": "not-recorded",
+        "geometryHashPreserved": null,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "ownerComparison": {
+        "referenceKind": "Earlier Reviter IFC from before native body selection fixes; preservation comparison only, not Autodesk geometric truth",
+        "priorIfcSha256": "995f8cf60cf955132fe8cff33d9ba8051bc3cf0fb876ffb638e162b97eb963fc",
+        "currentIfcSha256": "e86003dc9d7e7dbf9a0be3ba2dae52f51cf2137e6c70e18caeeb3b7baed257d6",
+        "coverage": {
+          "compared": 8931,
+          "ambiguous": 0,
+          "identityDisagreements": 0,
+          "outputOnly": 0,
+          "referenceOnly": 0
+        },
+        "changedTriangleCountOwners": 26,
+        "changedOwnerClasses": {
+          "IfcColumn": 19,
+          "IfcFurniture": 6,
+          "IfcBuildingElementProxy": 1
+        },
+        "maximumWorldBoundsDifferenceFeet": 2.7161703997080622e-08,
+        "changedOwnerSamples": [
+          {
+            "tag": "1206189",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 142,
+            "currentTriangles": 56,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.40450700856638405
+          },
+          {
+            "tag": "1211583",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 142,
+            "currentTriangles": 56,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.42550851314043014
+          },
+          {
+            "tag": "2106254",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2106335",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2106392",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2106483",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2106556",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2106723",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2106858",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2106955",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2107118",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2107207",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2107300",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.4146341436658384
+          },
+          {
+            "tag": "2107454",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2107581",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 32,
+            "currentTriangles": 12,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.41463414366583834
+          },
+          {
+            "tag": "2220516",
+            "ifcClass": "IfcColumn",
+            "priorTriangles": 180,
+            "currentTriangles": 116,
+            "worldBoundsDifferenceFeet": 0,
+            "areaDifferenceRelativeToPrior": 0.32649210240985277
+          }
+        ],
+        "pairedGlbIdentityScope": "All supplied GLB node extras have only autodeskDbId/autodeskFragmentId, with no Revit external ID mapping. No owner-level accuracy claim."
+      },
+      "independentReopens": {
+        "upstream": {
+          "schema": "IFC4",
+          "sha256": "5713005a22552d1beb64d68f54d51f2580a846bce7b61b19b71ae7cb907154f0",
+          "bytes": 24363134
+        },
+        "reviter": {
+          "schema": "IFC4",
+          "sha256": "e86003dc9d7e7dbf9a0be3ba2dae52f51cf2137e6c70e18caeeb3b7baed257d6",
+          "bytes": 132545737
+        }
+      }
+    },
+    {
+      "model": "unbc.rvt",
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "sameInputAsUpstream": true,
+      "beforeTriangles": 901903,
+      "afterTriangles": 858388,
+      "afterGeometryHash": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+      "geometryBaseline": {
+        "path": "/workspace/models/unbc-base.json",
+        "state": "compared",
+        "checks": {
+          "geometryHash": {
+            "expected": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+            "actual": "3b5207d9aa62e1b14de1438427b8ef176b1182e52db925e8be15269e6b383901",
+            "matches": false
+          },
+          "triangles": {
+            "expected": 901903,
+            "actual": 858388,
+            "matches": false
+          },
+          "meshes": {
+            "expected": 32,
+            "actual": 32,
+            "matches": true
+          },
+          "bounds": {
+            "expected": 40611,
+            "actual": 40611,
+            "matches": true
+          },
+          "origin": {
+            "expected": {
+              "x": -1.5131448815317867,
+              "y": 287.29482336869,
+              "z": -7.217847769028872
+            },
+            "actual": {
+              "x": -1.5131448815317867,
+              "y": 287.29482336869,
+              "z": -7.217847769028872
+            },
+            "matches": true
+          },
+          "bbox": {
+            "expected": {
+              "min": {
+                "x": -352.0067084305153,
+                "y": -614.2014975498594,
+                "z": 0
+              },
+              "max": {
+                "x": 352.0067084305153,
+                "y": 614.2014975498594,
+                "z": 62.335958005249346
+              }
+            },
+            "actual": {
+              "min": {
+                "x": -352.0067084305153,
+                "y": -614.2014975498594,
+                "z": 0
+              },
+              "max": {
+                "x": 352.0067084305153,
+                "y": 614.2014975498594,
+                "z": 62.335958005249346
+              }
+            },
+            "matches": true
+          }
+        }
+      },
+      "enrichmentGeometryVerification": {
+        "state": "verified",
+        "geometryHashPreserved": true,
+        "scope": "Before/after instrumentation was added after the first three workers loaded. Their final geometry/baseline/owner checks are recorded independently; this flag is not inferred."
+      },
+      "ownerComparison": {
+        "referenceKind": "Supplied Autodesk IFC2x3 paired export; exact unique decimal Tag+GlobalId joins",
+        "referenceIfcSha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+        "currentIfcSha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426",
+        "coverage": {
+          "compared": 36048,
+          "ambiguous": 92,
+          "identityDisagreements": 2,
+          "outputOnly": 273,
+          "referenceOnly": 2
+        },
+        "priorColumnAgreement": {
+          "compared": 311,
+          "boundsWithin001Feet": 221,
+          "areaWithinOnePercent": 9,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "currentColumnAgreement": {
+          "compared": 311,
+          "boundsWithin001Feet": 261,
+          "areaWithinOnePercent": 249,
+          "closedVolumePairs": 54,
+          "closedVolumeWithinOnePercent": 54
+        },
+        "priorRailingAgreement": {
+          "compared": 202,
+          "boundsWithin001Feet": 197,
+          "areaWithinOnePercent": 145,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "currentRailingAgreement": {
+          "compared": 202,
+          "boundsWithin001Feet": 197,
+          "areaWithinOnePercent": 198,
+          "closedVolumePairs": 0,
+          "closedVolumeWithinOnePercent": 0
+        },
+        "surfaceSampling": {
+          "scope": "Exact-identity selected owners only. Every triangle's vertices, edge midpoints and centroid tested against all opposing triangles; a finite sample diagnostic, not a continuous Hausdorff bound.",
+          "maxTags": 32,
+          "maxTrianglesPerOwner": 2000,
+          "requestedTags": [
+            "694201",
+            "694735",
+            "1185924",
+            "801614",
+            "2236110"
+          ],
+          "unmatchedRequestedTags": [],
+          "results": [
+            {
+              "tag": "694201",
+              "globalId": "3q3eK5Zbb2NxtMMzRYU4gF",
+              "outputToReference": {
+                "maximumFeet": 6.773266547677869e-06,
+                "samples": 175
+              },
+              "referenceToOutput": {
+                "maximumFeet": 6.658948848325963e-06,
+                "samples": 182
+              }
+            },
+            {
+              "tag": "694735",
+              "globalId": "3q3eK5Zbb2NxtMMzRYU4Jv",
+              "outputToReference": {
+                "maximumFeet": 1.3541016737234985e-05,
+                "samples": 168
+              },
+              "referenceToOutput": {
+                "maximumFeet": 1.3412513482080612e-05,
+                "samples": 182
+              }
+            },
+            {
+              "tag": "2236110",
+              "globalId": "3$80Jb4C96ThbKDugcWiHp",
+              "outputToReference": {
+                "maximumFeet": 0.4866388322993251,
+                "samples": 84
+              },
+              "referenceToOutput": {
+                "maximumFeet": 0.48663709953438167,
+                "samples": 420
+              }
+            },
+            {
+              "tag": "801614",
+              "globalId": "3j5UD8SwDBcRETZaO4YP6Z",
+              "outputToReference": {
+                "maximumFeet": 0.8002203057058352,
+                "samples": 294
+              },
+              "referenceToOutput": {
+                "maximumFeet": 5.2329667737052005e-05,
+                "samples": 406
+              }
+            },
+            {
+              "tag": "1185924",
+              "globalId": "3NnPElt$TDiP3TKZm8fKQt",
+              "outputToReference": {
+                "maximumFeet": 23.303759407117063,
+                "samples": 504
+              },
+              "referenceToOutput": {
+                "maximumFeet": 0.36909353763083175,
+                "samples": 252
+              }
+            }
+          ]
+        },
+        "scope": [
+          "Bounds/area/volume agreement does not establish equal surfaces or decoded join order.",
+          "Volume is the sum of absolute oriented shell volumes only when every individual part has exact-coordinate closed manifold edges and consistent winding. No welding tolerance or hole filling is used. Self-intersection and overlap between parts are not validated; this is not union/material volume.",
+          "IFC exporter view, phase, tessellation and geometry-selection differences can change metrics; triangle count is descriptive, never an accuracy score.",
+          "Source decoder provenance must be established separately before changing a native body. This audit never replaces source geometry with reference geometry."
+        ]
+      },
+      "independentReopens": {
+        "upstream": {
+          "schema": "IFC4",
+          "sha256": "b152c6669b4cd822e1d3bd1a391e0413f6c4af1df20743695cea3a6e6f58ba24",
+          "bytes": 10102
+        },
+        "reviter": {
+          "schema": "IFC4",
+          "sha256": "88535488fcfe0f776c7e475dae0dfa6dc94124c08887957344f6569ba1f83426",
+          "bytes": 195745359
+        }
+      }
+    }
+  ],
+  "validation": {
+    "freshReviterConversions": 4,
+    "exactInputHashesAgree": 4,
+    "verifiedUnchangedUpstreamReuse": 4,
+    "independentIfcPopulationReopens": 8,
+    "originalBaseChecksMatching": 16,
+    "deliberatelyChangedBaseChecks": 8,
+    "comparisonCliExitCode": 1,
+    "comparisonCliExitExplanation": "Strict baseline comparator reports the eight expected mesh-hash/triangle-count changes; all conversions, identities and reopens succeeded."
+  },
+  "scope": "Three prior/current owner preservation comparisons and one actual paired-reference accuracy diagnostic. No reference geometry entered any converter."
+}

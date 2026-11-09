@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Reviter full source inventory audit",
+  "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "source": "src/elem_table.rs parse_records_from_bytes + declared_ids; tests/elem_table_frame.rs framing contracts",
+  "validation": "10 tests including all four actual container readers and JSON typed-array serialization; exact upstream declared-ID equality on all four models",
+  "integration": "fullElementInventory feeds source diagnostics/semantic inventory only; legacy scene elementIndex/admission remains unchanged",
+  "limitations": [
+    "Project-tail framing only; family trailers unsupported",
+    "2019–2023 narrow inventory requires exact file-schema ElemTable tag; synthetic narrow regression only in this audit",
+    "A complete source declaration inventory does not certify recovered geometry or evaluated element properties",
+    "Maximum admitted source inventory is 1,000,000 rows; unsafe integer IDs reject rather than truncate"
+  ],
+  "models": [
+    {
+      "name": "snowdon.rvt",
+      "revitVersion": 2024,
+      "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+      "inflatedElemTableSha256": "e0de77abf687dcb122eab20efe528ae4c7c5b2a4621f31dc9410e17a57b0a69e",
+      "schemaTag": 1411,
+      "layout": {
+        "start": 6,
+        "stride": 40,
+        "ownerOffset": 28,
+        "idBytes": 8,
+        "suffixBytes": 24
+      },
+      "fullInventory": {
+        "records": 47233,
+        "declaredIds": 47317,
+        "differingPrimarySecondaryIds": 84,
+        "ownerRecords": 29177
+      },
+      "legacySceneInventory": {
+        "recordCount": 47233,
+        "parsedRecordCount": 15744,
+        "uniqueIds": 0
+      },
+      "upstream": {
+        "records": 47233,
+        "declaredIds": 47317,
+        "origin": 6,
+        "stride": 40
+      },
+      "declaredIdJoin": "sorted numeric union serialized as comma-separated decimal IDs, no trailing separator",
+      "declaredIdSha256": "ef81b892d85ae445248fdeca90422a50ae4b608f19ab6575d02b3d30621c84f8",
+      "upstreamDeclaredIdSha256": "ef81b892d85ae445248fdeca90422a50ae4b608f19ab6575d02b3d30621c84f8",
+      "exactDeclaredIdsMatch": true
+    },
+    {
+      "name": "rac.rvt",
+      "revitVersion": 2025,
+      "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+      "inflatedElemTableSha256": "6fdcce5362e741333d641f8b2c67e3d86d381b84bd874d856f54ad5a264a82dd",
+      "schemaTag": 1451,
+      "layout": {
+        "start": 6,
+        "stride": 40,
+        "ownerOffset": 28,
+        "idBytes": 8,
+        "suffixBytes": 24
+      },
+      "fullInventory": {
+        "records": 8327,
+        "declaredIds": 8327,
+        "differingPrimarySecondaryIds": 0,
+        "ownerRecords": 3884
+      },
+      "legacySceneInventory": {
+        "recordCount": 8327,
+        "parsedRecordCount": 8326,
+        "uniqueIds": 8326
+      },
+      "upstream": {
+        "records": 8327,
+        "declaredIds": 8327,
+        "origin": 6,
+        "stride": 40
+      },
+      "declaredIdJoin": "sorted numeric union serialized as comma-separated decimal IDs, no trailing separator",
+      "declaredIdSha256": "fc9d5bbef6f7d065fb5bd5ca38229612fad046281dc26f26fd9103d46b9fdcf4",
+      "upstreamDeclaredIdSha256": "fc9d5bbef6f7d065fb5bd5ca38229612fad046281dc26f26fd9103d46b9fdcf4",
+      "exactDeclaredIdsMatch": true
+    },
+    {
+      "name": "school.rvt",
+      "revitVersion": 2025,
+      "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+      "inflatedElemTableSha256": "dfcb9c2547c056b2de8eb83c2d5d4fcf4e5f269acec5407e160d4e0ad56d3bc5",
+      "schemaTag": 1451,
+      "layout": {
+        "start": 6,
+        "stride": 40,
+        "ownerOffset": 28,
+        "idBytes": 8,
+        "suffixBytes": 24
+      },
+      "fullInventory": {
+        "records": 17524,
+        "declaredIds": 17524,
+        "differingPrimarySecondaryIds": 0,
+        "ownerRecords": 11050
+      },
+      "legacySceneInventory": {
+        "recordCount": 17524,
+        "parsedRecordCount": 17523,
+        "uniqueIds": 17523
+      },
+      "upstream": {
+        "records": 17524,
+        "declaredIds": 17524,
+        "origin": 6,
+        "stride": 40
+      },
+      "declaredIdJoin": "sorted numeric union serialized as comma-separated decimal IDs, no trailing separator",
+      "declaredIdSha256": "77349c847cf7fb6047c393c25bb0214f73b253e273b4b11f45d1564090a4b496",
+      "upstreamDeclaredIdSha256": "77349c847cf7fb6047c393c25bb0214f73b253e273b4b11f45d1564090a4b496",
+      "exactDeclaredIdsMatch": true
+    },
+    {
+      "name": "unbc.rvt",
+      "revitVersion": 2027,
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "inflatedElemTableSha256": "22848fe0504b841cac3774324fe7cd2166291f869a62b49e72ebb080069efcdc",
+      "schemaTag": 1510,
+      "layout": {
+        "start": 6,
+        "stride": 40,
+        "ownerOffset": 28,
+        "idBytes": 8,
+        "suffixBytes": 24
+      },
+      "fullInventory": {
+        "records": 74438,
+        "declaredIds": 74438,
+        "differingPrimarySecondaryIds": 0,
+        "ownerRecords": 50953
+      },
+      "legacySceneInventory": {
+        "recordCount": 8902,
+        "parsedRecordCount": 8902,
+        "uniqueIds": 8902
+      },
+      "upstream": {
+        "records": 74438,
+        "declaredIds": 74438,
+        "origin": 6,
+        "stride": 40
+      },
+      "declaredIdJoin": "sorted numeric union serialized as comma-separated decimal IDs, no trailing separator",
+      "declaredIdSha256": "2a4fcf98ee5fe5ac50ad08e7257e95c167f0ea2b4209ab051e982502be1c584c",
+      "upstreamDeclaredIdSha256": "2a4fcf98ee5fe5ac50ad08e7257e95c167f0ea2b4209ab051e982502be1c584c",
+      "exactDeclaredIdsMatch": true
+    }
+  ]
+}

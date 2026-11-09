@@ -7,8 +7,11 @@ import {
   currentParserCacheVersion,
   loadCachedRecentModel,
   recentModelCacheKey,
+  verifiedCachedRecentResult,
 } from "../app/studio/recent-model-cache.ts";
 import type { ConvertResult } from "../lib/reviter/types.ts";
+import { viewpointSourceFingerprint } from "../app/studio/viewpoint-links.ts";
+import { ifcExportFixture } from "./fixtures/ifc-export-fixture.ts";
 
 test("the parsed cache version follows the deployed build", () => {
   const previous = globalThis.__REVITER_BUILD_VERSION__;
@@ -40,6 +43,21 @@ test("cache keys distinguish revisions without exposing file contents", () => {
   const second = recentModelCacheKey({ name: "Model.rvt", size: 123, lastModified: 2 });
   assert.notEqual(first, second);
   assert.equal(first, '["Model.rvt",123,1]');
+});
+
+test("same metadata cannot authorize a cached conversion for different source bytes", async () => {
+  const oldBytes = new Uint8Array([1, 2, 3, 4]), changedBytes = new Uint8Array([1, 2, 3, 5]);
+  const original = new File([oldBytes], "model.rvt", { lastModified: 1 });
+  const replacement = new File([changedBytes], "model.rvt", { lastModified: 1 });
+  assert.equal(recentModelCacheKey(original), recentModelCacheKey(replacement));
+  const result = ifcExportFixture();
+  result.sourceSha256 = (await viewpointSourceFingerprint(oldBytes)).slice("sha256-".length);
+  const cached = { file: original, result };
+  assert.equal(await verifiedCachedRecentResult(cached, await original.arrayBuffer()), result);
+  assert.equal(await verifiedCachedRecentResult(cached, await replacement.arrayBuffer()), null);
+  const legacy = { ...result, sourceSha256: undefined };
+  assert.equal(await verifiedCachedRecentResult({ ...cached, result: legacy }, await original.arrayBuffer()), null);
+  assert.equal(legacy.sourceSha256, undefined, "legacy geometry is never stamped with an unproved source hash");
 });
 
 /*

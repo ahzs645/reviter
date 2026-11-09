@@ -3,6 +3,16 @@
 import { basicFileInfo, openFile, tryThumbnail, type FileInfo } from "@phi-ag/rvt";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { FileBox, Moon, ShieldCheck, Sun } from "lucide-react";
+import type { IfcExportOptions } from "../lib/reviter/export-ifc.ts";
+import { IfcExportControls } from "./studio/IfcExportControls.tsx";
+import type { NativeEvidenceRequest } from "../lib/reviter/native-evidence-worker.ts";
+import { makeNativeScheduleHtml } from "../lib/reviter/native-schedule-html.ts";
+import { makeNativeScheduleInventoryCsv, type NativeScheduleInventory } from "../lib/reviter/native-schedule-inventory.ts";
+import { NATIVE_SPATIAL_ORGANIZATION_CLASSES, makeNativeSpatialOrganizationCsv, type NativeSpatialOrganization } from "../lib/reviter/native-spatial-organization.ts";
+import { listNativeDrawingViews } from "../lib/reviter/native-drawing-svg.ts";
+import type { NativeEvidenceReport } from "../lib/reviter/native-evidence-reader.ts";
+import { NATIVE_RECORD_INVENTORY_CLASSES, makeNativeRecordInventoryCsv } from "../lib/reviter/native-record-inventory.ts";
+import { NATIVE_PARAMETER_DEFINITION_CLASSES, makeNativeParameterInventoryCsv } from "../lib/reviter/native-parameter-inventory.ts";
 
 import {
   applyIfcReferenceRepairs,
@@ -22,6 +32,9 @@ import {
   makePascalScene,
   makePlanSvg,
   makeReport,
+  makeElementsCsv,
+  makeNativeRoomsCsv,
+  makeParametersCsv,
   meshBoundsByElement,
   outputName,
   packMeshSurfaceOrientationSignatures,
@@ -69,6 +82,11 @@ import { DwgWorkspace } from "./studio/DwgWorkspace.tsx";
 import { DwgFloorReview } from "./studio/DwgFloorReview.tsx";
 import { MobileShell } from "./studio/MobileShell.tsx";
 import { ModelCanvas } from "./studio/ModelCanvas.tsx";
+import { ViewpointLinkControls } from "./studio/ViewpointLinkControls.tsx";
+import {
+  makeViewpointModelIdentity, portableViewpoint, resolveViewpointImport, captureViewpointMarkup, mergeViewpointMarkup,
+  VIEWPOINT_FRAGMENT_PREFIX, type PortableViewpoint, type PortableViewerState, type PortableSectionState,
+} from "./studio/viewpoint-links.ts";
 import { FloorMiniMap } from "./studio/FloorMiniMap.tsx";
 import { FloorWorkspace } from "./studio/FloorWorkspace.tsx";
 import type { DirectoryModelFloor } from "./studio/directory-model.ts";
@@ -76,6 +94,21 @@ import { MAX_PROJECT_PACKAGE_BYTES, readProjectPackage } from "../lib/reviter/pr
 import { isCadReviewArchive } from "../lib/reviter/dwg-review-package.ts";
 import { modelImportFiles } from "./studio/model-import.ts";
 import { parseRoomDirectory } from "../lib/reviter/room-directory.ts";
+import {
+  clearElementOverride,
+  emptyElementOverrideState,
+  overrideFor,
+  redoElementOverrides,
+  setElementOverride,
+  undoElementOverrides,
+  type AssertedCategory,
+  type ElementOverridePatch,
+  type ElementOverrideState,
+} from "../lib/reviter";
+import { preferredElementBounds } from "../lib/reviter/export-report.ts";
+import { AssertionReviewDialog } from "./studio/AssertionReviewDialog.tsx";
+import { assertionReviewDigest, buildAssertionReview, type AssertionReviewRow } from "./studio/assertion-review.ts";
+import { loadElementOverrides, saveElementOverrides } from "./studio/element-override-storage.ts";
 import { loadModelComments, saveModelComments } from "./studio/model-comments.ts";
 import { loadModelMarkup, saveModelMarkup } from "./studio/model-markup.ts";
 import {
@@ -112,6 +145,7 @@ import {
   clearCachedRecentModels,
   deleteCachedRecentModel,
   loadCachedRecentModel,
+  verifiedCachedRecentResult,
   type CachedRecentModel,
 } from "./studio/recent-model-cache.ts";
 import { ViewerToolbar, type SourceOption } from "./studio/ViewerToolbar.tsx";
@@ -127,6 +161,7 @@ import {
   type MarkupStroke,
   type MarkupTool,
   type ModelComment,
+  type ModelViewpoint,
   type NavigationTool,
   type NewMarkupStroke,
   type NewModelComment,
@@ -249,6 +284,8 @@ function ThemeIcons({ size }: { size: number }) {
     </>
   );
 }
+
+const ASSERTION_AUTHOR = "reviewer";
 
 export default function ReviterStudio() {
   const mobile = useSyncExternalStore(
@@ -378,6 +415,11 @@ export default function ReviterStudio() {
   const [reportTab, setReportTab] = useState<ReportTab>("summary");
   const [browserSearch, setBrowserSearch] = useState("");
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [editEnabled, setEditEnabled] = useState(false);
+  const [overrideState, setOverrideState] = useState<ElementOverrideState>(emptyElementOverrideState);
+  const [assertionReview, setAssertionReview] = useState<{
+    rows: AssertionReviewRow[]; digest: string; stale: boolean; geometryResult: ConvertResult;
+  } | null>(null);
 
   const [modelComments, setModelComments] = useState<ModelComment[]>([]);
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("open");
@@ -386,8 +428,22 @@ export default function ReviterStudio() {
     commentId: null,
     sequence: 0,
   });
+  const [portableViewpointRequest, setPortableViewpointRequest] = useState<{ viewpoint: PortableViewpoint | null; sequence: number }>({ viewpoint: null, sequence: 0 });
+  const cameraCaptureRef = useRef<(() => ModelViewpoint | null) | null>(null);
+  const sectionCaptureRef = useRef<(() => PortableSectionState) | null>(null);
+  const [viewpointFragment, setViewpointFragment] = useState("");
+  const [viewpointImportMessage, setViewpointImportMessage] = useState<string | null>(null);
+  const appliedViewpointFragmentRef = useRef<string | null>(null);
 
   const [exporting, setExporting] = useState<string | null>(null);
+  const [nativeSpatialState, setNativeSpatialState] = useState<{ file: File; inventory: NativeSpatialOrganization } | null>(null);
+  const [nativeViewState, setNativeViewState] = useState<{ file: File; views: ReturnType<typeof listNativeDrawingViews> } | null>(null);
+  const [nativeScheduleState, setNativeScheduleState] = useState<{ file: File; inventory: NativeScheduleInventory } | null>(null);
+  const [nativeScheduleId, setNativeScheduleId] = useState("");
+  const [includeHiddenScheduleSections, setIncludeHiddenScheduleSections] = useState(false);
+  const [nativeDrawingViewId, setNativeDrawingViewId] = useState("");
+  const [includeSourceDetailCurves, setIncludeSourceDetailCurves] = useState(false);
+  const [ifcExportOptions, setIfcExportOptions] = useState<IfcExportOptions>({ nativeRooms: false, mep: false, designOptions: "all" });
   const [planLevelId, setPlanLevelId] = useState<number | null>(null);
   const [floorSideMapOpen, setFloorSideMapOpen] = useState(false);
   const [isolateMapLevel, setIsolateMapLevel] = useState(false);
@@ -438,11 +494,89 @@ export default function ReviterStudio() {
     setNavTool(enabled ? "firstPerson" : "orbit");
   }, []);
 
+  const viewpointIdentity = useMemo(() => {
+    if (!result?.sourceSha256) return null;
+    try { return makeViewpointModelIdentity(result, result.sourceSha256); }
+    catch { return null; }
+  }, [result]);
+  const bindCameraCapture = useCallback((capture: (() => ModelViewpoint | null) | null) => {
+    cameraCaptureRef.current = capture;
+  }, []);
+  const captureViewpointCamera = useCallback(() => cameraCaptureRef.current?.() ?? null, []);
+  const bindSectionCapture = useCallback((capture: (() => PortableSectionState) | null) => { sectionCaptureRef.current = capture; }, []);
+  const captureViewpointState = useCallback((includeMarkup = false): PortableViewerState => {
+    if (directoryModel || isolateMapLevel) throw new Error("Close the floor view and level isolation before copying a viewpoint link.");
+    if (manuallyHiddenIds.size) throw new Error("Restore hidden objects before copying a viewpoint link. Links cannot preserve individual object visibility.");
+    const section = sectionCaptureRef.current?.();
+    if (!section) throw new Error("The model section controls are not ready yet.");
+    return { hiddenCategories: [...hiddenCategories], section, selectedElementId, renderMode,
+      ...(includeMarkup && viewpointIdentity ? { annotations: captureViewpointMarkup(markup, viewpointIdentity) } : {}) };
+  }, [directoryModel, hiddenCategories, isolateMapLevel, manuallyHiddenIds, markup, renderMode, selectedElementId, viewpointIdentity]);
+  const restorePortableCamera = useCallback((camera: ModelViewpoint, viewer?: PortableViewerState) => {
+    if (!viewpointIdentity) return;
+    try {
+      const viewpoint = portableViewpoint(viewpointIdentity, camera, viewer);
+      const importedMarkup = viewer?.annotations ? mergeViewpointMarkup(markup, viewer.annotations, viewpointIdentity, new Date().toISOString()) : null;
+      setNavTool("orbit");
+      setActionTool(viewer?.section.enabled ? "section" : null);
+      if (viewer) {
+        setHiddenCategories(new Set(viewer.hiddenCategories));
+        setManuallyHiddenIds(new Set()); setVisibilityHistory([]);
+        setIsolateMapLevel(false); setDirectoryModel(null);
+      }
+      if (viewer?.renderMode !== undefined) setRenderMode(viewer.renderMode);
+      if (viewer?.selectedElementId !== undefined) setSelectedElementId(viewer.selectedElementId);
+      if (importedMarkup) { setMarkup(importedMarkup); if (result) saveModelMarkup(result, importedMarkup); setMarkupUndo([]); setMarkupRedo([]); }
+      setGeometrySource("recovered");
+      setWorkspace("model");
+      setSheet(null);
+      setPortableViewpointRequest(current => ({ viewpoint, sequence: current.sequence + 1 }));
+      setViewpointImportMessage("Restoring viewpoint on the matching RVT model…");
+    } catch (caught) {
+      setViewpointImportMessage(caught instanceof Error ? caught.message : "This viewpoint could not be restored.");
+    }
+  }, [markup, result, viewpointIdentity, setSelectedElementId]);
+  const portableViewpointApplied = useCallback((sequence: number) => {
+    setPortableViewpointRequest(current => current.sequence === sequence ? { ...current, viewpoint: null } : current);
+    setViewpointImportMessage("Viewpoint restored on the matching RVT model.");
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const readFragment = () => {
+      if (!active) return;
+      const hash = window.location.hash;
+      setViewpointFragment(hash.startsWith(VIEWPOINT_FRAGMENT_PREFIX) ? hash : "");
+    };
+    queueMicrotask(readFragment);
+    window.addEventListener("hashchange", readFragment);
+    return () => { active = false; window.removeEventListener("hashchange", readFragment); };
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled || !viewpointFragment) return;
+      const key = `${viewpointFragment}:${viewpointIdentity?.fingerprint ?? "pending"}`;
+      if (appliedViewpointFragmentRef.current === key) return;
+      const imported = resolveViewpointImport(viewpointFragment, viewpointIdentity);
+      if (imported.status === "ready") {
+        appliedViewpointFragmentRef.current = key;
+        restorePortableCamera(imported.camera, imported.viewpoint.viewer);
+      } else {
+        appliedViewpointFragmentRef.current = null;
+        setViewpointImportMessage(result && !viewpointIdentity
+          ? "The source model fingerprint is unavailable. Reopen the RVT source file to use this viewpoint link."
+          : imported.message);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [result, restorePortableCamera, viewpointFragment, viewpointIdentity]);
+
   const rvtClient = useWorkerClient<WorkerRequest, ConvertOutcome>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("rvt") ?? new URL("../lib/reviter/worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("rvt");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("../lib/reviter/worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "The conversion worker could not be prepared.",
     deathMessage: "The local conversion worker stopped unexpectedly.",
     unreadableMessage: "The local conversion worker returned an unreadable result.",
@@ -451,10 +585,11 @@ export default function ReviterStudio() {
     latestOnly: true,
   }));
   const ifcClient = useWorkerClient<IfcWorkerRequest, PairedRegressionResult>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("ifc") ?? new URL("../lib/reviter/ifc-worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("ifc");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("../lib/reviter/ifc-worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "The local IFC worker could not be started.",
     deathMessage: "The local IFC worker stopped unexpectedly.",
     unreadableMessage: "The local IFC worker returned an unreadable result.",
@@ -462,10 +597,11 @@ export default function ReviterStudio() {
     latestOnly: true,
   }));
   const floorRegionClient = useWorkerClient<FloorRegionsRequest, DerivedRoomResult>(() => ({
-    spawn: () => new Worker(
-      staticWorkerUrl("regions") ?? new URL("./studio/floor-regions.worker.ts", import.meta.url),
-      { type: "module" },
-    ),
+    spawn: () => {
+      const deployed = staticWorkerUrl("regions");
+      return deployed ? new Worker(deployed, { type: "module" })
+        : new Worker(new URL("./studio/floor-regions.worker.ts", import.meta.url), { type: "module" });
+    },
     startFailureMessage: "This browser blocked the room worker.",
     deathMessage: "The room worker stopped unexpectedly.",
     // Only the floor on screen is worth deriving. An earlier floor's answer is
@@ -513,6 +649,9 @@ export default function ReviterStudio() {
    * either way, and only its answer is discarded.
    */
   const beginConversionAttempt = useCallback(() => {
+    setEditEnabled(false);
+    setAssertionReview(null);
+    setOverrideState(emptyElementOverrideState());
     rvtClient.cancel();
     requestIdRef.current += 1;
     return requestIdRef.current;
@@ -586,7 +725,9 @@ export default function ReviterStudio() {
     // An IFC pairing still in flight was measured against the outgoing model.
     retireReferencePairing();
     setFile(nextFile);
+    setIfcExportOptions({ nativeRooms: false, mep: false, designOptions: "all" });
     setResult(null);
+    setPortableViewpointRequest(current => ({ viewpoint: null, sequence: current.sequence + 1 }));
     setPlanLevelId(null);
     setComparison(null);
     setGeometrySource("recovered");
@@ -634,8 +775,10 @@ export default function ReviterStudio() {
       // preview are small, independent CFB reads, so doing them while the file
       // buffer is prepared removes an avoidable serial wait — especially for a
       // cloud-backed File whose bytes are not warm on disk yet.
-      const bufferPromise = cached?.result ? null : nextFile.arrayBuffer();
-      const workerStarted = cached?.result ? false : rvtClient.start();
+      // Even a same-name/size/mtime file can contain another revision. Read the
+      // selected bytes once and verify any candidate before reusing its parse.
+      const bufferPromise = nextFile.arrayBuffer();
+      const workerStarted = cached?.result?.sourceSha256 ? false : rvtClient.start();
       const basicEntry = cfb.findEntry("BasicFileInfo");
       const basicDataPromise = basicEntry
         ? cfb.entryData(basicEntry)
@@ -694,6 +837,7 @@ export default function ReviterStudio() {
             ?? null,
         );
         setModelComments(loadModelComments(converted));
+        setOverrideState({ overrides: loadElementOverrides(converted), past: [], future: [] });
         setMarkup(loadModelMarkup(converted));
         // Reviter's own recovery is what opening a model shows. Nothing about
         // the file — not its name, not its document id — switches the viewer to
@@ -711,8 +855,10 @@ export default function ReviterStudio() {
         );
       };
 
-      if (cached?.result) {
-        acceptResult(cached.result);
+      const cachedResult = await verifiedCachedRecentResult(cached, buffer);
+      if (requestId !== requestIdRef.current) return;
+      if (cachedResult) {
+        acceptResult(cachedResult);
         return;
       }
 
@@ -732,7 +878,7 @@ export default function ReviterStudio() {
         );
         void cacheRecentSource(nextFile);
       };
-      if (!workerStarted || !buffer) {
+      if (!workerStarted && !rvtClient.start()) {
         throw new Error("The conversion worker could not be prepared.");
       }
       rvtClient.send({
@@ -993,18 +1139,11 @@ export default function ReviterStudio() {
   const activeGeometryResult = geometrySource === "reference-assisted"
     ? referenceAssistedResult ?? result
     : result;
-  const selectedRecord = useMemo(
-    () => selectedElementId == null
-      ? null
-      : activeGeometryResult?.elementBounds.find((record) => record.elementId === selectedElementId) ?? null,
-    [activeGeometryResult, selectedElementId],
+  const preferredRecords = useMemo(
+    () => preferredElementBounds(activeGeometryResult?.elementBounds ?? []), [activeGeometryResult],
   );
-  const hoveredRecord = useMemo(
-    () => hoveredElementId == null
-      ? null
-      : activeGeometryResult?.elementBounds.find((record) => record.elementId === hoveredElementId) ?? null,
-    [activeGeometryResult, hoveredElementId],
-  );
+  const selectedRecord = selectedElementId == null ? null : preferredRecords.get(selectedElementId) ?? null;
+  const hoveredRecord = hoveredElementId == null ? null : preferredRecords.get(hoveredElementId) ?? null;
   const selectedDimensions = selectedRecord ? boundsDimensions(selectedRecord.boundsFeet) : null;
 
   /**
@@ -1014,10 +1153,88 @@ export default function ReviterStudio() {
    * first; the recovery's own evidence follows, because in this viewer it is a
    * property of the object rather than a footnote about the file.
    */
-  const propertyRows: PropertyRow[] = useMemo(
-    () => propertyRowsFor(selectedRecord, selectedDimensions),
-    [selectedDimensions, selectedRecord],
+  const selectedOverride = useMemo(
+    () => selectedRecord ? overrideFor(overrideState.overrides, selectedRecord.elementId) : null,
+    [overrideState.overrides, selectedRecord],
   );
+
+  const propertyRows: PropertyRow[] = useMemo(
+    () => propertyRowsFor(selectedRecord, selectedDimensions, result, selectedOverride),
+    [selectedDimensions, selectedOverride, selectedRecord, result],
+  );
+
+  /**
+   * The categories a reviewer may assert, taken from this building.
+   *
+   * Revit publishes over a thousand categories and the decoder can name any of
+   * them, but a picker holding all of them would be asking someone correcting a
+   * misfiled curtain panel to find it among furniture systems and duct
+   * fittings. The categories this model actually contains are both the shorter
+   * list and the more likely answer.
+   */
+  const assertableCategories: AssertedCategory[] = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const record of activeGeometryResult?.elementBounds ?? []) {
+      if (record.categoryId == null || !record.categoryName) continue;
+      if (!byId.has(record.categoryId)) byId.set(record.categoryId, record.categoryName);
+    }
+    return [...byId]
+      .map(([id, name]) => ({ id, name }))
+      .sort((left, right) => left.name.localeCompare(right.name, "en"));
+  }, [activeGeometryResult]);
+
+  const assertOnSelected = useCallback((patch: ElementOverridePatch) => {
+    const elementId = selectedRecord?.elementId;
+    if (!editEnabled || elementId == null) return;
+    setOverrideState((state) => {
+      const next = setElementOverride(state, elementId, patch, ASSERTION_AUTHOR);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [editEnabled, result, selectedRecord]);
+
+  const clearAssertionOnSelected = useCallback(() => {
+    const elementId = selectedRecord?.elementId;
+    if (!editEnabled || elementId == null) return;
+    setOverrideState((state) => {
+      const next = clearElementOverride(state, elementId);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [editEnabled, result, selectedRecord]);
+
+  const undoAssertion = useCallback(() => {
+    if (!editEnabled) return;
+    setOverrideState((state) => {
+      const next = undoElementOverrides(state);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [editEnabled, result]);
+
+  const redoAssertion = useCallback(() => {
+    if (!editEnabled) return;
+    setOverrideState((state) => {
+      const next = redoElementOverrides(state);
+      if (result) saveElementOverrides(result, next.overrides);
+      return next;
+    });
+  }, [editEnabled, result]);
+
+  /**
+   * Leaving edit mode ends the editing, it does not merely hide it.
+   *
+   * IFClite's viewer keeps a named `AUTHORING_TOOLS` set for the same reason and
+   * warns in its own comment that duplicating the check is how the two states
+   * drift apart. Reviter has no canvas authoring tool yet, so there is nothing
+   * to force back to select; what there is to end is the dock's editing
+   * surface, and ending it here rather than in the dock keeps the rule in one
+   * place for when a tool does arrive.
+   */
+  const setEditing = useCallback((enabled: boolean) => {
+    setEditEnabled(enabled);
+    if (!enabled) setEvidenceOpen(false);
+  }, []);
 
   const copySelectedProperties = useCallback(async () => {
     if (!selectedRecord || !propertyRows.length) return;
@@ -1615,6 +1832,140 @@ export default function ReviterStudio() {
     }
   }, [result]);
 
+  const exportNativeSource = useCallback(async (kind: "json" | "records" | "definitions" | "schedules" | "schedules-view" | "spatial" | "views" | "drawing") => {
+    if (!file) return;
+    const id = ({ json: "NATIVE_EVIDENCE", records: "NATIVE_RECORDS_CSV", definitions: "NATIVE_DEFINITIONS_CSV", schedules: "NATIVE_SCHEDULES_CSV", "schedules-view": "NATIVE_SCHEDULES_PREVIEW", spatial: "NATIVE_SPATIAL_CSV", views: "NATIVE_VIEWS", drawing: "NATIVE_DRAWING_SVG" })[kind];
+    setExporting(id);
+    const client = new WorkerClient<NativeEvidenceRequest, NativeEvidenceReport>({
+      spawn: () => {
+        const deployed = staticWorkerUrl("evidence");
+        return deployed ? new Worker(deployed, { type: "module" })
+          : new Worker(new URL("../lib/reviter/native-evidence-worker.ts", import.meta.url), { type: "module" });
+      },
+      startFailureMessage: "The source evidence worker could not start.",
+      deathMessage: "The source evidence reader stopped.",
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const bytes = await file.arrayBuffer();
+      const report = await new Promise<NativeEvidenceReport>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("The bounded source evidence read timed out.")), 240_000);
+        const selectedClasses = kind === "records" ? [...NATIVE_RECORD_INVENTORY_CLASSES]
+          : kind === "definitions" ? [...NATIVE_PARAMETER_DEFINITION_CLASSES]
+          : (kind === "schedules" || kind === "schedules-view") ? ["DBViewSchedule"]
+          : kind === "spatial" ? [...NATIVE_SPATIAL_ORGANIZATION_CLASSES]
+          : kind === "views" ? ["DBViewPlan", "DBViewSection", "DBViewDrafting", "DBViewLegend"]
+          : [...new Set([...NATIVE_RECORD_INVENTORY_CLASSES, ...NATIVE_PARAMETER_DEFINITION_CLASSES])];
+        const pickedIds = selectedElementId == null ? [] : [selectedElementId];
+        if (kind === "definitions" && selectedRecord) {
+          const typeId = selectedRecord.typeId ?? selectedRecord.familySymbolId;
+          if (typeId != null) {
+            pickedIds.push(typeId);
+            const familyIds = new Set(result?.nativeFamilySymbolRelations?.filter(row => row.symbolId === typeId).map(row => row.familyId));
+            if (familyIds.size === 1) pickedIds.push([...familyIds][0]!);
+          }
+        }
+        client.send({ type: "inspect", bytes, drawingViewId: kind === "drawing" ? nativeDrawingViewId : undefined, drawingOptions: { includeDetailCurves: includeSourceDetailCurves },
+          options: { selectedClasses, selectedIds: ["json", "records", "definitions"].includes(kind) ? pickedIds : undefined,
+            maxRecords: ["schedules", "schedules-view", "spatial", "views"].includes(kind) ? 2048 : undefined,
+            maxOutputBytes: ["schedules", "schedules-view", "spatial", "views"].includes(kind) ? 64 * 1024 * 1024 : undefined } },
+          { onResult: resolve, onError: message => reject(new Error(message)) }, [bytes]);
+      });
+      if ((kind === "schedules" || kind === "schedules-view") && report.scheduleInventory) {
+        setNativeScheduleState({ file, inventory: report.scheduleInventory });
+        setNativeScheduleId(report.scheduleInventory.schedules[0]?.elementId ?? "");
+      }
+      if (kind === "schedules-view") {
+        if (!report.scheduleInventory?.schedules.length) throw new Error("No supported stored schedules were recovered within the selection budget.");
+      } else if (kind === "views") {
+        const views = listNativeDrawingViews(report);
+        setNativeViewState({ file, views });
+        setNativeDrawingViewId(views[0]?.elementId ?? "");
+        if (!views.length) throw new Error("No supported stored source views were recovered within the selection budget.");
+      } else if (kind === "drawing") {
+        if (!report.drawingPreview?.svg) throw new Error("No supported annotations were recovered for this source view.");
+        downloadBlob(new Blob([report.drawingPreview.svg], { type: "image/svg+xml" }), outputName(file.name, `source-view-${nativeDrawingViewId}.svg`));
+      } else if (kind === "json") {
+        downloadBlob(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }), outputName(file.name, "source-evidence.json"));
+      } else {
+        const content = kind === "records"
+          ? makeNativeRecordInventoryCsv(report.recordInventory!)
+          : kind === "schedules" ? makeNativeScheduleInventoryCsv(report.scheduleInventory!)
+          : kind === "spatial" ? makeNativeSpatialOrganizationCsv(report.spatialOrganization!)
+          : makeNativeParameterInventoryCsv(report.parameterInventory!);
+        if (kind === "spatial" && report.spatialOrganization) setNativeSpatialState({ file, inventory: report.spatialOrganization });
+        const suffix = ({ records: "source-records", definitions: "parameter-definitions", schedules: "source-schedules", spatial: "source-organization" })[kind];
+        downloadBlob(new Blob([content], { type: "text/csv;charset=utf-8" }), outputName(file.name, `${suffix}.csv`));
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      if (timer) clearTimeout(timer);
+      client.terminate();
+      setExporting(null);
+    }
+  }, [file, selectedElementId, selectedRecord, result, nativeDrawingViewId, includeSourceDetailCurves]);
+
+  const nativeScheduleInventory = nativeScheduleState?.file === file && nativeScheduleState.inventory.sourceSha256 === result?.sourceSha256 ? nativeScheduleState.inventory : null;
+  const exportCachedSchedule = () => {
+    if (!file || !nativeScheduleInventory) return;
+    setExporting("NATIVE_SCHEDULE_HTML");
+    try {
+      const preview = makeNativeScheduleHtml(nativeScheduleInventory, { scheduleId: nativeScheduleId, includeHiddenSections: includeHiddenScheduleSections });
+      if (!preview.html) throw new Error("This schedule has no supported stored cell layout. Export its source CSV for the available evidence.");
+      downloadBlob(new Blob([preview.html], { type: "text/html;charset=utf-8" }), outputName(file.name, `stored-schedule-${nativeScheduleId}.html`));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    finally { setExporting(null); }
+  };
+  const sourceScheduleControls = nativeScheduleInventory?.schedules.length ? <fieldset className="ifc-export-controls" disabled={Boolean(exporting)}>
+    <legend>Stored schedule cells</legend>
+    <label>Schedule <select aria-label="Stored schedule" value={nativeScheduleId} onChange={event => setNativeScheduleId(event.target.value)}>
+      {nativeScheduleInventory.schedules.map(schedule => <option key={schedule.elementId} value={schedule.elementId}>{schedule.name} · {schedule.elementId}</option>)}
+    </select></label>
+    <label><input type="checkbox" checked={includeHiddenScheduleSections} onChange={event => setIncludeHiddenScheduleSections(event.target.checked)} /> Include source-hidden sections</label>
+    <button type="button" onClick={exportCachedSchedule} disabled={!nativeScheduleId || Boolean(exporting)}>Download stored schedule HTML</button>
+    <p>Preserves cached text, merged cells and stored dimensions. Values and formulas are not recalculated.</p>
+  </fieldset> : null;
+  const sourceOrganization = nativeSpatialState?.file === file && nativeSpatialState.inventory.sourceSha256 === result?.sourceSha256 ? nativeSpatialState.inventory : undefined;
+  const sourceExportResult = result ? { ...result, nativeSpatialOrganization: sourceOrganization } : null;
+  const sourceViewControls = nativeViewState?.file === file ? <fieldset className="ifc-export-controls" disabled={Boolean(exporting)}>
+    <legend>Stored source annotations</legend>
+    <label>Source view <select aria-label="Source view" value={nativeDrawingViewId} onChange={event => setNativeDrawingViewId(event.target.value)}>
+      {nativeViewState.views.map(view => <option key={view.elementId} value={view.elementId}>{view.name} · {view.elementId}</option>)}
+    </select></label>
+    <label><input type="checkbox" checked={includeSourceDetailCurves} onChange={event => setIncludeSourceDetailCurves(event.target.checked)} /> Include stored detail curves</label>
+    <button type="button" disabled={!nativeDrawingViewId || Boolean(exporting)} onClick={() => exportNativeSource("drawing")}>Download source annotations SVG</button>
+    <p>Partial stored text, leaders, tag markers and optional detail curves; model geometry and sheet layout are omitted.</p>
+  </fieldset> : null;
+
+  const assertionExportContext = useMemo(() => ({
+    sourceSha256: result?.sourceSha256 ?? null,
+    referenceSourceSha256: ifcSourceHash,
+    options: ifcExportOptions,
+    rooms: roomReview.rooms,
+    sourceOrganization,
+  }), [result?.sourceSha256, ifcSourceHash, ifcExportOptions, roomReview.rooms, sourceOrganization]);
+
+  const runIfcExport = useCallback((geometryResult: ConvertResult) => {
+    exportText("IFC", "ifc", () => makeIfcCenterlines(
+      { ...geometryResult, nativeSpatialOrganization: sourceOrganization },
+      { ...ifcExportOptions, rooms: roomReview.rooms, overrides: overrideState.overrides },
+    ), "application/x-step");
+  }, [exportText, sourceOrganization, ifcExportOptions, roomReview.rooms, overrideState.overrides]);
+
+  const confirmAssertionExport = useCallback(() => {
+    const geometryResult = referenceAssistedResult ?? result;
+    if (!geometryResult || !assertionReview) return;
+    const rows = buildAssertionReview(geometryResult.elementBounds, overrideState.overrides);
+    const digest = assertionReviewDigest(rows, assertionExportContext);
+    if (digest !== assertionReview.digest || geometryResult !== assertionReview.geometryResult) {
+      setAssertionReview({ rows, digest, stale: true, geometryResult });
+      return;
+    }
+    setAssertionReview(null);
+    runIfcExport(geometryResult);
+  }, [assertionReview, assertionExportContext, overrideState.overrides, referenceAssistedResult, result, runIfcExport]);
+
   const exportActions: ExportAction[] = useMemo(() => {
     if (!result) return [];
     const geometryResult = referenceAssistedResult ?? result;
@@ -1674,8 +2025,46 @@ export default function ReviterStudio() {
         detail: referenceAssistedResult
           ? `IFC4 · ${referenceAssistedResult.referenceAssistedElementIds?.length.toLocaleString()} paired repairs`
           : `IFC4 · elements, storeys, materials · ${roomReview.rooms.filter((room) => room.disposition === "accepted" && room.ifc.export).length} reviewed spaces`,
-        run: () => exportText("IFC", "ifc", () => makeIfcCenterlines(geometryResult, { rooms: roomReview.rooms }), "application/x-step"),
+        run: () => {
+          if (!overrideState.overrides.length) return runIfcExport(geometryResult);
+          const rows = buildAssertionReview(geometryResult.elementBounds, overrideState.overrides);
+          setAssertionReview({ rows, digest: assertionReviewDigest(rows, assertionExportContext), stale: false, geometryResult });
+        },
       },
+      {
+        id: "ELEMENTS_CSV", format: "Elements CSV", detail: "Recovered inventory, types and geometry provenance",
+        run: () => exportText("ELEMENTS_CSV", "elements.csv", () => makeElementsCsv(geometryResult, { unit: "metres", designOptions: ifcExportOptions.designOptions }), "text/csv;charset=utf-8"),
+      },
+      ...((geometryResult.nativeSourceRooms?.length ?? 0) ? [{
+        id: "NATIVE_ROOMS_CSV", format: "Source rooms CSV", detail: "Source room identities, names and stored outline areas",
+        run: () => exportText("NATIVE_ROOMS_CSV", "source-rooms.csv", () => makeNativeRoomsCsv(geometryResult, { unit: "metres", designOptions: ifcExportOptions.designOptions }), "text/csv;charset=utf-8"),
+      }] : []),
+      {
+        id: "PARAMETERS_CSV", format: "Parameters CSV", detail: "Raw instance and type values in source units",
+        run: () => exportText("PARAMETERS_CSV", "parameters.csv", () => makeParametersCsv(geometryResult), "text/csv;charset=utf-8"),
+      },
+      ...(file ? [{
+        id: "NATIVE_EVIDENCE", format: "Source evidence JSON", detail: "On-demand stored graphs, definitions and storage catalog",
+        run: () => exportNativeSource("json"),
+      }, {
+        id: "NATIVE_RECORDS_CSV", format: "Source records CSV", detail: "Stored views, grids, annotations and project records",
+        run: () => exportNativeSource("records"),
+      }, {
+        id: "NATIVE_DEFINITIONS_CSV", format: "Parameter definitions CSV", detail: "Definitions, bindings and supported values for the picked element",
+        run: () => exportNativeSource("definitions"),
+      }, {
+        id: "NATIVE_SCHEDULES_CSV", format: "Source schedules CSV", detail: "Stored fields, cells, filters and unevaluated formulas",
+        run: () => exportNativeSource("schedules"),
+      }, {
+        id: "NATIVE_SCHEDULES_PREVIEW", format: "Load stored schedules", detail: "Choose a cached schedule table for HTML export",
+        run: () => exportNativeSource("schedules-view"),
+      }, {
+        id: "NATIVE_SPATIAL_CSV", format: "Source organization CSV", detail: "Rooms, Areas, MEP spaces, active coordinates and revisions",
+        run: () => exportNativeSource("spatial"),
+      }, {
+        id: "NATIVE_VIEWS", format: "Load source views", detail: "Choose a stored view for a partial annotation SVG",
+        run: () => exportNativeSource("views"),
+      }] : []),
       {
         id: "PASCAL",
         format: "Pascal",
@@ -1697,7 +2086,7 @@ export default function ReviterStudio() {
         run: () => exportText(
           "JSON",
           "json",
-          () => makeReport(geometryResult, metadata as unknown as Record<string, unknown>),
+          () => makeReport({ ...geometryResult, nativeSpatialOrganization: sourceOrganization }, metadata as unknown as Record<string, unknown>),
           "application/json",
         ),
       },
@@ -1735,7 +2124,7 @@ export default function ReviterStudio() {
         ),
       },
     ];
-  }, [exportText, markup, metadata, modelComments, planLevelId, referenceAssistedResult, result, roomReview]);
+  }, [exportNativeSource, exportText, file, ifcExportOptions, sourceOrganization, markup, metadata, modelComments, overrideState.overrides, assertionExportContext, runIfcExport, planLevelId, referenceAssistedResult, result, roomReview]);
 
   const exportDisclaimer = result
     ? `Exports preserve ${
@@ -1744,7 +2133,7 @@ export default function ReviterStudio() {
         : result.method === "partition-bounds-recovery"
           ? "native-ID element envelopes"
           : "the recovered geometry"
-    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments; textures and openings remain unavailable. Comments and markup export as separate review sidecars and can be imported after opening the matching source model.`
+    }. The audit records ${result.decoderCoverage.nativeMaterialDefinitions.toLocaleString()} decoded material definitions and ${result.decoderCoverage.nativeMaterialAssignments.toLocaleString()} proven assignments. Source semantics and approximate bodies retain their evidence in the audit. Comments and markup export as separate review sidecars and can be imported after opening the matching source model.`
     : "";
 
   // --- Chrome ------------------------------------------------------------
@@ -2131,6 +2520,10 @@ export default function ReviterStudio() {
       onActiveComment={activateComment}
       onCreateComment={createModelComment}
       viewpointRequest={viewpointRequest}
+      portableViewpointRequest={portableViewpointRequest}
+      onPortableViewpointApplied={portableViewpointApplied}
+      onCameraCaptureReady={bindCameraCapture}
+      onSectionCaptureReady={bindSectionCapture}
       markup={markup}
       markupSettings={markupSettings}
       onCreateMarkup={createMarkupStroke}
@@ -2382,6 +2775,12 @@ export default function ReviterStudio() {
       </header>
       )}
 
+      {(result || viewpointFragment) && <details className="viewer-viewpoint-panel" open={Boolean(viewpointImportMessage)} style={{ flexShrink: 0, padding: "8px 12px", borderBottom: "1px solid var(--line)" }}>
+        <summary style={{ cursor: "pointer" }}>Viewpoint links</summary>
+        <ViewpointLinkControls identity={viewpointIdentity} captureCamera={captureViewpointCamera} captureViewerState={captureViewpointState} onRestore={restorePortableCamera} />
+        {viewpointImportMessage && <p role="status">{viewpointImportMessage}</p>}
+      </details>}
+
       {!result && <button type="button" className="rv-button home-command-button" onClick={() => setPaletteOpen(true)}>Commands</button>}
       {reviewWorkbench}
       {result && <div className="floor-workspace-host" hidden={workspace !== "floors"}>
@@ -2465,6 +2864,16 @@ export default function ReviterStudio() {
           onOpenFloorWorkspace={() => { setSheet(null); setWorkspace("floors"); }}
           onZoomSelection={() => { requestZoomToSelection(); setSheet(null); }}
           onExportComments={() => exportActions.find(action => action.id === "COMMENTS")?.run()}
+          exportPanel={result && <>
+            <IfcExportControls result={sourceExportResult!} value={ifcExportOptions} onChange={setIfcExportOptions} disabled={Boolean(exporting)} />
+            {sourceViewControls}
+            {sourceScheduleControls}
+            <div className="export-grid">
+              {exportActions.map(action => <button key={action.id} type="button" className="export-card" disabled={Boolean(exporting)} onClick={action.run}>
+                <span><strong>{action.format}</strong></span><small>{exporting === action.id ? "Writing…" : action.detail}</small>
+              </button>)}
+            </div>
+          </>}
           {...commentPanelProps}
         />
       )) : (
@@ -2492,6 +2901,9 @@ export default function ReviterStudio() {
               onOpen={openPicker}
               onPairIfc={() => ifcInputRef.current?.click()}
               onPairReferenceModel={() => referenceModelInputRef.current?.click()}
+              editEnabled={editEnabled}
+              onEditEnabled={setEditing}
+              assertionCount={overrideState.overrides.length}
               onCloseModel={closeModel}
             />
           )}
@@ -2688,7 +3100,8 @@ export default function ReviterStudio() {
                   tab={reportTab}
                   onTab={setReportTab}
                   onClose={() => setDockOpen(false)}
-                  result={result}
+                  result={sourceExportResult!}
+                  sourceViewControls={<>{sourceViewControls}{sourceScheduleControls}</>}
                   comparison={comparison}
                   privateFileInfo={privateFileInfo}
                   metricCards={metricCards}
@@ -2696,6 +3109,8 @@ export default function ReviterStudio() {
                   fileRecord={fileRecord}
                   exports={exportActions}
                   exporting={exporting}
+                  ifcExportOptions={ifcExportOptions}
+                  onIfcExportOptions={setIfcExportOptions}
                   recoveredElementIds={recoveredElementIds}
                   drawnElementIds={displayedElementIds}
                   exportDisclaimer={exportDisclaimer}
@@ -2733,6 +3148,16 @@ export default function ReviterStudio() {
                 onZoom={requestZoomToSelection}
                 onCopy={() => { void copySelectedProperties(); }}
                 onToggleEvidence={() => setEvidenceOpen((open) => !open)}
+                editEnabled={editEnabled}
+                selectionId={selectedRecord?.elementId ?? null}
+                override={selectedOverride}
+                categories={assertableCategories}
+                canUndo={overrideState.past.length > 0}
+                canRedo={overrideState.future.length > 0}
+                onAssert={assertOnSelected}
+                onClearAssertion={clearAssertionOnSelected}
+                onUndo={undoAssertion}
+                onRedo={redoAssertion}
               />
             )}
           </div>
@@ -2782,6 +3207,10 @@ export default function ReviterStudio() {
             </span>
           </footer>
         </>
+      )}
+      {assertionReview && (
+        <AssertionReviewDialog rows={assertionReview.rows} stale={assertionReview.stale}
+          onCancel={() => setAssertionReview(null)} onConfirm={confirmAssertionExport} />
       )}
     </main>
   );

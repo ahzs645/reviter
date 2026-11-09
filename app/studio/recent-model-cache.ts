@@ -1,5 +1,6 @@
 import type { ConvertResult } from "../../lib/reviter/types.ts";
 import type { RecentFile } from "./recents.ts";
+import { viewpointSourceFingerprint } from "./viewpoint-links.ts";
 
 /**
  * The browser cache is intentionally separate from the small Recent index in
@@ -40,6 +41,23 @@ export type CachedRecentModel = {
   /** Null means that the source is available but this deployment must reparse it. */
   result: ConvertResult | null;
 };
+
+/** Metadata finds a cache candidate; only the selected bytes can authorize it. */
+export async function verifiedCachedRecentResult(
+  cached: CachedRecentModel | null,
+  source: ArrayBuffer,
+): Promise<ConvertResult | null> {
+  const result = cached?.result;
+  if (!result?.sourceSha256 || !/^[a-f0-9]{64}$/u.test(result.sourceSha256)) return null;
+  try {
+    const fingerprint = await viewpointSourceFingerprint(new Uint8Array(source));
+    return fingerprint === `sha256-${result.sourceSha256}` ? result : null;
+  } catch {
+    // An unverifiable cached conversion is reparsed, never relabelled with a
+    // newly computed hash for geometry whose source has not been established.
+    return null;
+  }
+}
 
 declare global {
   // Set by the static GitHub Pages entry before React is mounted. Other hosts

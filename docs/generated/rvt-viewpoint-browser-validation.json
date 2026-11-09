@@ -1,0 +1,17 @@
+{
+  "checks": {
+    "linkContainsFragmentOnly": true,
+    "liveOrbitCameraRestored": true,
+    "foreignModelRefused": true,
+    "initialFragmentDeferred": true,
+    "pendingRestoredAfterMatchingOpen": true
+  },
+  "errors": [],
+  "sourceSha256": "sha256-41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+  "camera": {
+    "position": "180.04748,-167.67095,140.52843",
+    "target": "6.45492,5.92161,6.13419",
+    "direction": "-0.6202481,0.6202481,-0.4801921",
+    "navigation": "orbit"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "scope": "Source-only original-family-symbol IFC type identity validation against paired Revit IFC product-to-type relationships. This audit does not regenerate meshes or measure full exported IFC type coverage.",
+  "method": [
+    "Read complete checksum-verified GElement original-symbol references and named, checksum-verified source symbol objects. Validated native table/history IDs may recover original symbols absent from the narrower generic inventory; extra instance owners require their own checksum-verified named FamilyInstance object before their matching GElement.",
+    "The generic ElemTable index uses a 16-bit record count; the validated native table/history decoder uses the complete 32-bit count and checks the full stream shape. On UNBC, the generic count truncates 74438 rows to 8902. The scoped type reader uses validated native identities to recover the omitted source symbols/instance witnesses without changing any other decoder or geometry admission domain.",
+    "Only converted source-bounds or certified native mesh owners may publish type identity evidence. The source-only UNBC audit independently restricts to original Reviter numeric product Tags as an own-output physical-owner witness; paired IFC identities never supply this admission set.",
+    "Derive native type GlobalIds from native creation history and the original symbol ID.",
+    "Join paired IFC numeric product Tags through IfcRelDefinesByType; exclude missing or ambiguous type relations and unproven door/window flip variants."
+  ],
+  "models": [
+    {
+      "model": "mechanical",
+      "revitVersion": 2025,
+      "sourceSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+      "referenceIfcSha256": "9e56cf7246ce86ef73646dd588a1efb8a4756e5e102b30e28b3b58577a454db0",
+      "sourceReferences": 43,
+      "compared": 43,
+      "matched": 43,
+      "mismatched": 0,
+      "unresolvedFlip": 0,
+      "missingTypeRelation": 0,
+      "ambiguousTypeRelation": 0,
+      "instanceAsTypeSentinels": 0,
+      "collectorCapped": false
+    },
+    {
+      "model": "plumbing",
+      "revitVersion": 2025,
+      "sourceSha256": "03689df2aa426031a216e65051b9f19d3265d6fe96884dd47373b17435f9e54c",
+      "referenceIfcSha256": "294490b222632509779910345f27a4eeda3645956138a593298c241495f7b8b6",
+      "sourceReferences": 61,
+      "compared": 60,
+      "matched": 60,
+      "mismatched": 0,
+      "unresolvedFlip": 0,
+      "missingTypeRelation": 1,
+      "ambiguousTypeRelation": 0,
+      "instanceAsTypeSentinels": 0,
+      "collectorCapped": false
+    },
+    {
+      "model": "unbc",
+      "revitVersion": 2027,
+      "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+      "referenceIfcSha256": "adb85a6fb3f831e185f23ebc58f7416e3054c4c118f490275aa7e6cd31b599a0",
+      "sourceReferences": 27554,
+      "compared": 25620,
+      "matched": 25620,
+      "mismatched": 0,
+      "unresolvedFlip": 1931,
+      "missingTypeRelation": 3,
+      "ambiguousTypeRelation": 0,
+      "instanceAsTypeSentinels": 0,
+      "collectorCapped": false,
+      "prePhysicalOwnerFilterReferences": 30301,
+      "physicalOwnerWitness": "Own converter numeric product Tags, independent of paired reference identities; subset of source bounds/certified native mesh owner admission.",
+      "nativeInventoryWitness": {
+        "genericIndex": {
+          "recordCount": 8902,
+          "parsedRecordCount": 8902,
+          "uniqueElementIds": 8902
+        },
+        "validatedNativeTable": {
+          "declaredRecordCount": 74438,
+          "decodedIdentityCount": 74437,
+          "validatedGlobalIdCount": 74437
+        },
+        "source": "Same Global/ElemTable input: generic record count read as uint16 at offset2; validated complete native identity decoder reads uint32 count at offset2 and verifies full stream length."
+      }
+    }
+  ],
+  "limitations": [
+    "UNBC has 1931 original-symbol references with unresolved door/window flip evidence; these were excluded, not counted as matches.",
+    "UNBC and Plumbing have 3 and 1 source references respectively without a paired IFC type relation.",
+    "There are zero instance-as-type original-symbol sentinels in these fixtures; that recipe is covered by independent unit vectors rather than these models.",
+    "The UNBC source SHA matches the earlier geometry audit. This source-only run does not prove geometry preservation by itself.",
+    "The generic inventory count limitation remains in other decoder admission domains. This change repairs the original-symbol type reader only; source model geometry is preserved and tested separately."
+  ],
+  "totals": {
+    "sourceReferences": 27658,
+    "compared": 25723,
+    "matched": 25723,
+    "mismatched": 0,
+    "unresolvedFlip": 1931,
+    "missingTypeRelation": 4,
+    "ambiguousTypeRelation": 0,
+    "instanceAsTypeSentinels": 0
+  }
+}

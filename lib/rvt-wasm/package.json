@@ -4,8 +4,8 @@
   "collaborators": [
     "Griffin Long <151978260+DrunkOnJava@users.noreply.github.com>"
   ],
-  "description": "Apache-2 clean-room toolkit for inspecting Autodesk Revit files (.rvt, .rfa, .rte, .rft) without a Revit installation. Opens the CFB container, decodes streams, parses the embedded schema, and classifies field encodings across 2016-2026. Full per-element extraction + geometry are active research.",
-  "version": "0.1.2",
+  "description": "Pinned Apache-2.0 rvt-rs reader for optional Reviter metadata, diagnostics and material evidence; independent of Reviter's geometry pipeline.",
+  "version": "0.4.0",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -13,8 +13,14 @@
   },
   "files": [
     "rvt_bg.wasm",
+    "rvt_bg.wasm.d.ts",
     "rvt.js",
-    "rvt.d.ts"
+    "rvt.d.ts",
+    "LICENSE",
+    "NOTICE",
+    "provenance.json",
+    "patches/manifest.json",
+    "patches/native-evidence.patch"
   ],
   "main": "rvt.js",
   "homepage": "https://github.com/DrunkOnJava/rvt-rs",

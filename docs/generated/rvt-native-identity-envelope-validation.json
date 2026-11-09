@@ -1,0 +1,775 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Source scan with createNativeOriginalSymbolCollector and createRevit2027SplitGElementCollector; compare using resolveNativeIfcTypeIdentityEvidence, without paired GUID inputs.",
+  "input": {
+    "model": "unbc.rvt",
+    "sha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+    "release": 2027
+  },
+  "sourceCensus": {
+    "pages": 3666,
+    "sourceReferences": 30524,
+    "referencesCarryingOriginalSymbolEnvelope": 23504,
+    "scope": "These count references, not distinct symbols or source objects. This source-only pass does not regenerate meshes."
+  },
+  "work": {
+    "legacyCapped": false,
+    "largeObjectWork": {
+      "checksumBytes": 2597626,
+      "fifoBytes": 1298813,
+      "capped": false
+    },
+    "historicalEnvelopeWork": {
+      "checksumBytes": 33552587,
+      "capped": true
+    },
+    "limits": {
+      "largeObjectBytes": 1048576,
+      "largeReplayEntries": 4096,
+      "largeReplayDescriptors": 16384,
+      "largeChecksumBytes": 16777216,
+      "largeFifoBytes": 8388608,
+      "historicalEnvelopeChecksumBytes": 33554432
+    },
+    "partialCoverage": "Historical-envelope work reached its separate 32-MiB checksum budget. Missing envelope evidence does not establish agreement, absence of conflicts, or complete original-geometry coverage. Existing identity evidence remains retained."
+  },
+  "largeFrameRecovery": {
+    "previousMissingSourceReferences": 16,
+    "recovered": 14,
+    "cases": [
+      {
+        "elementId": 2297888,
+        "sourceReference": null
+      },
+      {
+        "elementId": 1501240,
+        "sourceReference": {
+          "elementId": 1501240,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 1483,
+          "rawOffset": 28039803,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2235706,
+        "sourceReference": {
+          "elementId": 2235706,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2207,
+          "rawOffset": 43307897,
+          "objectOffset": 47975,
+          "symbolFieldOffset": 48372,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2235890,
+        "sourceReference": {
+          "elementId": 2235890,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2208,
+          "rawOffset": 43330417,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2235942,
+        "sourceReference": {
+          "elementId": 2235942,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2209,
+          "rawOffset": 43342244,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236026,
+        "sourceReference": {
+          "elementId": 2236026,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2210,
+          "rawOffset": 43354990,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236110,
+        "sourceReference": {
+          "elementId": 2236110,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2211,
+          "rawOffset": 43372520,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236168,
+        "sourceReference": {
+          "elementId": 2236168,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2212,
+          "rawOffset": 43391289,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236220,
+        "sourceReference": {
+          "elementId": 2236220,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2213,
+          "rawOffset": 43413626,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236272,
+        "sourceReference": {
+          "elementId": 2236272,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2214,
+          "rawOffset": 43431805,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236332,
+        "sourceReference": {
+          "elementId": 2236332,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2215,
+          "rawOffset": 43449989,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236390,
+        "sourceReference": {
+          "elementId": 2236390,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2216,
+          "rawOffset": 43468262,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2236466,
+        "sourceReference": {
+          "elementId": 2236466,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2217,
+          "rawOffset": 43490189,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 2263723,
+        "sourceReference": {
+          "elementId": 2263723,
+          "originalSymbolId": 2213246,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2235,
+          "rawOffset": 43860869,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -0.7381889763779543,
+              -0.7381889763779432,
+              3.2808398950131235
+            ],
+            "maximum": [
+              0.7381889763779547,
+              0.738188976377967,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2333,
+            "rawOffset": 45740223,
+            "objectOffset": 51594
+          }
+        }
+      },
+      {
+        "elementId": 1573971,
+        "sourceReference": {
+          "elementId": 1573971,
+          "originalSymbolId": 2336041,
+          "source": "checksum-verified-GElement.original-symbol",
+          "revitVersion": 2027,
+          "stream": "Partitions/325",
+          "chunkIndex": 2118,
+          "rawOffset": 41526344,
+          "objectOffset": 0,
+          "symbolFieldOffset": 397,
+          "embeddedSymbolGeometry": true,
+          "originalSymbolEnvelope": {
+            "source": "checksum-verified-original-symbol-GElement.m_bBox",
+            "apiGeometryOptionsEquivalent": false,
+            "minimum": [
+              -1.00000000000001,
+              -0.9999999999999928,
+              -1.4744386731870682e-14
+            ],
+            "maximum": [
+              0.999999999999999,
+              1.0000000000000233,
+              43.30708661417323
+            ],
+            "stream": "Partitions/325",
+            "chunkIndex": 2145,
+            "rawOffset": 42093084,
+            "objectOffset": 19883
+          }
+        }
+      },
+      {
+        "elementId": 1779325,
+        "sourceReference": null
+      }
+    ],
+    "scope": "All 14 recovered references have embedded symbol geometry; no new InstanceAsType recipe is asserted."
+  },
+  "confirmedSelectedConflicts": [
+    {
+      "elementId": 1812247,
+      "priorNativeBoundsFlip": true,
+      "now": {
+        "elementId": 1812247,
+        "originalSymbolId": 1812290,
+        "source": "checksum-verified-GElement.original-symbol",
+        "revitVersion": 2027,
+        "stream": "Partitions/325",
+        "chunkIndex": 1876,
+        "rawOffset": 36399992,
+        "objectOffset": 64060,
+        "originalSymbolEnvelope": {
+          "source": "checksum-verified-original-symbol-GElement.m_bBox",
+          "apiGeometryOptionsEquivalent": false,
+          "minimum": [
+            -1.5009842519685603,
+            -0.15419947506559423,
+            3.0019685039370225
+          ],
+          "maximum": [
+            1.5009842519684793,
+            1.5457764632267603,
+            7.004593175853056
+          ],
+          "stream": "Partitions/325",
+          "chunkIndex": 2809,
+          "rawOffset": 55036398,
+          "objectOffset": 47444
+        },
+        "flipEnvelopeComparison": {
+          "status": "conflict",
+          "instanceEnvelopeCandidate": true,
+          "originalSymbolEnvelopeCandidate": false,
+          "apiGeometryOptionsEquivalent": false
+        }
+      },
+      "sourcePlacement": {
+        "elementId": 1812247,
+        "basis": [
+          -1,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          1
+        ],
+        "origin": [
+          -29.07992595232737,
+          154.87176049033684,
+          -4.440892098500626e-16
+        ],
+        "geometryId": 1812290,
+        "symbolId": 1812290
+      },
+      "sourceInstanceWorldEnvelope": {
+        "min": {
+          "x": -30.580910204295847,
+          "y": 154.63225917800082,
+          "z": 3.001968503937024
+        },
+        "max": {
+          "x": -27.57894170035881,
+          "y": 155.02595996540242,
+          "z": 7.004593175853055
+        }
+      }
+    },
+    {
+      "elementId": 1812300,
+      "priorNativeBoundsFlip": true,
+      "now": {
+        "elementId": 1812300,
+        "originalSymbolId": 1812290,
+        "source": "checksum-verified-GElement.original-symbol",
+        "revitVersion": 2027,
+        "stream": "Partitions/325",
+        "chunkIndex": 1876,
+        "rawOffset": 36399992,
+        "objectOffset": 64380,
+        "originalSymbolEnvelope": {
+          "source": "checksum-verified-original-symbol-GElement.m_bBox",
+          "apiGeometryOptionsEquivalent": false,
+          "minimum": [
+            -1.5009842519685603,
+            -0.15419947506559423,
+            3.0019685039370225
+          ],
+          "maximum": [
+            1.5009842519684793,
+            1.5457764632267603,
+            7.004593175853056
+          ],
+          "stream": "Partitions/325",
+          "chunkIndex": 2809,
+          "rawOffset": 55036398,
+          "objectOffset": 47444
+        },
+        "flipEnvelopeComparison": {
+          "status": "conflict",
+          "instanceEnvelopeCandidate": true,
+          "originalSymbolEnvelopeCandidate": false,
+          "apiGeometryOptionsEquivalent": false
+        }
+      },
+      "sourcePlacement": {
+        "elementId": 1812300,
+        "basis": [
+          -1,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          1
+        ],
+        "origin": [
+          -20.300562435269445,
+          154.87176049033684,
+          -4.440892098500626e-16
+        ],
+        "geometryId": 1812290,
+        "symbolId": 1812290
+      },
+      "sourceInstanceWorldEnvelope": {
+        "min": {
+          "x": -21.801546687237924,
+          "y": 154.63225917800082,
+          "z": 3.001968503937024
+        },
+        "max": {
+          "x": -18.799578183300888,
+          "y": 155.02595996540242,
+          "z": 7.004593175853055
+        }
+      }
+    },
+    {
+      "elementId": 1812335,
+      "priorNativeBoundsFlip": true,
+      "now": {
+        "elementId": 1812335,
+        "originalSymbolId": 1812290,
+        "source": "checksum-verified-GElement.original-symbol",
+        "revitVersion": 2027,
+        "stream": "Partitions/325",
+        "chunkIndex": 1876,
+        "rawOffset": 36399992,
+        "objectOffset": 64700,
+        "originalSymbolEnvelope": {
+          "source": "checksum-verified-original-symbol-GElement.m_bBox",
+          "apiGeometryOptionsEquivalent": false,
+          "minimum": [
+            -1.5009842519685603,
+            -0.15419947506559423,
+            3.0019685039370225
+          ],
+          "maximum": [
+            1.5009842519684793,
+            1.5457764632267603,
+            7.004593175853056
+          ],
+          "stream": "Partitions/325",
+          "chunkIndex": 2809,
+          "rawOffset": 55036398,
+          "objectOffset": 47444
+        },
+        "flipEnvelopeComparison": {
+          "status": "conflict",
+          "instanceEnvelopeCandidate": true,
+          "originalSymbolEnvelopeCandidate": false,
+          "apiGeometryOptionsEquivalent": false
+        }
+      },
+      "sourcePlacement": {
+        "elementId": 1812335,
+        "basis": [
+          -1,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          1
+        ],
+        "origin": [
+          -13.203900689864136,
+          154.87176049033684,
+          -4.440892098500626e-16
+        ],
+        "geometryId": 1812290,
+        "symbolId": 1812290
+      },
+      "sourceInstanceWorldEnvelope": {
+        "min": {
+          "x": -14.704884941832615,
+          "y": 154.63225917800082,
+          "z": 3.001968503937024
+        },
+        "max": {
+          "x": -11.70291643789558,
+          "y": 155.02595996540242,
+          "z": 7.004593175853055
+        }
+      }
+    }
+  ],
+  "cachedSourceInputs": {
+    "boundsAndHostSolidsSha256": "66a6c429d6e916617e868d1c4088160d1dbac8659e424add367177034125ce34",
+    "placementsSha256": "1e7ab76ab8dd458a8843e56a6833b089d2c82249064a3092e958b2285105b026",
+    "scope": "Same exact RVT bytes; cached physical-owner bounds/host solids and source placements from the preceding own converter/source audit, with no reference GUID input to resolving."
+  },
+  "racLateEditProof": {
+    "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+    "release": 2025,
+    "pages": 1157,
+    "refs": 390,
+    "historicalEnvelopeWork": {
+      "checksumBytes": 0,
+      "capped": false
+    },
+    "affectedPotentialReferences": [],
+    "scope": "Source-only inventory of whether historical symbol metadata added after RAC worker launch can affect its flip candidates; no geometry conversion."
+  },
+  "validation": {
+    "focusedIdentityTests": 28,
+    "failed": 0,
+    "typecheck": "passed",
+    "changedFileLint": "passed"
+  },
+  "limits": [
+    "Stored original-symbol graphics envelopes are explicitly not proven equivalent to API GetOriginalGeometry with IFC geometry options.",
+    "A conflict veto withholds the previous native-bounds flip; it never chooses the alternative candidate by reference IFC identity.",
+    "The final full campaign census reports all retained vetoes. The three UNBC cases already mismatched the reference; no previously matching UNBC identity was lost. Conservative withholding does not establish improved IFC accuracy."
+  ],
+  "productionDiagnostics": {
+    "statsField": "stats.nativeOriginalSymbolDiagnostics",
+    "historicalCapWarning": "Stored original-symbol envelope comparisons reached their scan limit; some type flip conflicts could not be checked.",
+    "legacyAndLargeObjectCaps": "Separate warnings and work snapshots; optional budgets cannot erase existing identities."
+  },
+  "fullConversionCensus": {
+    "report": "rvt-native-type-envelope-census.json",
+    "baselineCommit": "2d42a9c",
+    "sourceProductTypeRelationshipsVetoed": {
+      "rac": 0,
+      "school": 18,
+      "snowdon": 17,
+      "unbc": 3
+    },
+    "unbcPreviouslyMatchingReferenceVetoed": 0,
+    "unbcPreviouslyMismatchingReferenceVetoed": 3,
+    "unbcNewReferenceMatches": 0,
+    "scope": "Final four-model priority-corrected native geometry campaign. Every retained veto is counted; unavailable/omitted envelopes and source API geometry equivalence remain unproven."
+  }
+}

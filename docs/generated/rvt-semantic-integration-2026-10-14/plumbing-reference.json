@@ -1,0 +1,31 @@
+{
+  "file": "/workspace/mep-audit/ifc-ecs-re1-plumbing.rvt",
+  "sha256": "03689df2aa426031a216e65051b9f19d3265d6fe96884dd47373b17435f9e54c",
+  "pages": 230,
+  "milliseconds": 4788,
+  "systemCount": 8,
+  "membershipCount": 138,
+  "connectionCount": 121,
+  "comparison": {
+    "referenceSha256": "294490b222632509779910345f27a4eeda3645956138a593298c241495f7b8b6",
+    "referenceConnections": 126,
+    "recoveredConnections": 121,
+    "matching": 120,
+    "unexpected": [
+      "442378:2/444124:0"
+    ],
+    "missing": [
+      "442581:1/444719:0",
+      "442625:1/445170:0",
+      "443223:1/445078:0",
+      "443279:1/445109:0",
+      "443513:1/445208:0",
+      "446093:2/447241:0"
+    ]
+  },
+  "limitations": [
+    "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+    "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+    "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+  ]
+}

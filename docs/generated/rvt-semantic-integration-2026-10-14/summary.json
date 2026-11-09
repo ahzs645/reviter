@@ -1,0 +1,639 @@
+{
+  "baseCommit": "4c13fd0",
+  "upstreamCommit": "1c3d337dbd2a6810e9dfad68fe99857843d67387",
+  "models": {
+    "rac": {
+      "source": {
+        "file": "/workspace/models/rac.rvt",
+        "sourceSha256": "41f1893a62d974edbe19f6077f7b75d0b662fff8c6ed167576e7ff568d3d4293",
+        "byteLength": 19750912,
+        "version": 2025,
+        "method": "partition-bounds-recovery",
+        "geometryHash": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+        "meshes": 97,
+        "triangles": 195555,
+        "bounds": 959,
+        "origin": {
+          "x": 6.454918501214529,
+          "y": 5.921607681818255,
+          "z": -23.300524934383194
+        },
+        "bbox": {
+          "min": {
+            "x": -76.6657086141688,
+            "y": -66.30085301837279,
+            "z": 0
+          },
+          "max": {
+            "x": 76.6657086141688,
+            "y": 66.30085301837279,
+            "z": 58.869422572178095
+          }
+        },
+        "identities": 8326
+      },
+      "baselineChecks": {
+        "geometryHash": {
+          "expected": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+          "actual": "3483d88859cd39270863cacc595d677e6120ad2e7ee0d404e0e8860daa3a43b3",
+          "matches": true
+        },
+        "triangles": {
+          "expected": 195555,
+          "actual": 195555,
+          "matches": true
+        },
+        "meshes": {
+          "expected": 97,
+          "actual": 97,
+          "matches": true
+        },
+        "bounds": {
+          "expected": 959,
+          "actual": 959,
+          "matches": true
+        },
+        "origin": {
+          "expected": {
+            "x": 6.454918501214529,
+            "y": 5.921607681818255,
+            "z": -23.300524934383194
+          },
+          "actual": {
+            "x": 6.454918501214529,
+            "y": 5.921607681818255,
+            "z": -23.300524934383194
+          },
+          "matches": true
+        },
+        "bbox": {
+          "expected": {
+            "min": {
+              "x": -76.6657086141688,
+              "y": -66.30085301837279,
+              "z": 0
+            },
+            "max": {
+              "x": 76.6657086141688,
+              "y": 66.30085301837279,
+              "z": 58.869422572178095
+            }
+          },
+          "actual": {
+            "min": {
+              "x": -76.6657086141688,
+              "y": -66.30085301837279,
+              "z": 0
+            },
+            "max": {
+              "x": 76.6657086141688,
+              "y": 66.30085301837279,
+              "z": 58.869422572178095
+            }
+          },
+          "matches": true
+        }
+      },
+      "rooms": {
+        "count": 14,
+        "withName": 14,
+        "withNumber": 14,
+        "withOutline": 14,
+        "withLevel": 0,
+        "withBounds": 14,
+        "outlineStatus": {
+          "recovered": 14
+        }
+      },
+      "exportOptions": {
+        "nativeRooms": true,
+        "designOptions": "all"
+      },
+      "reader": "IFC4",
+      "standardPropertySets": {
+        "Pset_SlabCommon": 6,
+        "Pset_BuildingElementProxyCommon": 16
+      },
+      "referenceIfc": null
+    },
+    "school": {
+      "source": {
+        "file": "/workspace/models/school.rvt",
+        "sourceSha256": "0d4716f6347205f16b9ff24a6967bf2e879475386d24327365cde0244f867742",
+        "byteLength": 17035264,
+        "version": 2025,
+        "method": "partition-bounds-recovery",
+        "geometryHash": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
+        "meshes": 47,
+        "triangles": 393145,
+        "bounds": 6420,
+        "origin": {
+          "x": 66.8335267332647,
+          "y": -27.355299260846756,
+          "z": -4
+        },
+        "bbox": {
+          "min": {
+            "x": -119.18719944191122,
+            "y": -128.4661259681448,
+            "z": 0
+          },
+          "max": {
+            "x": 119.18719944191122,
+            "y": 128.4661259681448,
+            "z": 44.96271327688179
+          }
+        },
+        "identities": 17523
+      },
+      "baselineChecks": {
+        "geometryHash": {
+          "expected": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
+          "actual": "74cac444b15c8118a24d18b39129cfbb9e38ac13fc96def0101ac32405d9618c",
+          "matches": true
+        },
+        "triangles": {
+          "expected": 393145,
+          "actual": 393145,
+          "matches": true
+        },
+        "meshes": {
+          "expected": 47,
+          "actual": 47,
+          "matches": true
+        },
+        "bounds": {
+          "expected": 6420,
+          "actual": 6420,
+          "matches": true
+        },
+        "origin": {
+          "expected": {
+            "x": 66.8335267332647,
+            "y": -27.355299260846756,
+            "z": -4
+          },
+          "actual": {
+            "x": 66.8335267332647,
+            "y": -27.355299260846756,
+            "z": -4
+          },
+          "matches": true
+        },
+        "bbox": {
+          "expected": {
+            "min": {
+              "x": -119.18719944191122,
+              "y": -128.4661259681448,
+              "z": 0
+            },
+            "max": {
+              "x": 119.18719944191122,
+              "y": 128.4661259681448,
+              "z": 44.96271327688179
+            }
+          },
+          "actual": {
+            "min": {
+              "x": -119.18719944191122,
+              "y": -128.4661259681448,
+              "z": 0
+            },
+            "max": {
+              "x": 119.18719944191122,
+              "y": 128.4661259681448,
+              "z": 44.96271327688179
+            }
+          },
+          "matches": true
+        }
+      },
+      "rooms": {
+        "count": 91,
+        "withName": 91,
+        "withNumber": 91,
+        "withOutline": 85,
+        "withLevel": 0,
+        "withBounds": 91,
+        "outlineStatus": {
+          "recovered": 85,
+          "not-recovered": 6
+        }
+      },
+      "exportOptions": {
+        "nativeRooms": true,
+        "mep": false,
+        "designOptions": "all"
+      },
+      "reader": "IFC4",
+      "standardPropertySets": {
+        "Pset_SlabCommon": 16,
+        "Pset_DoorCommon": 99
+      },
+      "referenceIfc": null
+    },
+    "snowdon": {
+      "source": {
+        "file": "/workspace/models/snowdon.rvt",
+        "sourceSha256": "33271010919acb2a0d0d040851393a511d86ea7fd9a1f4c054797ae03e5e44a1",
+        "byteLength": 94691328,
+        "version": 2024,
+        "method": "partition-bounds-recovery",
+        "geometryHash": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
+        "meshes": 143,
+        "triangles": 1596168,
+        "bounds": 12386,
+        "origin": {
+          "x": -19.777534651013887,
+          "y": 7.618391906695987,
+          "z": -20.91666666666668
+        },
+        "bbox": {
+          "min": {
+            "x": -91.72246534898622,
+            "y": -40.57952475997108,
+            "z": 0
+          },
+          "max": {
+            "x": 91.72246534898622,
+            "y": 40.57952475997108,
+            "z": 94.46082173066117
+          }
+        },
+        "identities": 47232
+      },
+      "baselineChecks": {
+        "geometryHash": {
+          "expected": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
+          "actual": "078627e54948e5911de48e617cd057b6f8ccc936502dd47e52e9433cca0a1be6",
+          "matches": true
+        },
+        "triangles": {
+          "expected": 1596168,
+          "actual": 1596168,
+          "matches": true
+        },
+        "meshes": {
+          "expected": 143,
+          "actual": 143,
+          "matches": true
+        },
+        "bounds": {
+          "expected": 12386,
+          "actual": 12386,
+          "matches": true
+        },
+        "origin": {
+          "expected": {
+            "x": -19.777534651013887,
+            "y": 7.618391906695987,
+            "z": -20.91666666666668
+          },
+          "actual": {
+            "x": -19.777534651013887,
+            "y": 7.618391906695987,
+            "z": -20.91666666666668
+          },
+          "matches": true
+        },
+        "bbox": {
+          "expected": {
+            "min": {
+              "x": -91.72246534898622,
+              "y": -40.57952475997108,
+              "z": 0
+            },
+            "max": {
+              "x": 91.72246534898622,
+              "y": 40.57952475997108,
+              "z": 94.46082173066117
+            }
+          },
+          "actual": {
+            "min": {
+              "x": -91.72246534898622,
+              "y": -40.57952475997108,
+              "z": 0
+            },
+            "max": {
+              "x": 91.72246534898622,
+              "y": 40.57952475997108,
+              "z": 94.46082173066117
+            }
+          },
+          "matches": true
+        }
+      },
+      "rooms": {
+        "count": 54,
+        "withName": 54,
+        "withNumber": 54,
+        "withOutline": 47,
+        "withLevel": 1,
+        "withBounds": 54,
+        "outlineStatus": {
+          "recovered": 47,
+          "not-recovered": 7
+        }
+      },
+      "exportOptions": {
+        "nativeRooms": true,
+        "mep": false,
+        "designOptions": "main-and-primary"
+      },
+      "reader": "IFC4",
+      "standardPropertySets": {
+        "Pset_SlabCommon": 133,
+        "Pset_BuildingElementProxyCommon": 19,
+        "Pset_WallCommon": 3
+      },
+      "referenceIfc": null
+    },
+    "unbc": {
+      "source": {
+        "file": "/workspace/models/unbc.rvt",
+        "sourceSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+        "byteLength": 70336512,
+        "version": 2027,
+        "method": "partition-bounds-recovery",
+        "geometryHash": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+        "meshes": 32,
+        "triangles": 901903,
+        "bounds": 40611,
+        "origin": {
+          "x": -1.5131448815317867,
+          "y": 287.29482336869,
+          "z": -7.217847769028872
+        },
+        "bbox": {
+          "min": {
+            "x": -352.0067084305153,
+            "y": -614.2014975498594,
+            "z": 0
+          },
+          "max": {
+            "x": 352.0067084305153,
+            "y": 614.2014975498594,
+            "z": 62.335958005249346
+          }
+        },
+        "identities": 74437
+      },
+      "baselineChecks": {
+        "geometryHash": {
+          "expected": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+          "actual": "889693a784bd28cceff34674ae262a30f7f4b4c8607405d68375f897951f1bba",
+          "matches": true
+        },
+        "triangles": {
+          "expected": 901903,
+          "actual": 901903,
+          "matches": true
+        },
+        "meshes": {
+          "expected": 32,
+          "actual": 32,
+          "matches": true
+        },
+        "bounds": {
+          "expected": 40611,
+          "actual": 40611,
+          "matches": true
+        },
+        "origin": {
+          "expected": {
+            "x": -1.5131448815317867,
+            "y": 287.29482336869,
+            "z": -7.217847769028872
+          },
+          "actual": {
+            "x": -1.5131448815317867,
+            "y": 287.29482336869,
+            "z": -7.217847769028872
+          },
+          "matches": true
+        },
+        "bbox": {
+          "expected": {
+            "min": {
+              "x": -352.0067084305153,
+              "y": -614.2014975498594,
+              "z": 0
+            },
+            "max": {
+              "x": 352.0067084305153,
+              "y": 614.2014975498594,
+              "z": 62.335958005249346
+            }
+          },
+          "actual": {
+            "min": {
+              "x": -352.0067084305153,
+              "y": -614.2014975498594,
+              "z": 0
+            },
+            "max": {
+              "x": 352.0067084305153,
+              "y": 614.2014975498594,
+              "z": 62.335958005249346
+            }
+          },
+          "matches": true
+        }
+      },
+      "rooms": {
+        "count": 0,
+        "withName": 0,
+        "withNumber": 0,
+        "withOutline": 0,
+        "withLevel": 0,
+        "withBounds": 0,
+        "outlineStatus": {}
+      },
+      "exportOptions": {
+        "nativeRooms": false,
+        "designOptions": "all"
+      },
+      "reader": "IFC4",
+      "standardPropertySets": {
+        "Pset_SlabCommon": 50
+      },
+      "referenceIfc": {
+        "path": "/workspace/models/unbc-reference.ifc",
+        "join": "exact numeric IFC Tag text, separated into product/type; duplicate tags excluded",
+        "exportedTaggedRoots": 38373,
+        "referenceTaggedRoots": 47303,
+        "compared": 35161,
+        "matched": 35161,
+        "mismatched": 0,
+        "ambiguousTags": 2945,
+        "outputOnly": 266,
+        "referenceOnly": 2367,
+        "byEntity": {
+          "IFCWALLSTANDARDCASE -> IFCWALL": {
+            "compared": 7370,
+            "matched": 7370,
+            "mismatched": 0
+          },
+          "IFCWALLTYPE -> IFCWALLTYPE": {
+            "compared": 42,
+            "matched": 42,
+            "mismatched": 0
+          },
+          "IFCWALL -> IFCWALL": {
+            "compared": 140,
+            "matched": 140,
+            "mismatched": 0
+          },
+          "IFCDOOR -> IFCDOOR": {
+            "compared": 112,
+            "matched": 112,
+            "mismatched": 0
+          },
+          "IFCPLATE -> IFCPLATE": {
+            "compared": 6235,
+            "matched": 6235,
+            "mismatched": 0
+          },
+          "IFCMEMBER -> IFCMEMBER": {
+            "compared": 19601,
+            "matched": 19601,
+            "mismatched": 0
+          },
+          "IFCCURTAINWALL -> IFCWALL": {
+            "compared": 825,
+            "matched": 825,
+            "mismatched": 0
+          },
+          "IFCCURTAINWALLTYPE -> IFCWALLTYPE": {
+            "compared": 2,
+            "matched": 2,
+            "mismatched": 0
+          },
+          "IFCSLAB -> IFCSLAB": {
+            "compared": 87,
+            "matched": 87,
+            "mismatched": 0
+          },
+          "IFCROOF -> IFCROOF": {
+            "compared": 8,
+            "matched": 8,
+            "mismatched": 0
+          },
+          "IFCCOLUMN -> IFCCOLUMN": {
+            "compared": 311,
+            "matched": 311,
+            "mismatched": 0
+          },
+          "IFCSTAIRFLIGHT -> IFCSTAIRFLIGHT": {
+            "compared": 96,
+            "matched": 96,
+            "mismatched": 0
+          },
+          "IFCRAILING -> IFCRAILING": {
+            "compared": 202,
+            "matched": 202,
+            "mismatched": 0
+          },
+          "IFCSTAIR -> IFCSTAIR": {
+            "compared": 73,
+            "matched": 73,
+            "mismatched": 0
+          },
+          "IFCCOVERING -> IFCCOVERING": {
+            "compared": 46,
+            "matched": 46,
+            "mismatched": 0
+          },
+          "IFCRAMP -> IFCRAMP": {
+            "compared": 11,
+            "matched": 11,
+            "mismatched": 0
+          }
+        },
+        "mismatchExamples": [],
+        "scope": "Reference export coverage, schema and generated sub-elements can differ; mismatches are reported without assuming equivalence."
+      }
+    }
+  },
+  "mep": {
+    "mechanical": {
+      "file": "/workspace/mep-audit/ifc-ecs-re1-mechanical.rvt",
+      "sha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+      "pages": 243,
+      "milliseconds": 5359,
+      "systemCount": 5,
+      "membershipCount": 78,
+      "connectionCount": 69,
+      "comparison": {
+        "referenceSha256": "9e56cf7246ce86ef73646dd588a1efb8a4756e5e102b30e28b3b58577a454db0",
+        "referenceConnections": 73,
+        "recoveredConnections": 69,
+        "matching": 69,
+        "unexpected": [],
+        "missing": [
+          "427568:6/441892:0",
+          "427568:9/428274:0",
+          "433643:1/491631:1",
+          "433747:1/490317:1"
+        ]
+      },
+      "limitations": [
+        "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+        "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+        "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+      ]
+    },
+    "plumbing": {
+      "file": "/workspace/mep-audit/ifc-ecs-re1-plumbing.rvt",
+      "sha256": "03689df2aa426031a216e65051b9f19d3265d6fe96884dd47373b17435f9e54c",
+      "pages": 230,
+      "milliseconds": 4788,
+      "systemCount": 8,
+      "membershipCount": 138,
+      "connectionCount": 121,
+      "comparison": {
+        "referenceSha256": "294490b222632509779910345f27a4eeda3645956138a593298c241495f7b8b6",
+        "referenceConnections": 126,
+        "recoveredConnections": 121,
+        "matching": 120,
+        "unexpected": [
+          "442378:2/444124:0"
+        ],
+        "missing": [
+          "442581:1/444719:0",
+          "442625:1/445170:0",
+          "443223:1/445078:0",
+          "443279:1/445109:0",
+          "443513:1/445208:0",
+          "446093:2/447241:0"
+        ]
+      },
+      "limitations": [
+        "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+        "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+        "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+      ]
+    }
+  },
+  "fuzz": {
+    "seed": 5396052,
+    "inputs": 256,
+    "targetRuns": 2560,
+    "failures": 0,
+    "corpusDigest": "67b054cdf75e66d8a8158f2af5dcab31bac4e1095839b02a56d15bdbcadacf8b"
+  },
+  "checks": {
+    "unitTests": {
+      "total": 1873,
+      "passed": 1871,
+      "skipped": 2,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "build": "passed",
+    "renderedHtml": "4 passed",
+    "scopedLint": "passed",
+    "repositoryLint": "113 inherited errors and 75 inherited warnings; unchanged from base"
+  }
+}

@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/audit-rvt-semantic-integration.ts",
+  "source": {
+    "file": "/workspace/mep-audit/ifc-ecs-re1-mechanical.rvt",
+    "sourceSha256": "d559720177aa0ec435133f804e7c45d60da2deb9d5585bb3d55f4830139c014b",
+    "byteLength": 3379200,
+    "version": 2025,
+    "method": "partition-bounds-recovery",
+    "geometryHash": "a34cfd61a92fa3032fbe6ad52c1d2d22a2dad1c418e202147e69cef0262a890f",
+    "meshes": 5,
+    "triangles": 2998,
+    "bounds": 489,
+    "origin": {
+      "x": -177.61041447229854,
+      "y": 164.09996100603365,
+      "z": -0.45931758530183764
+    },
+    "bbox": {
+      "min": {
+        "x": -6.455441452386879,
+        "y": -13.19250768698285,
+        "z": 0
+      },
+      "max": {
+        "x": 6.45544145238685,
+        "y": 13.192507686982879,
+        "z": 12.303149606299208
+      }
+    },
+    "identities": 4742
+  },
+  "baseline": null,
+  "semantics": {
+    "rooms": {
+      "count": 0,
+      "withName": 0,
+      "withNumber": 0,
+      "withOutline": 0,
+      "withLevel": 0,
+      "withBounds": 0,
+      "outlineStatus": {}
+    },
+    "parameters": {
+      "elementsWithOwnParameters": 96,
+      "ownParameterValues": 147,
+      "elementsWithTypeParameters": 0,
+      "typeParameterValuesPerElement": 0,
+      "exportOverrideCountsPerElement": {
+        "-1019014": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019015": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019016": {
+          "own": 0,
+          "type": 0
+        },
+        "-1019017": {
+          "own": 0,
+          "type": 0
+        }
+      },
+      "scope": "Type values are counted as attached to each instance, so shared type parameters may repeat."
+    },
+    "designOptions": {
+      "source": "rvt-rs/RE-40@1c3d337",
+      "revitVersion": 2025,
+      "status": "decoded",
+      "positiveEvidence": "unvalidated-positive-2025",
+      "sets": {
+        "count": 0
+      },
+      "unresolvedSets": {
+        "count": 0
+      }
+    },
+    "mep": {
+      "revitVersion": 2025,
+      "systems": {
+        "count": 5
+      },
+      "connections": {
+        "count": 69
+      },
+      "limitations": [
+        "System membership is an ElementId reference in a checksum-verified data object (RE-162), not a decoded system field.",
+        "Unfiltered memberships can include warning records or additional family instances; IFC membership is restricted to emitted products.",
+        "Incomplete objects/connector lists spanning more than the bounded prior-page tail or across a damaged chunk are omitted.",
+        "Only joined ports are recovered; unconnected family-symbol ports and flow direction require native graph decoding."
+      ]
+    },
+    "coverage": {
+      "revitVersion": 2025,
+      "activeDecoders": [
+        "revit-2027-duplicated-bounds-v1",
+        "revit-element-header-category-v1",
+        "revit-builtin-category-token-v1",
+        "revit-2024-2027-elem-table-ownership-v1",
+        "revit-2027-native-identity-v1",
+        "revit-transmission-data-v1",
+        "revit-2027-material-element-name-v1",
+        "revit-2027-material-color-packed-v1",
+        "revit-2027-family-symbol-static-tail-v1",
+        "revit-2027-family-name-path-v1",
+        "revit-2027-basic-wall-compound-material-v1",
+        "revit-2027-insertable-host-id-v1",
+        "revit-2027-native-mesh-visibility-cleanup-v1",
+        "revit-2027-associated-level-id-v1",
+        "revit-2027-certified-grep-brep-mesh-v1",
+        "revit-2027-conditioned-geometry-roots-v1",
+        "revit-2027-placement-referenced-grep-composition-v1"
+      ],
+      "nativeCurves": 0,
+      "nativeProfiles": 0,
+      "nativeMeshes": 1,
+      "nativeMeshFaces": 1636,
+      "nativeMeshElements": 66,
+      "nativeWallProxyReplacements": 0,
+      "nativeMeshOwners": 243,
+      "nativeMeshBoundedTessellatorCandidates": 0,
+      "nativeMeshCompleteBoundedTessellatorRoots": 0,
+      "nativeMeshBoundedTessellatorElements": 0,
+      "nativeMeshConditionedGeometryCandidates": 109,
+      "nativeMeshCompleteConditionedGeometryRoots": 72,
+      "nativeMeshConditionedGeometryElements": 79,
+      "nativeMeshEmbeddedGeometryCandidates": 0,
+      "nativeMeshCompleteEmbeddedGeometryRoots": 0,
+      "nativeMeshEmbeddedGeometryElements": 0,
+      "nativeMeshTriangles": 2794,
+      "nativeMeshDuplicateTrianglesRemoved": 1056,
+      "nativeMeshCrossMaterialDuplicateTrianglesRemoved": 0,
+      "nativeRedundantWallShellTrianglesRemoved": 0,
+      "nativeRedundantWallShellElements": 0,
+      "nativeHostOpeningWallTrianglesClipped": 0,
+      "nativeHostOpeningWallTrianglesGenerated": 0,
+      "nativeMeshTruncated": false,
+      "nativeMeshStoredBytes": 2240472,
+      "nativeMeshBoundsMismatches": 0,
+      "nativeMeshCarrierComposedItems": 0,
+      "nativeMeshCarrierComposedOutsideEnvelope": 0,
+      "nativeMeshMissingBounds": 108,
+      "nativeMeshFamilyDocumentElements": 0,
+      "nativeMeshFamilyDocumentMismatches": 0,
+      "nativeMeshUnrepresentedElements": 89,
+      "nativeMeshNestedDefinitions": 1227,
+      "nativeMeshNestedLinks": 45,
+      "nativeMeshNestedRoots": 0,
+      "nativeMeshCompleteNestedRoots": 0,
+      "nativeMeshPartialNestedRoots": 0,
+      "nativeMeshNestedTriangles": 0,
+      "nativeMeshNestedFailures": 0,
+      "nativeMeshRequestedOwnerDefinitions": 10,
+      "nativeMeshCompleteRequestedOwners": 6,
+      "nativeMeshPartialRequestedOwners": 4,
+      "nativeMeshRequestedOwnerTriangles": 646,
+      "nativeMeshRequestedOwnerFailures": 4,
+      "nativeMaterialDefinitions": 40,
+      "nativeMaterialAssignments": 0,
+      "nativeGeometryMaterialAssignments": 0,
+      "nativeCompoundStructureDefinitions": 1,
+      "nativeCompoundLayerMaterialAssignments": 0,
+      "nativeFamilySymbols": 10,
+      "nativeFamilyRelations": 9,
+      "nativeHostRelations": 1,
+      "nativeAssociatedLevelRelations": 78,
+      "nativeFamilyDefinitions": 4,
+      "nativeUniqueIds": 4742,
+      "nativeOwnershipRecords": 4742,
+      "nativeOwnershipRelations": 1002,
+      "approximateSolids": 17,
+      "nativeCategorisedElements": 368,
+      "geometryFidelity": "certified-native-brep-with-proxy-fallback",
+      "materialFidelity": "native-definitions-unassigned",
+      "semanticFidelity": "native-categories-and-ownership"
+    }
+  },
+  "output": {
+    "path": "/workspace/mep-audit/mechanical-reviter.ifc",
+    "bytes": 383589,
+    "exportOptions": {
+      "nativeRooms": false,
+      "mep": true,
+      "designOptions": "all"
+    },
+    "evidencePath": null,
+    "propertySetNames": {
+      "Reviter_Recovery": 83,
+      "Reviter_RevitInstanceParameters": 34
+    },
+    "standardPropertySets": {},
+    "readerValidation": {
+      "reader": "web-ifc",
+      "schema": "IFC4",
+      "entities": {
+        "IFCDIRECTION": 1,
+        "IFCPERSONANDORGANIZATION": 1,
+        "IFCPROJECT": 1,
+        "IFCRELAGGREGATES": 3,
+        "IFCUNITASSIGNMENT": 1,
+        "IFCSIUNIT": 4,
+        "IFCAPPLICATION": 1,
+        "IFCPRODUCTDEFINITIONSHAPE": 83,
+        "IFCCOLOURRGB": 54,
+        "IFCRELDEFINESBYTYPE": 9,
+        "IFCSURFACESTYLESHADING": 54,
+        "IFCBUILDINGELEMENTPROXY": 83,
+        "IFCCARTESIANPOINT": 3,
+        "IFCOWNERHISTORY": 1,
+        "IFCSURFACESTYLE": 54,
+        "IFCRELASSIGNSTOGROUP": 5,
+        "IFCPROPERTYSET": 117,
+        "IFCMATERIAL": 40,
+        "IFCBUILDINGELEMENTPROXYTYPE": 9,
+        "IFCCARTESIANPOINTLIST3D": 83,
+        "IFCPERSON": 1,
+        "IFCSYSTEM": 5,
+        "IFCLOCALPLACEMENT": 4,
+        "IFCAXIS2PLACEMENT3D": 3,
+        "IFCTRIANGULATEDFACESET": 83,
+        "IFCDISTRIBUTIONPORT": 138,
+        "IFCBUILDINGSTOREY": 1,
+        "IFCRELCONNECTSPORTS": 69,
+        "IFCRELCONTAINEDINSPATIALSTRUCTURE": 1,
+        "IFCRELNESTS": 72,
+        "IFCGEOMETRICREPRESENTATIONCONTEXT": 1,
+        "IFCPROPERTYSINGLEVALUE": 781,
+        "IFCSTYLEDITEM": 83,
+        "IFCBUILDING": 1,
+        "IFCSITE": 1,
+        "IFCGEOMETRICREPRESENTATIONSUBCONTEXT": 1,
+        "IFCRELDEFINESBYPROPERTIES": 117,
+        "IFCSHAPEREPRESENTATION": 83,
+        "IFCORGANIZATION": 1
+      },
+      "scope": "Schema/entity population reopen only; meshes are not tessellated by this check."
+    }
+  },
+  "referenceIfc": {
+    "path": "/workspace/mep-audit/ifc-ecs-re1-mechanical.ifc",
+    "join": "exact numeric IFC Tag text, separated into product/type; duplicate tags excluded",
+    "exportedTaggedRoots": 83,
+    "referenceTaggedRoots": 93,
+    "compared": 74,
+    "matched": 74,
+    "mismatched": 0,
+    "ambiguousTags": 0,
+    "outputOnly": 9,
+    "referenceOnly": 12,
+    "byEntity": {
+      "IFCBUILDINGELEMENTPROXY -> IFCBUILDINGELEMENTPROXY": {
+        "compared": 1,
+        "matched": 1,
+        "mismatched": 0
+      },
+      "IFCFLOWSEGMENT -> IFCBUILDINGELEMENTPROXY": {
+        "compared": 31,
+        "matched": 31,
+        "mismatched": 0
+      },
+      "IFCFLOWTERMINAL -> IFCBUILDINGELEMENTPROXY": {
+        "compared": 7,
+        "matched": 7,
+        "mismatched": 0
+      },
+      "IFCFLOWFITTING -> IFCBUILDINGELEMENTPROXY": {
+        "compared": 35,
+        "matched": 35,
+        "mismatched": 0
+      }
+    },
+    "mismatchExamples": [],
+    "scope": "Reference export coverage, schema and generated sub-elements can differ; mismatches are reported without assuming equivalence."
+  },
+  "referenceGlb": null,
+  "elapsedMs": 8631
+}

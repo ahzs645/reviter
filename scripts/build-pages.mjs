@@ -87,6 +87,11 @@ await Promise.all([
   }),
   build({
     ...shared,
+    entryPoints: [resolve(projectRoot, "lib/reviter/native-evidence-worker.ts")],
+    outfile: resolve(assetsDirectory, "native-evidence-worker-runtime.js"),
+  }),
+  build({
+    ...shared,
     entryPoints: [resolve(projectRoot, "app/studio/cad-review.worker.ts")],
     outfile: resolve(assetsDirectory, "cad-review-worker-runtime.js"),
   }),
