@@ -9,3 +9,6 @@ export function mul(a:number|Rational,b:number|Rational):number|Rational;
 export function div(a:number|Rational,b:number|Rational):number|Rational;
 
 export function orient2d(ax:number|Rational,ay:number|Rational,bx:number|Rational,by:number|Rational,cx:number|Rational,cy:number|Rational):number;
+export function lehmerGcd(a:bigint,b:bigint):bigint;
+export function wasmGcd(a:bigint,b:bigint):bigint;
+export const NATIVE_RATIONAL_GCD_WASM_SHA256:string;
