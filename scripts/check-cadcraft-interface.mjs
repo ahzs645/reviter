@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 import * as THREE from "three";
 import { interfaceModelBytes } from "../tests/fixtures/interface-model.ts";
 import { convertRvtBytes } from "../lib/reviter/convert.ts";
@@ -31,9 +32,9 @@ const server = createServer(async (request, response) => {
 });
 await new Promise(ready => server.listen(0, "127.0.0.1", ready));
 const url = `http://127.0.0.1:${server.address().port}/?navigation-test=1`;
-const browser = await chromium.launch({ headless: true,
+const browser = await chromium.launch({ ...macChrome, headless: true,
   ...(process.env.REVITER_BROWSER_EXECUTABLE ? { executablePath: process.env.REVITER_BROWSER_EXECUTABLE } : {}),
-  args: ["--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+  args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
 const results = [], errors = [];
 let activePage;
 function record(name) { results.push(name); console.log(`PASS ${name}`); }

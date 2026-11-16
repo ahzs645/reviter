@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 
 import { isEntryPoint, optionValue } from "./lib/rvt-harness.ts";
 
@@ -33,7 +34,7 @@ export function parseRenderSvgArguments(argv: string[]): { pairs: [string, strin
 }
 
 export async function renderSvgFiles(pairs: [string, string][], width: number): Promise<void> {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(macChrome);
   try {
     const page = await browser.newPage({
       viewport: { width, height: Math.round(width * 0.75) },

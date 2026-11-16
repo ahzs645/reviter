@@ -11,6 +11,7 @@
  *   node scripts/measure-walk-sources.mjs dist-pages <model.rvt> <reference.ifc> <reference.glb>
  */
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
@@ -43,10 +44,10 @@ await new Promise((ready) => server.listen(4175, ready));
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, headless: true });
 } catch (error) {
   if (!(error instanceof Error) || !/Executable doesn't exist/u.test(error.message)) throw error;
-  browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, channel: "chrome", headless: true });
 }
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 const page = await context.newPage();

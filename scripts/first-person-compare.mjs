@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 
 const [distDir, revitFile, glbFile, outDir, shotsFile] = process.argv.slice(2);
 if (!shotsFile) {
@@ -51,10 +52,10 @@ await new Promise((ready) => server.listen(4179, ready));
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, headless: true });
 } catch (error) {
   if (!(error instanceof Error) || !/Executable doesn't exist/u.test(error.message)) throw error;
-  browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, channel: "chrome", headless: true });
 }
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 const page = await context.newPage();

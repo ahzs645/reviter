@@ -1,10 +1,11 @@
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 
 const url = process.argv[2] ?? "http://localhost:3000/?navigation-test";
 const rvtPath = process.argv[3];
 if (!rvtPath) throw new Error("Usage: node scripts/measure-walk-prewarm.mjs <url> <model.rvt>");
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ ...macChrome, headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on("pageerror", (error) => console.error(`pageerror: ${error.message}`));
 page.on("console", (message) => {

@@ -18,6 +18,7 @@
  * not boot under the local root server.
  */
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
@@ -64,7 +65,7 @@ let browser;
 // headless too. A headed run is still the readable way to watch it.
 const headed = process.env.REVITER_BROWSER_HEADED === "1";
 try {
-  browser = await chromium.launch({ headless: !headed, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, headless: !headed });
 } catch (error) {
   // Local verification should still work when the Playwright package is
   // installed but its separately downloaded browser cache is absent. Reuse
@@ -77,9 +78,9 @@ try {
     throw error;
   }
   browser = await chromium.launch({
+    ...macChrome,
     channel: "chrome",
     headless: !headed,
-    args: ["--no-sandbox"],
   });
 }
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });

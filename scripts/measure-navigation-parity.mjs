@@ -13,6 +13,7 @@
  * rather than part of `npm test`.
  */
 import { chromium } from "playwright";
+import { macChrome } from "./mac-chrome.mjs";
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
@@ -68,10 +69,10 @@ await new Promise((ready) => server.listen(4174, ready));
 // Chrome serves just as well because the page and the model are both local.
 let browser;
 try {
-  browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, headless: true });
 } catch (error) {
   if (!(error instanceof Error) || !/Executable doesn't exist/u.test(error.message)) throw error;
-  browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--no-sandbox"] });
+  browser = await chromium.launch({ ...macChrome, channel: "chrome", headless: true });
 }
 const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
 const page = await context.newPage();
