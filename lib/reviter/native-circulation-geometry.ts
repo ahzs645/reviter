@@ -1203,7 +1203,9 @@ export function checkedNativeSourceTerminalApproachCell(
 
 /** Rebuild walk branches inside each physical cell, keeping all existing fixed
  * door/connector node coordinates. Closed thresholds stay separate graph edges. */
-export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
+/** Progress of attachNativeCirculationCellRoutes; reporting only, no effect on results. */
+export type NativeCellRouteProgress = { phase: "cells" | "owner-arrivals"; done: number; total: number; added: number };
+export function attachNativeCirculationCellRoutes(data: IndoorDataset, onProgress?: (progress: NativeCellRouteProgress) => void): number {
   // A regeneration replaces its earlier derived branches; it must never revive
   // an old polyline because a rebuilt cell happens to reuse the same ID.
   // Reviewed owner links (reviewed-circulation-links.ts) are not derived
@@ -1222,7 +1224,14 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
       .map((e) => [e.from, e.to].sort().join("|")),
   );
   let added = 0;
-  for (const cell of data.circulationGeometry?.cells ?? []) {
+  const allCells = data.circulationGeometry?.cells ?? [];
+  let cellsDone = 0;
+  onProgress?.({ phase: "cells", done: 0, total: allCells.length, added });
+  for (const cell of allCells) {
+    // Reported before each cell's work (every 100 cells), so a skipped cell
+    // cannot suppress a report. Counts only; no geometry decision reads them.
+    if (cellsDone > 0 && cellsDone % 100 === 0) onProgress?.({ phase: "cells", done: cellsDone, total: allCells.length, added });
+    cellsDone++;
     const routeRings = nativeCellDoorApproach(data, context, cell);
     const selected = data.nodes.filter(
       (n) =>
@@ -1481,6 +1490,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
       }
     }
   }
+  onProgress?.({ phase: "cells", done: allCells.length, total: allCells.length, added });
   if (data.nativeIndoorEnvelopes) {
     // Minority stair-landing identities can share an original physical face
     // whose metadata belongs to larger neighbours. Only a still-unapproached
@@ -1490,8 +1500,12 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
     const approached = new Set(data.edges.filter(edge => edge.enabled && edge.kind === "walk" && edge.nativeCellId)
       .flatMap(edge => [edge.from, edge.to]));
     let ownerQuery: ReturnType<typeof createNativeArrivalOwnerQuery> | undefined;
+    const arrivalsToCheck = data.nodes.filter(node => node.kind === "arrival" && !approached.has(node.id)).length;
+    let arrivalsChecked = 0;
+    onProgress?.({ phase: "owner-arrivals", done: 0, total: arrivalsToCheck, added });
     for (const arrival of data.nodes) {
       if (arrival.kind !== "arrival" || approached.has(arrival.id)) continue;
+      if (++arrivalsChecked % 100 === 0) onProgress?.({ phase: "owner-arrivals", done: arrivalsChecked, total: arrivalsToCheck, added });
       const owner = context.records.get(arrival.roomKey);
       if (!owner?.walkable || owner.access === "staff" || owner.elevationFeet !== arrival.pointFeet[2]) continue;
       const ownPortals = (context.doors.get(owner.key) ?? []).flatMap(door => {
@@ -1523,6 +1537,7 @@ export function attachNativeCirculationCellRoutes(data: IndoorDataset): number {
         approached.add(arrival.id); added++; break;
       }
     }
+    onProgress?.({ phase: "owner-arrivals", done: arrivalsToCheck, total: arrivalsToCheck, added });
   }
   if (added || removed) {
     const adjacency = new Map<string, string[]>();

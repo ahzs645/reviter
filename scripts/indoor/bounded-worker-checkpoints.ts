@@ -1,14 +1,21 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
 import {mkdir,open,readFile,rename,rm,link,type FileHandle} from 'node:fs/promises';
-import {resolve,dirname} from 'node:path';
+import {resolve,dirname,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Worker,type ResourceLimits} from 'node:worker_threads';
 
 export type JsonValue=null|boolean|number|string|JsonValue[]|{[key:string]:JsonValue};
-export type FileBinding={name:string;path:string;sha256:string};
-export type CheckpointBinding={version:1;algorithmVersion:string;immutableInputs:FileBinding[];algorithmFiles:FileBinding[];sha256:string};
+/** contentSha256: optional representation-independent value digest
+ * (canonical-value-digest.ts) of the snapshot's value. */
+export type FileBinding={name:string;path:string;sha256:string;contentSha256?:string};
+/** sha256 binds exact files (workers verify every byte they read). reuseSha256,
+ * when every input has a content digest, is the checkpoint reuse identity: the
+ * same values, the same algorithm file contents (by path relative to root) and
+ * the same algorithm version, independent of V8 number representation and of
+ * where the checkout lives. */
+export type CheckpointBinding={version:1;algorithmVersion:string;immutableInputs:FileBinding[];algorithmFiles:FileBinding[];sha256:string;reuseRoot?:string;reuseSha256?:string};
 export type CheckpointTask={id:string;input:JsonValue;estimatedMemoryBytes:number};
 export type CheckpointResult={id:string;path:string;resultSha256:string;resultBytes:number;reused:boolean};
 export type CheckpointWorkerContext={binding:CheckpointBinding;readVerifiedInput:(name:string)=>Promise<Uint8Array>};
@@ -58,19 +65,30 @@ export function strictJson(value:unknown):string {
 export async function hashFile(path:string):Promise<string> {
  const hash=createHash('sha256');for await(const chunk of createReadStream(path))hash.update(chunk);return hash.digest('hex');
 }
-const bindingBytes=(b:Omit<CheckpointBinding,'sha256'>|CheckpointBinding)=>JSON.stringify({version:b.version,algorithmVersion:b.algorithmVersion,immutableInputs:b.immutableInputs,algorithmFiles:b.algorithmFiles});
-export async function createCheckpointBinding(options:{immutableInputs:{name:string;path:string}[];algorithmFiles:string[];algorithmVersion:string}):Promise<CheckpointBinding> {
+const bindingBytes=(b:Omit<CheckpointBinding,'sha256'>|CheckpointBinding)=>JSON.stringify({version:b.version,algorithmVersion:b.algorithmVersion,immutableInputs:b.immutableInputs,algorithmFiles:b.algorithmFiles,...(b.reuseRoot!==undefined?{reuseRoot:b.reuseRoot}:{})});
+/** Reuse identity (see CheckpointBinding); undefined unless every input has a content digest. */
+export function checkpointReuseSha256(b:Pick<CheckpointBinding,'algorithmVersion'|'immutableInputs'|'algorithmFiles'|'reuseRoot'>):string|undefined {
+ if(b.reuseRoot===undefined||!b.immutableInputs.every(f=>f.contentSha256&&hashPattern.test(f.contentSha256)))return;
+ return sha256(JSON.stringify({format:'reviter-checkpoint-reuse',version:2,algorithmVersion:b.algorithmVersion,
+  inputs:b.immutableInputs.map(f=>({name:f.name,contentSha256:f.contentSha256})),
+  algorithm:b.algorithmFiles.map(f=>({path:relative(b.reuseRoot!,f.path).split(sep).join('/'),sha256:f.sha256})).sort((x,y)=>x.path<y.path?-1:x.path>y.path?1:0)}));
+}
+/** The identity checkpoints are stored and matched under. */
+export const checkpointIdentity=(b:CheckpointBinding)=>b.reuseSha256??b.sha256;
+export async function createCheckpointBinding(options:{immutableInputs:{name:string;path:string;contentSha256?:string}[];algorithmFiles:string[];algorithmVersion:string;reuseRoot?:string}):Promise<CheckpointBinding> {
  if(!options.algorithmVersion||!options.immutableInputs.length||!options.algorithmFiles.length)throw Error('Full immutable input and transitive algorithm bindings required');
  if(new Set(options.immutableInputs.map(f=>f.name)).size!==options.immutableInputs.length)throw Error('Duplicate immutable input names');
  const inputs=options.immutableInputs.toSorted((a,b)=>a.name.localeCompare(b.name));
  const algorithm=[...new Set([...options.algorithmFiles, fileURLToPath(new URL('./bounded-worker-checkpoints.ts',import.meta.url)),fileURLToPath(new URL('./bounded-checkpoint-worker.ts',import.meta.url))].map(p=>resolve(p)))].sort();
  const b:Omit<CheckpointBinding,'sha256'>={version:1,algorithmVersion:options.algorithmVersion,
-  immutableInputs:await Promise.all(inputs.map(async f=>({name:f.name,path:resolve(f.path),sha256:await hashFile(resolve(f.path))}))),
-  algorithmFiles:await Promise.all(algorithm.map(async path=>({name:path,path,sha256:await hashFile(path)})))};
- return {...b,sha256:sha256(bindingBytes(b))};
+  immutableInputs:await Promise.all(inputs.map(async f=>({name:f.name,path:resolve(f.path),sha256:await hashFile(resolve(f.path)),...(f.contentSha256?{contentSha256:f.contentSha256}:{})}))),
+  algorithmFiles:await Promise.all(algorithm.map(async path=>({name:path,path,sha256:await hashFile(path)}))),
+  ...(options.reuseRoot!==undefined?{reuseRoot:resolve(options.reuseRoot)}:{})};
+ const reuseSha256=checkpointReuseSha256(b);
+ return {...b,sha256:sha256(bindingBytes(b)),...(reuseSha256?{reuseSha256}:{})};
 }
 export async function verifyCheckpointBinding(binding:CheckpointBinding):Promise<void> {
- if(binding.version!==1||!binding.algorithmVersion||!binding.immutableInputs.length||!binding.algorithmFiles.length||!hashPattern.test(binding.sha256)||sha256(bindingBytes(binding))!==binding.sha256)throw Error('Invalid checkpoint binding');
+ if(binding.version!==1||!binding.algorithmVersion||!binding.immutableInputs.length||!binding.algorithmFiles.length||!hashPattern.test(binding.sha256)||sha256(bindingBytes(binding))!==binding.sha256||binding.reuseSha256!==checkpointReuseSha256(binding))throw Error('Invalid checkpoint binding');
  for(const f of [...binding.immutableInputs,...binding.algorithmFiles])if(!hashPattern.test(f.sha256)||await hashFile(f.path)!==f.sha256)throw Error('Stale checkpoint input or algorithm: '+f.name);
 }
 
@@ -133,13 +151,13 @@ export async function runBoundedCheckpointTasks(options:{workerModule:URL;checkp
  const pending=options.tasks.map((t,index)=>({id:t.id,index,estimatedMemoryBytes:t.estimatedMemoryBytes,inputJson:strictJson(t.input),inputSha256:sha256(strictJson(t.input))}));
  if(pending.some(t=>Buffer.byteLength(t.inputJson)>t.estimatedMemoryBytes))throw Error('Task input exceeds declared memory budget');
  const results:CheckpointResult[]=new Array(pending.length),directory=resolve(options.checkpointDir);await mkdir(directory,{recursive:true});
- const lockPath=resolve(directory,'.runner-lock'),lock=await acquireDirectoryLock(lockPath,binding.sha256);
+ const lockPath=resolve(directory,'.runner-lock'),lock=await acquireDirectoryLock(lockPath,checkpointIdentity(binding));
  const workers:Worker[]=[],slots:{worker:Worker;busy:boolean}[]=[],active=new Map<number,Promise<{slot:number;task:typeof pending[number];message:{resultJson:string}|{error:string}}>>();
  let completed=0,inFlight=0,peakInFlightBytes=0,peakWorkers=0;
  try{
   for(let i=pending.length-1;i>=0;i--){const t=pending[i]!,path=resolve(directory,sha256(t.id)+'.checkpoint'),old=await inspect(path);
-   if(old&&old.header.resultBytes<=maximumResult&&old.header.resultBytes<=t.estimatedMemoryBytes&&old.header.bindingSha256===binding.sha256&&old.header.taskId===t.id&&old.header.taskInputSha256===t.inputSha256){results[t.index]={id:t.id,path,resultSha256:old.header.resultSha256,resultBytes:old.header.resultBytes,reused:true};pending.splice(i,1);completed++;options.onProgress?.({id:t.id,reused:true,completed,total:options.tasks.length});}}
-  if(!pending.length){await verifyCheckpointBinding(binding);return {results,bindingSha256:binding.sha256,peakWorkers:0,peakInFlightBytes:0};}
+   if(old&&old.header.resultBytes<=maximumResult&&old.header.resultBytes<=t.estimatedMemoryBytes&&old.header.bindingSha256===checkpointIdentity(binding)&&old.header.taskId===t.id&&old.header.taskInputSha256===t.inputSha256){results[t.index]={id:t.id,path,resultSha256:old.header.resultSha256,resultBytes:old.header.resultBytes,reused:true};pending.splice(i,1);completed++;options.onProgress?.({id:t.id,reused:true,completed,total:options.tasks.length});}}
+  if(!pending.length){await verifyCheckpointBinding(binding);return {results,bindingSha256:checkpointIdentity(binding),peakWorkers:0,peakInFlightBytes:0};}
   const largest=Math.max(...pending.map(t=>t.estimatedMemoryBytes)),count=Math.min(options.maxWorkers,pending.length,base?Math.floor((options.maxInFlightBytes-largest)/base):options.maxWorkers);
   if(count<1)throw Error('Worker base memory plus task exceeds budget');
   inFlight=base*count;peakInFlightBytes=inFlight;
@@ -158,9 +176,9 @@ export async function runBoundedCheckpointTasks(options:{workerModule:URL;checkp
    const finished=await Promise.race(active.values()),{task,message}=finished;active.delete(finished.slot);slots[finished.slot]!.busy=false;inFlight-=task.estimatedMemoryBytes;
    if('error'in message)throw Error('Task '+task.id+' failed: '+message.error);
    const bytes=Buffer.byteLength(message.resultJson);if(!positive(bytes)||bytes>maximumResult||bytes>task.estimatedMemoryBytes)throw Error('Task result exceeds declared memory/result budget: '+task.id);
-   const header:Header={format:'reviter-bounded-checkpoint',version:1,bindingSha256:binding.sha256,taskId:task.id,taskInputSha256:task.inputSha256,resultSha256:sha256(message.resultJson),resultBytes:bytes},path=resolve(directory,sha256(task.id)+'.checkpoint');
+   const header:Header={format:'reviter-bounded-checkpoint',version:1,bindingSha256:checkpointIdentity(binding),taskId:task.id,taskInputSha256:task.inputSha256,resultSha256:sha256(message.resultJson),resultBytes:bytes},path=resolve(directory,sha256(task.id)+'.checkpoint');
    await options.beforeCheckpointCommit?.(task.id);await atomicCheckpoint(path,header,message.resultJson);results[task.index]={id:task.id,path,resultSha256:header.resultSha256,resultBytes:bytes,reused:false};completed++;options.onProgress?.({id:task.id,reused:false,completed,total:options.tasks.length});
   }
-  await verifyCheckpointBinding(binding);return {results,bindingSha256:binding.sha256,peakWorkers,peakInFlightBytes};
+  await verifyCheckpointBinding(binding);return {results,bindingSha256:checkpointIdentity(binding),peakWorkers,peakInFlightBytes};
  }finally{await Promise.allSettled(workers.map(w=>w.terminate()));await lock.close();await rm(lockPath,{force:true});}
 }

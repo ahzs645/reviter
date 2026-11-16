@@ -1411,11 +1411,19 @@ export async function prepareIndoorDataset(
     throw new Error("Native doorway closure replay requires the completed same-source physical fixture inventory.");
   for (const level of new Set(completedDoorClosures.map(d => d.levelId)))
     nativeDoorBoundaryClosureFootprints(dataset, level);
-  const nativeBranches = attachNativeCirculationCellRoutes(dataset);
+  // Progress only: this stage ran for hours without output in campus runs.
+  const nativeBranches = attachNativeCirculationCellRoutes(dataset, p => progress(p.phase === "cells"
+    ? `Attaching native cell walking branches · ${p.done}/${p.total} cells · ${p.added} branches`
+    : `Recovering minority-owner native arrivals · ${p.done}/${p.total} unapproached arrivals · ${p.added} branches`));
+  if (options.originalDoorDerivedStandings?.length)
+    progress(`Attaching ${options.originalDoorDerivedStandings.length} original-source door standings…`);
   const sourceStandingAttachments = (options.originalDoorDerivedStandings ?? []).map(source =>
     attachOriginalDoorDerivedStanding(dataset, source, geo));
+  if (options.originalStairBaseDerivedStandings?.length)
+    progress(`Attaching ${options.originalStairBaseDerivedStandings.length} original-source stair-base standings…`);
   const sourceStairBaseAttachments = (options.originalStairBaseDerivedStandings ?? []).map(source =>
     attachOriginalStairBaseDerivedStanding(dataset, source, geo));
+  progress("Replaying reviewed circulation links…");
   {
     // Owner-reviewed links between existing nodes, replayed physically.
     const links = applyReviewedCirculationLinks(dataset);
