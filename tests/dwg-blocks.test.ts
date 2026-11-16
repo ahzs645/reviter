@@ -129,8 +129,8 @@ test("a circle under an uneven scale is dropped rather than drawn wrong", () => 
 });
 
 test("the blank a block leaves for a value is not printed over the value", () => {
-  // The filled-in ATTRIB is a sibling of the INSERT in model space and is drawn
-  // from there; drawing the block's ATTDEF too would stamp the prompt text.
+  // The filled-in ATTRIB hangs off the INSERT and is drawn from there; drawing
+  // the block's ATTDEF too would stamp the prompt text.
   const blocks = dwgBlockDefinitions(database({
     ROOM: [
       { type: "ATTDEF", layer: "0", startPoint: { x: 0, y: 0 }, text: "ROOM NAME", height: 1 },
@@ -142,4 +142,96 @@ test("the blank a block leaves for a value is not printed over the value", () =>
   ], { blocks });
   assert.equal(out.length, 1);
   assert.equal(out[0]?.text, undefined);
+});
+
+/**
+ * A room tag as LibreDWG hands it back from the UNBC survey drawing: the block
+ * holds only ATTDEFs, and the values ride on the INSERT as `attribs`, with the
+ * text nested under `text` and positions already in model space.
+ */
+const roomTag = (handle: string, number: string, use: string, at: [number, number]) => ({
+  type: "INSERT", handle, layer: "0_room_data", name: "room_data", ownerBlockRecordSoftId: "22",
+  insertionPoint: { x: at[0], y: at[1] }, xScale: 0.5, yScale: 0.5, rotation: 0,
+  attribs: [
+    {
+      type: "ATTRIB", handle: `${handle}1`, ownerBlockRecordSoftId: handle, layer: "3_Text",
+      tag: "ROOMNUM", flags: 0, alignmentPoint: { x: at[0], y: at[1] },
+      text: {
+        text: number, textHeight: 230, halign: 1, valign: 2,
+        startPoint: { x: at[0] - 460, y: at[1] - 115 }, endPoint: { x: at[0], y: at[1] },
+      },
+    },
+    {
+      type: "ATTRIB", handle: `${handle}2`, ownerBlockRecordSoftId: handle, layer: "3_Text",
+      tag: "ROOMUSE", flags: 0, alignmentPoint: { x: at[0], y: at[1] - 383 },
+      text: {
+        text: use, textHeight: 230, halign: 1, valign: 2,
+        startPoint: { x: at[0] - 900, y: at[1] - 498 }, endPoint: { x: at[0], y: at[1] - 383 },
+      },
+    },
+  ],
+});
+
+const roomTagBlock = database({
+  room_data: [
+    { type: "ATTDEF", layer: "3_Text", tag: "ROOMNUM", prompt: "Room number", text: { startPoint: { x: -918, y: -172 }, textHeight: 345 } },
+    { type: "ATTDEF", layer: "3_Text", tag: "ROOMUSE", prompt: "Room use", text: { startPoint: { x: -900, y: -700 }, textHeight: 345 } },
+  ],
+});
+
+test("a block reference's attribute values are read, tagged and anchored", () => {
+  const out = convertDwgEntities([roomTag("DD565", "02-110", "High Voltage Service", [124883, 115113])], {
+    ownerHandle: "22",
+    blocks: dwgBlockDefinitions(roomTagBlock),
+  });
+  assert.deepEqual(out.map((entity) => [entity.tag, entity.text]), [
+    ["ROOMNUM", "02-110"],
+    ["ROOMUSE", "High Voltage Service"],
+  ]);
+  const [number] = out;
+  assert.equal(number?.type, "ATTRIB");
+  assert.equal(number?.layer, "3_Text", "the attribute's own layer, not the reference's");
+  assert.equal(number?.height, 230);
+  // Positions are model space already: the INSERT's 0.5 scale is not applied.
+  assert.deepEqual(number?.centre, [124423, 114998]);
+  assert.deepEqual(number?.anchor, [124883, 115113], "centred text pins to its alignment point");
+  assert.equal(number?.block, "room_data");
+  assert.equal(number?.insert, "DD565", "both attributes name the reference that pairs them");
+  assert.equal(out[1]?.insert, "DD565");
+});
+
+test("an attribute is drawn once, whether or not model space can be told apart", () => {
+  const tag = roomTag("DD565", "02-110", "Office", [0, 0]);
+  // LibreDWG lists each attribute twice: on the INSERT, and in the entity list
+  // owned by the INSERT's handle.
+  const raw = [tag, ...tag.attribs];
+  const blocks = dwgBlockDefinitions(roomTagBlock);
+  for (const ownerHandle of ["22", null]) {
+    const out = convertDwgEntities(raw, { ownerHandle, blocks });
+    assert.deepEqual(out.map((entity) => entity.text), ["02-110", "Office"], `owner ${ownerHandle}`);
+  }
+  // Without block definitions the values still come through; nothing else does.
+  assert.equal(convertDwgEntities([tag], {}).length, 2);
+});
+
+test("an invisible attribute prints nothing", () => {
+  const tag = roomTag("A1", "10-2050", "Office", [0, 0]);
+  tag.attribs[1]!.flags = 1;
+  const out = convertDwgEntities([tag], {});
+  assert.deepEqual(out.map((entity) => entity.text), ["10-2050"]);
+});
+
+test("attributes of a block nested in a block move with the outer reference", () => {
+  const blocks = dwgBlockDefinitions(database({
+    ...Object.fromEntries([["room_data", roomTagBlock.tables.BLOCK_RECORD.entries[1]!.entities]]),
+    // A wing drawn once and placed twice: its room tags are in the wing's space.
+    WING: [roomTag("B1", "08-101", "Office", [10, 0])],
+  }));
+  const out = convertDwgEntities([
+    { type: "INSERT", handle: "W1", layer: "0", name: "WING", insertionPoint: { x: 1_000, y: 0 }, xScale: 1, yScale: 1, rotation: 0 },
+  ], { blocks });
+  const number = out.find((entity) => entity.tag === "ROOMNUM");
+  assert.deepEqual(number?.anchor, [1_010, 0]);
+  assert.equal(number?.insert, "W1", "the model-space reference, not the one inside the block");
+  assert.equal(number?.block, "WING");
 });
