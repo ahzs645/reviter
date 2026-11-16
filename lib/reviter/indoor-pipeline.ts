@@ -82,6 +82,7 @@ import {
 import { recoverRegisteredOpenFronts, recoverRegisteredCirculationSeams } from "./registered-open-fronts.ts";
 import { recoverRegisteredSourceDoors } from "./registered-source-doors.ts";
 import { recoverNativeDoorOwnership, recoverRegisteredStairDoorOwnership } from "./native-door-ownership.ts";
+import { evaluateNativeDoorOwner, nativeDoorOwnerPlaneCells, nativeDoorOwnerReviewKey, reviewedNativeDoorOwnerPortal, validateNativeDoorOwnerDecisions, type NativeDoorOwnerEvidence, type NativeDoorOwnerReviewOption } from "./reviewed-native-door-owners.ts";
 import { nativeArrivalFloorSupport } from "./indoor-arrival-recovery.ts";
 import { directoryOpenPassages } from "./directory-openings.ts";
 import { localBuildingConnections } from "./building-transitions.ts";
@@ -154,6 +155,10 @@ export async function prepareIndoorDataset(
      * immediately before closure/landing validation. Throwing aborts compilation;
      * the observer cannot amend compiler inputs or confer validation authority. */
     onPreLandingSnapshot?: (snapshot: IndoorDataset) => void | Promise<void>;
+    /** Door-scoped native-cell owner review (reviewed-native-door-owners.ts).
+     * Only the listed doors are affected; each is applied exactly as listed or
+     * the compile throws. Absent: door matching is unchanged. */
+    nativeDoorOwnerReview?: NativeDoorOwnerReviewOption;
   } = {},
 ): Promise<IndoorDataset> {
   const data = parseRoomDirectory(JSON.stringify(input));
@@ -188,6 +193,27 @@ export async function prepareIndoorDataset(
   const sourceRooms = data.annotations
     .filter((r) => r.status !== "deleted")
     .sort((a, b) => a.key.localeCompare(b.key));
+  const nativeDoorOwnerReview = options.nativeDoorOwnerReview;
+  if (nativeDoorOwnerReview) {
+    // Static refusals first: the geometric decision needs the native plane and
+    // is made where the level's doors are matched.
+    validateNativeDoorOwnerDecisions(nativeDoorOwnerReview.decisions);
+    if (nativeDoorOwnerReview.decisions.length && !(data.nativeIndoorEnvelopes && data.nativeMaterialSections))
+      throw new Error("Native door owner review needs a project with native indoor envelopes and material sections.");
+    for (const d of nativeDoorOwnerReview.decisions) {
+      const refuse = (reason: string) => { throw new Error(`Native door owner review refused for door ${d.nativeDoorId} on level ${d.levelId}: ${reason}`); };
+      if (!model.elementBounds.some(r => r.elementId === d.nativeDoorId && r.categoryId === -2000023) ||
+        !model.nativeAssociatedLevelRelations?.some(r => r.elementId === d.nativeDoorId && r.levelId === d.levelId))
+        refuse("no native door with this id is associated with the level.");
+      if ((data.navigation?.doorLinks ?? []).some(l => l.doorId === d.nativeDoorId && l.levelId === d.levelId))
+        refuse("a reviewed door link already names this door; explicit reviews keep precedence.");
+      for (const key of d.roomKeys) {
+        const room = sourceRooms.find(r => r.key === key);
+        if (!room || room.levelId !== d.levelId || !isWalkable(room)) refuse(`room ${key} is not a walkable area on the door's level.`);
+      }
+    }
+  }
+  const appliedNativeDoorOwners = new Set<string>();
   const elevations = Object.assign(
     {},
     ...[...new Set(sourceRooms.map((r) => r.levelId))].map(
@@ -709,6 +735,78 @@ export async function prepareIndoorDataset(
         undefined, review.door.id, levelId,
       );
     }
+    // Door-scoped native-cell owner review: only the listed doors, and only
+    // after the ordinary matcher and the automatic recoveries above left them
+    // without a portal. Anything else is refused and aborts the compile.
+    const ownerRows = nativeDoorOwnerReview ? [
+      ...nativeDoorOwnerReview.decisions.filter(d => d.levelId === levelId).map(d => ({ nativeDoorId: d.nativeDoorId, roomKeys: d.roomKeys as [string, string] | undefined })),
+      ...(nativeDoorOwnerReview.observe ?? []).filter(d => d.levelId === levelId).map(d => ({ nativeDoorId: d.nativeDoorId, roomKeys: undefined as [string, string] | undefined })),
+    ] : [];
+    if (ownerRows.length) {
+      const plane = dataset.nativeLevels.find(l => l.id === levelId);
+      const ownerDoors = ownerRows.flatMap(row => nativeDoors.filter(d => d.id === row.nativeDoorId && d.footprint && d.normal));
+      let planeCells: ReturnType<typeof nativeDoorOwnerPlaneCells> | undefined;
+      // Reviewed boundary walls enter level by level. A plane shared by several
+      // native levels is not complete while this level is matched: refuse.
+      const cellsUnavailable = !strictNativeRouting
+        ? "The project has no native indoor envelopes and material sections."
+        : !plane
+          ? "The level has no native plane."
+          : dataset.nativeLevels.filter(l => Math.abs(l.elevationFeet - plane.elevationFeet) < 0.05).length !== 1
+            ? "Several native levels share this plane; its native cells are not complete at door matching."
+            : undefined;
+      if (plane && !cellsUnavailable && ownerDoors.length) {
+        // The plane's own exact free floor: the authority the native
+        // circulation cells are cut from, never a room outline.
+        ownershipPhysicalQuery ??= createNativeWalkingRegionQuery(model, dataset);
+        const planeLevels = new Set([
+          ...records.filter(r => r.walkable && Math.abs(r.elevationFeet - plane.elevationFeet) < 0.05).map(r => r.levelId),
+          ...dataset.nativeLevels.filter(l => Math.abs(l.elevationFeet - plane.elevationFeet) < 0.05).map(l => l.id),
+        ]);
+        planeCells = nativeDoorOwnerPlaneCells({
+          dataset, elevationFeet: plane.elevationFeet,
+          region: ownershipPhysicalQuery(plane.elevationFeet, true),
+          thresholdsFeet: [
+            ...[...planeLevels].flatMap(id => cachedDirectoryDoors(id).flatMap(d => d.footprint ? [d.footprint] : [])),
+            ...drawnDoors.filter(d => planeLevels.has(d.patch.levelId)).map(d => d.patch.apertureFeet),
+          ],
+          doors: ownerDoors,
+        });
+      }
+      for (const row of ownerRows) {
+        const door = nativeDoors.find(d => d.id === row.nativeDoorId),
+          review = reviews.find(r => r.door.id === row.nativeDoorId);
+        const evidence: NativeDoorOwnerEvidence = {
+          ...evaluateNativeDoorOwner({
+            levelId, nativeDoorId: row.nativeDoorId, listedRoomKeys: row.roomKeys, rooms, door, review,
+            explicitLinks: data.navigation?.doorLinks ?? [], cells: planeCells?.cells ?? [], cellsUnavailable,
+            roomElevationFeet: key => byRecord.get(key)?.elevationFeet,
+          }),
+          ...(plane ? { elevationFeet: plane.elevationFeet } : {}),
+          ...(planeCells ? { cells: { planeFaces: planeCells.planeFaces, classifiedNearDoor: planeCells.classifiedNearDoor } } : {}),
+        };
+        if (!row.roomKeys) { nativeDoorOwnerReview!.onEvidence?.(evidence); continue; }
+        const portal = evidence.accepted ? reviewedNativeDoorOwnerPortal(rooms, door!, planeCells!.cells) : undefined;
+        const exported = dataset.doors!.find(d => d.levelId === levelId && d.nativeElementId === row.nativeDoorId);
+        if (!evidence.accepted || !portal || !exported || [...portal.rooms].sort().join("\n") !== [...row.roomKeys].sort().join("\n")) {
+          const refused = { ...evidence, accepted: false, reason: evidence.reason ?? "The native-cell portal could not be built for the listed rooms." };
+          nativeDoorOwnerReview!.onEvidence?.(refused);
+          throw new Error(`Native door owner review refused for door ${row.nativeDoorId} on level ${levelId}: ${refused.reason}`);
+        }
+        review!.portal = portal;
+        review!.state = "connected";
+        review!.candidates = [...new Set([...review!.candidates, ...portal.rooms])];
+        exported.roomKeys = [...portal.rooms];
+        exported.state = "connected";
+        appliedNativeDoorOwners.add(nativeDoorOwnerReviewKey(levelId, row.nativeDoorId));
+        issue(
+          "reviewed-native-cell-door-owner",
+          `Door owners taken from the native wall-bounded cells on each side by a door-scoped source review: ${JSON.stringify(evidence.native!.sides.map(s => ({ side: s.side, cellId: s.cellId, stepFeet: s.stepFeet, owner: s.owner, ownerGapFeet: s.ownerGapFeet })))}. The registered outline stops short of the wall; the 2 ft owner gap was not widened. Access and accessibility remain unverified.`,
+          undefined, row.nativeDoorId, levelId,
+        );
+        nativeDoorOwnerReview!.onEvidence?.({ ...evidence, applied: true, portal });
+      }
+    }
     // A drawing-backed door joins its two rooms through the checked aperture like a reviewed native
     // door; it has a synthetic identity, one door edge and unknown access.
     const drawnPorts = drawnDoors.filter(d => d.patch.levelId === levelId).map(({ patch, proof }) => {
@@ -859,6 +957,9 @@ export async function prepareIndoorDataset(
     }
     for(const message of nativeWalkingQuery.diagnostics())issue("native-geometry-unclassified",message,undefined,undefined,levelId);
   }
+  for (const d of nativeDoorOwnerReview?.decisions ?? [])
+    if (!appliedNativeDoorOwners.has(nativeDoorOwnerReviewKey(d.levelId, d.nativeDoorId)))
+      throw new Error(`Native door owner review refused for door ${d.nativeDoorId} on level ${d.levelId}: the level's doors were never matched.`);
   for (const s of directoryStairs(
     model,
     sourceRooms,
