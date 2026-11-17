@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "tmp/**",
     "outputs/**",
     "artifacts/**",
+    // Recorded one-off Colab diagnostics kept with a handoff, not product code.
+    "docs/continuation/**/colab/**",
   ]),
 ]);
 
