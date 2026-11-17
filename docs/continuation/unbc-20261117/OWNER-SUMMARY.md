@@ -41,7 +41,7 @@ All on the Mac in `~/unbc-work/vest-master2/`:
 - **`C-master-0388.zip`**: the test build with the 10-1300 change and the
   faster code. Same results as A; 10-1300 still refused by the app.
 
-Nothing is published. The code is on GitHub on branches; `main` on GitHub is unchanged.
+No new map dataset is published. **Correction:** both `main` branches were pushed on November 17; see [OWNER-DECISIONS.md](OWNER-DECISIONS.md) for what followed.
 
 ## Decisions waiting on you
 
@@ -111,8 +111,8 @@ Done on November 17:
   branches, including these documents), `unbc/producer-native-door-owners` in
   both, and `unbc/gap-requal-ae70cc07` in openindoormaps.
 
-Still your call: the `main` branches on GitHub are not updated, because
-pushing `main` redeploys the two public sites.
+**Correction:** the `main` branches on GitHub were updated on November 17
+(OpenIndoorMaps redeployed; Reviter after its lint fix).
 
 Already in Drive: the rebuild inputs, the gap-patch files
 (`UNBC-sliver-contacts/upload`) and the first Colab package

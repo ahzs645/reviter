@@ -1,0 +1,63 @@
+{
+  "date": "2026-11-17",
+  "source": "owner answers via the UNBC Map Decisions page",
+  "standingRule": "No Revit re-save: fix model problems in our own reviewed data and compiler rules. Heavy processing on Colab, run by the owner from the committed branch.",
+  "decisions": {
+    "D1": {
+      "answer": "open bay from 06-207 Vestibule to 06-210 Corridor",
+      "ownerNote": "it opens to the outside",
+      "reading": "06-207 is also an exterior entrance vestibule"
+    },
+    "D2": {
+      "answer": "suite 07-303..07-308 reached through the gap between doors 1732467 and 1715768"
+    },
+    "D3": {
+      "answer": "06-313 and 06-314 are staff-only",
+      "ownerNote": "its locked to get to the projector room"
+    },
+    "D4": {
+      "answer": "allow walk-through of 06-372 Reception and 06-376 Open Work Area only",
+      "ownerNote": "06-372 and 06-376 is the open area; just an open area with a desk"
+    },
+    "D5": {
+      "answer": "04-259 Rotunda is circulation; 04-256 and 04-257 are enclosed offices (boundary leak to fix)"
+    },
+    "D6": {
+      "answer": "door 2315416 opens from 08-360 Link straight into 08-316"
+    },
+    "D7": {
+      "answer": "keep the 28 held stairs held until after the rebuild from main"
+    },
+    "D8": {
+      "answer": null,
+      "ownerNote": "assume the doors are fine just the ramps vs stairs?",
+      "reading": "doors step-free; stairs not; ramps and lifts step-free; confirm before publishing a step-free claim"
+    },
+    "D9": {
+      "answer": "one tolerance rule at all joins, tested on 10-1300 and the November 5 sliver cases",
+      "ownerNote": "assume going forward there is not revit fix, but if we can make a fix ourselves that would be good"
+    },
+    "D10": {
+      "answer": "adopt faster exact arithmetic in both repositories"
+    },
+    "D11": {
+      "answer": "build both speed-ups: 06-388 link inside the rebuild and per-level parallel explore mapping"
+    },
+    "D12": {
+      "answer": "rebuild from main"
+    },
+    "D13": {
+      "answer": "update the 8 policy-matrix expectations to the new values"
+    },
+    "D14": {
+      "answer": "one batch of our own fixes after D1-D6 (no Revit re-save)",
+      "ownerNote": "push what you need to this branch committed and then I will open a local chat to run it in Google Colab"
+    },
+    "D15": {
+      "answer": "push the Reviter lint fix to main"
+    },
+    "D16": {
+      "answer": "tag the three build bases, delete the fully merged branches"
+    }
+  }
+}

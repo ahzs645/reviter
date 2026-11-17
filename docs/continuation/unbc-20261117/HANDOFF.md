@@ -9,9 +9,15 @@ Read this file first, then the vestibule record in the sibling repository:
 (evidence, hashes and receipts for everything below). Performance detail is
 in [PERFORMANCE.md](PERFORMANCE.md).
 
-Nothing in this handoff has been published. On November 17 all local commits
-were pushed to GitHub on branches; the two `main` branches on GitHub were not
-updated (see "Repositories").
+Nothing in this handoff has been published as a new map dataset.
+
+**Correction, November 17 (later):** both `main` branches *were* pushed to
+GitHub (Reviter `41a1ada`, openindoormaps `312e363`, equal to the
+`handoff/unbc-20261117` branches). The OpenIndoorMaps Pages site redeployed
+(docs plus two map-fit fixes). Reviter CI failed at lint on the two recorded
+Colab scripts in [colab/](colab/), so its site did not redeploy until the lint
+fix that follows this note. The owner's answers to the open decisions are in
+[OWNER-DECISIONS.md](OWNER-DECISIONS.md).
 
 ## Standing rules from the owner
 
@@ -60,8 +66,8 @@ explore mapping.
 
 | Repository | State |
 | --- | --- |
-| `reviter` local `main` | 16 commits ahead of `origin/main`. The same commits are on GitHub as branch `handoff/unbc-20261117` (`b9e8991` or later). `origin/main` is not updated: pushing it redeploys the Pages site, owner's decision. `.claude/launch.json` is modified locally (preview servers with local paths) and not committed. |
-| `openindoormaps` local `main` | 5 commits ahead of `origin/main`; on GitHub as branch `handoff/unbc-20261117` (`312e363`). `origin/main` not updated, same reason. |
+| `reviter` local `main` | Pushed: `origin/main` = `handoff/unbc-20261117` (`41a1ada`) on November 17. `.claude/launch.json` is modified locally (preview servers with local paths) and not committed. |
+| `openindoormaps` local `main` | Pushed: `origin/main` = `handoff/unbc-20261117` (`312e363`) on November 17; Pages redeployed. |
 | Producer code with the door-owner review | Branch `unbc/producer-native-door-owners` on GitHub in both repositories (Reviter `8fecc9a`, tree `7ff09c0a…`; openindoormaps `131a8e2`, tree `1f2048d5…`). Local clones in `~/unbc-work/matcher/`. Also as patches in [patches/](patches/). |
 | Receipts for `ae70cc07…` | openindoormaps branch `unbc/gap-requal-ae70cc07` (`9cc7363`) on GitHub; local worktree `~/unbc-work/pair/openindoormaps`. |
 | Held back on GitHub | `claude/exact-arith-speed` (both), openindoormaps `claude/regen-efficiency-oim`, reviter `codex/local-work-snapshot-2026-09-29`, `codex/rvt-semantics-candidate4`, openindoormaps `stash/local-changes-2026-06-03` |

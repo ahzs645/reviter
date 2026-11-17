@@ -29,7 +29,7 @@ checks. Logical entrance proposals do not create physical walls, doors, access
 or served stair/lift stops. Verify source-bound importer checks and actual
 2D/3D desktop/mobile comparisons before promoting the separate CAD pointer.
 
-For the current UNBC continuation, start with [the November 17 handoff](docs/continuation/unbc-20261117/HANDOFF.md): vestibule door reviews, the two Colab rebuilds, measured rebuild speed and the open owner decisions. Heavy processing (rebuilds, link, guides, acceptance, visitor package) runs on Google Colab, not on the owner's Mac; that handoff says how.
+For the current UNBC continuation, read [the owner's decisions of November 17](docs/continuation/unbc-20261117/OWNER-DECISIONS.md) first: they are settled, so do not re-investigate or re-ask them. Then start with [the November 17 handoff](docs/continuation/unbc-20261117/HANDOFF.md): vestibule door reviews, the two Colab rebuilds, measured rebuild speed and the open owner decisions. Heavy processing (rebuilds, link, guides, acceptance, visitor package) runs on Google Colab, not on the owner's Mac; that handoff says how.
 
 [The October 20 handoff](docs/continuation/unbc-20261020/HANDOFF.md) is historical. It distinguishes the source checkpoint, running native rebuild, verified recovery files and pending release checks. Older handoffs are historical.
 
