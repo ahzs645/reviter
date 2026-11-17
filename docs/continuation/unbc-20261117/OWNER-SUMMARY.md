@@ -41,7 +41,7 @@ All on the Mac in `~/unbc-work/vest-master2/`:
 - **`C-master-0388.zip`**: the test build with the 10-1300 change and the
   faster code. Same results as A; 10-1300 still refused by the app.
 
-Nothing is published and nothing is pushed to GitHub.
+Nothing is published. The code is on GitHub on branches; `main` on GitHub is unchanged.
 
 ## Decisions waiting on you
 
@@ -102,15 +102,17 @@ These exist only on this Mac. A suggested folder: `My Drive/UNBC-handoff-2026111
 | `openindoormaps/docs/continuation/unbc-20261116/` | 1.8 MB | The vestibule record with receipts. Not committed. |
 | The agent's notes: `~/.claude/projects/-Users-ahmadjalil-github-reviter/memory/` | small | What the agent remembers between sessions on this Mac. |
 
-Also worth doing, because Drive copies do not protect code history:
+Done on November 17:
 
-- The two local `main` branches (15 and 4 commits ahead) and two work branches
-  (`unbc/producer-native-door-owners` in `~/unbc-work/matcher/`,
-  `unbc/gap-requal-ae70cc07` in `~/unbc-work/pair/`) exist only on this Mac.
-  Pushing the work branches is safe. Pushing `main` redeploys the sites, so
-  that one is your call.
-- Committing the two documentation folders above (on a branch) so they travel
-  with the repositories.
+- The folders above were copied to `My Drive/UNBC-handoff-20261117/` and every
+  file was checked against its original.
+- All code and documentation was pushed to GitHub on branches:
+  `handoff/unbc-20261117` in both repositories (everything on the local `main`
+  branches, including these documents), `unbc/producer-native-door-owners` in
+  both, and `unbc/gap-requal-ae70cc07` in openindoormaps.
+
+Still your call: the `main` branches on GitHub are not updated, because
+pushing `main` redeploys the two public sites.
 
 Already in Drive: the rebuild inputs, the gap-patch files
 (`UNBC-sliver-contacts/upload`) and the first Colab package
