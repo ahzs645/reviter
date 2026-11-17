@@ -1,0 +1,26 @@
+{
+  "format": "source-native-door-owner-review-v1",
+  "id": "vestibule-native-door-owners-20261116",
+  "sourceModelSha256": "8c294549ee667ed7aba38f1f4f3a53514dae7544af97f0157ee8187dd8702178",
+  "notes": "Two vestibule doors that the ordinary matcher leaves unmatched because a registered DWG room outline stops short of the native wall. Requested by the owner on 2026-11-16. Each pair of rooms is derived from the native wall-bounded cells on the two sides of the door only (native-cell matcher, default 0.25/0.5/1/1.5 ft steps, default 2 ft owner gap, nothing widened). No drawing, photograph or site evidence was added. Door operation and public access have not been confirmed on site. Room access stays as recorded and the door edges keep accessibility unknown. The compiler re-derives both pairs from the native model and refuses the compile if either differs. Dry run of 2026-11-16: both accepted. The dry run covered door matching only, on the regeneration's reviewed source rooms without the owner boundary patches; the full compile was not run.",
+  "doors": [
+    {
+      "levelId": 311,
+      "nativeDoorId": 621887,
+      "roomKeys": [
+        "rm-311-3f5ed3792618",
+        "rm-311-3f6fcd792626"
+      ],
+      "notes": "07-309 Vestibule to 07-305 Office, native host 621883. Derived from native cells only. Side against the door normal: the vestibule's own cell, outline 0.823 ft from the probe. Side along the normal: a merged native cell that holds 07-305 Office, 07-306A Office and 07-304 Corridor; 07-305 is the nearest room in it, 0.550 ft from the probe, and the other two outlines are more than 6 ft from the door, so the rule picks 07-305. That the door opens into 07-305 and not 07-306A rests on the registered outlines only. Legacy matcher: unmatched, no candidate. Known limit, not changed by this review: the campus notes record this suite as cut off by an unmodelled area between doors 1732467 and 1715768, so this door joins the vestibule to the suite and does not by itself put the vestibule on the public walking network. Door operation and public access not confirmed on site."
+    },
+    {
+      "levelId": 1487353,
+      "nativeDoorId": 1779388,
+      "roomKeys": [
+        "rm-1487353-4e2c5cd7875d",
+        "rm-1487353-4e224ad78755"
+      ],
+      "notes": "06-313 Soundproof Vestibule to 06-314 Projection, native host 1779384. Derived from native cells only. Side against the door normal: the vestibule's own cell, probe inside its outline (gap 0 ft). Side along the normal: the projection room's own cell, outline 1.367 ft from the probe. Legacy matcher: unmatched, the vestibule is the only candidate. Known limit, not changed by this review: the vestibule's other door 1779387 opens onto no native cell, so this door joins the projection room to the vestibule only; how the booth is reached is still an owner decision. Door operation and public access not confirmed on site."
+    }
+  ]
+}

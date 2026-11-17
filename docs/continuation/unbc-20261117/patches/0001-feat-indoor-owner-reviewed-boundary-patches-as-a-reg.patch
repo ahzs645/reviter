@@ -1,0 +1,526 @@
+From 6993c08b5b260b908ae2a2a9e27c390361e58263 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 4 Nov 2026 16:02:31 +0000
+Subject: [PATCH 1/3] feat(indoor): owner-reviewed boundary patches as a
+ regeneration source review
+
+A master with applied but unregenerated boundary patches is not a
+regeneration input. saveNativeBoundaryPatches(apply=true) adds tagged wall
+faces and drops the prepared circulation geometry, so the unchanged graph's
+native-cell floor aliases (e.g. a room arrival to a ramp landing walk) can no
+longer be proved and readIndoorProject refuses the master. The October 21
+source reviews also bind the original dataset and rooms bytes.
+
+regenerate-from-native-cache.ts gains --boundary-patch-review,
+--applied-boundary-patch-master and --boundary-patch-supersessions. The
+input master stays the unchanged source. The patch file is re-imported into
+it with importNativeBoundaryPatchFile (exact evidence), and the applied
+master that the project's own application wrote from the same source is
+checked to differ only by exactly those rows (status applied) and the listed
+contact repairs (applied to restored). The rows then join the reviewed
+source rooms after the door aperture review; the compiler consumes them and
+refuses any applied patch it cannot compile. A receipt and the portable
+review files are written next to the other replays. run.sh passes the
+options through optional environment variables; unset, the command is
+unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01F5YScMjv2Mnt4v2xjsTFru
+---
+ .../unbc-20261021/recompile/run.sh            |   9 +
+ .../indoor/regenerate-from-native-cache.ts    | 131 ++++++++-
+ .../indoor/source-boundary-patch-review.ts    | 264 ++++++++++++++++++
+ 3 files changed, 400 insertions(+), 4 deletions(-)
+ create mode 100644 scripts/indoor/source-boundary-patch-review.ts
+
+diff --git a/docs/continuation/unbc-20261021/recompile/run.sh b/docs/continuation/unbc-20261021/recompile/run.sh
+index 864ec75..fe9d3b4 100755
+--- a/docs/continuation/unbc-20261021/recompile/run.sh
++++ b/docs/continuation/unbc-20261021/recompile/run.sh
+@@ -14,6 +14,12 @@
+ #     override the sizing chosen from this machine's cores and memory.
+ #   NATIVE_WORKER_HEAP_MIB / LANDING_WORKER_HEAP_MIB=256..8192
+ #     per-worker heap caps (default 4096).
++#   BOUNDARY_PATCH_REVIEW=patches.json APPLIED_BOUNDARY_PATCH_MASTER=applied.zip
++#   [BOUNDARY_PATCH_SUPERSESSIONS=supersessions.json]
++#     add owner-reviewed native-boundary patches as a source review. The input
++#     master stays the unchanged source; applied.zip is the project's own
++#     application of the same file to it, checked row by row
++#     (scripts/indoor/source-boundary-patch-review.ts). Unset: unchanged run.
+ #   SYNC_DIR=dir   copy checkpoints there every 10 minutes and restore them
+ #     at start when WORK/run/checkpoints is empty (Colab: a Drive folder).
+ #   DRY_RUN=1      print the command without running it.
+@@ -70,6 +76,9 @@ cmd=(node --max-old-space-size="$heap" --expose-gc --import tsx
+   --source-door-standing-review "$IN/03-source-door-standing-review.json"
+   --source-stair-base-standing-review "$IN/05-source-stair-base-standing-review.json"
+   --door-aperture-review "$REVIEW"
++  ${BOUNDARY_PATCH_REVIEW:+--boundary-patch-review "$BOUNDARY_PATCH_REVIEW"}
++  ${APPLIED_BOUNDARY_PATCH_MASTER:+--applied-boundary-patch-master "$APPLIED_BOUNDARY_PATCH_MASTER"}
++  ${BOUNDARY_PATCH_SUPERSESSIONS:+--boundary-patch-supersessions "$BOUNDARY_PATCH_SUPERSESSIONS"}
+   --validated-import-checkpoint-dir "$RUN/imports"
+   --prepared-diagnostic-dir "$RUN/diagnostic")
+ if [ -n "${DRY_RUN:-}" ]; then (cd "$OIM" && printf '%q ' "${cmd[@]}"; echo); exit 0; fi
+diff --git a/scripts/indoor/regenerate-from-native-cache.ts b/scripts/indoor/regenerate-from-native-cache.ts
+index 6e7058d..87e9867 100644
+--- a/scripts/indoor/regenerate-from-native-cache.ts
++++ b/scripts/indoor/regenerate-from-native-cache.ts
+@@ -15,6 +15,10 @@ import { roomsWithCheckedNativeBoundaryReviewBundle } from "./source-native-boun
+ import { roomsWithCheckedSourceDoorBoundaryClosureReview } from "./source-door-boundary-closure-review";
+ import { roomsWithCheckedSourceAccessDecision } from "./source-access-decision-review";
+ import { roomsWithCheckedSourceDoorApertures } from "./source-door-aperture-review";
++import {
++  checkSourceBoundaryPatches,
++  roomsWithSourceBoundaryPatches,
++} from "./source-boundary-patch-review";
+ import { initializeReviewedSourceSteppedStairV2Proofs } from "./source-stepped-stair-v2-review";
+ import { finalizeSourceSteppedStairV2Dataset } from "./finalize-source-stepped-stair-v2";
+ import { initializeOriginalDoorStandingReview } from "./source-door-standing-review";
+@@ -58,7 +62,7 @@ import {
+ const [input, nativeCache, destination, ...workerArgs] = process.argv.slice(2);
+ if (!input || !nativeCache || !destination)
+   throw new Error(
+-    "Usage: regenerate-from-native-cache.ts master.zip native-cache.json output-directory [--native-workers 1|2] [--native-worker-heap-mib 256..8192] [--landing-workers N] [--landing-worker-heap-mib 256..8192] [--checkpoint-dir directory] [--drawing-reference-review review.json] [--refresh-drawing-floor-bindings checked] [--boundary-contact-review review.json] [--door-boundary-closure-review review.json] [--access-decision-review decision.json] [--door-aperture-review review.json] [--source-flat-landing-review checked] [--source-stepped-stair-review review.json] [--source-door-standing-review review.json] [--source-stair-base-standing-review review.json] [--validated-import-checkpoint-dir private-directory] [--prepared-diagnostic-dir NEW-directory]",
++    "Usage: regenerate-from-native-cache.ts master.zip native-cache.json output-directory [--native-workers 1|2] [--native-worker-heap-mib 256..8192] [--landing-workers N] [--landing-worker-heap-mib 256..8192] [--checkpoint-dir directory] [--drawing-reference-review review.json] [--refresh-drawing-floor-bindings checked] [--boundary-contact-review review.json] [--door-boundary-closure-review review.json] [--access-decision-review decision.json] [--door-aperture-review review.json] [--boundary-patch-review patches.json --applied-boundary-patch-master applied.zip [--boundary-patch-supersessions supersessions.json]] [--source-flat-landing-review checked] [--source-stepped-stair-review review.json] [--source-door-standing-review review.json] [--source-stair-base-standing-review review.json] [--validated-import-checkpoint-dir private-directory] [--prepared-diagnostic-dir NEW-directory]",
+   );
+ const workerOptions = new Map<string, string>();
+ for (let i = 0; i < workerArgs.length; i += 2) {
+@@ -78,6 +82,9 @@ for (let i = 0; i < workerArgs.length; i += 2) {
+       "--door-boundary-closure-review",
+       "--access-decision-review",
+       "--door-aperture-review",
++      "--boundary-patch-review",
++      "--boundary-patch-supersessions",
++      "--applied-boundary-patch-master",
+       "--source-flat-landing-review",
+       "--source-stepped-stair-review",
+       "--source-door-standing-review",
+@@ -265,6 +272,53 @@ async function compileAndExportMaster() {
+       );
+   }
+   const { original, before } = imported;
++  // Owner-reviewed boundary patches join the reviewed source rooms below; the
++  // source master and its prepared graph stay unchanged.
++  const boundaryPatchReviewPath = workerOptions.get("--boundary-patch-review");
++  const appliedBoundaryPatchMasterPath = workerOptions.get(
++    "--applied-boundary-patch-master",
++  );
++  const boundaryPatchSupersessionsPath = workerOptions.get(
++    "--boundary-patch-supersessions",
++  );
++  assert.equal(
++    !!boundaryPatchReviewPath,
++    !!appliedBoundaryPatchMasterPath,
++    "--boundary-patch-review and --applied-boundary-patch-master go together",
++  );
++  assert.ok(
++    !boundaryPatchSupersessionsPath || boundaryPatchReviewPath,
++    "--boundary-patch-supersessions requires --boundary-patch-review",
++  );
++  const boundaryPatchReviewBytes = boundaryPatchReviewPath
++    ? new Uint8Array(await readFile(resolve(boundaryPatchReviewPath)))
++    : undefined;
++  const boundaryPatchSupersessionBytes = boundaryPatchSupersessionsPath
++    ? new Uint8Array(await readFile(resolve(boundaryPatchSupersessionsPath)))
++    : undefined;
++  const boundaryPatchAlgorithmPath = fileURLToPath(
++    new URL("./source-boundary-patch-review.ts", import.meta.url),
++  );
++  const boundaryPatches = boundaryPatchReviewBytes
++    ? checkSourceBoundaryPatches(
++        before,
++        boundaryPatchReviewBytes,
++        boundaryPatchSupersessionBytes,
++        new Uint8Array(
++          await readFile(resolve(appliedBoundaryPatchMasterPath!)),
++        ),
++      )
++    : undefined;
++  if (boundaryPatches)
++    console.log(
++      JSON.stringify({
++        stage: "source-boundary-patches-checked",
++        rows: boundaryPatches.rows.length,
++        restoredContactRepairs:
++          boundaryPatches.receipt.restoredContactRepairIds.length,
++        appliedMasterSha256: boundaryPatches.receipt.appliedMasterSha256,
++      }),
++    );
+   console.log("Reading exact-model native conversion cache");
+   let nativeCacheText: string | undefined = await readFile(cachePath, "utf8");
+   const nativeCacheSha256 = createHash("sha256")
+@@ -499,7 +553,44 @@ async function compileAndExportMaster() {
+         sourceModelSha256,
+       )
+     : undefined;
+-  const rooms = doorApertureReplay?.rooms ?? accessReviewedRooms;
++  const apertureReviewedRooms =
++    doorApertureReplay?.rooms ?? accessReviewedRooms;
++  const rooms = boundaryPatches
++    ? roomsWithSourceBoundaryPatches(apertureReviewedRooms, boundaryPatches)
++    : apertureReviewedRooms;
++  const boundaryPatchReceiptPath = join(
++    output,
++    "source-boundary-patch-replay.json",
++  );
++  const boundaryPatchReceiptBytes = boundaryPatches
++    ? JSON.stringify(boundaryPatches.receipt, null, 2) + "\n"
++    : undefined;
++  if (boundaryPatchReceiptBytes) {
++    await mkdir(output, { recursive: true });
++    await writeFile(boundaryPatchReceiptPath, boundaryPatchReceiptBytes, {
++      flag: "wx",
++    });
++    await writeFile(
++      join(output, "source-boundary-patch-review.json"),
++      boundaryPatchReviewBytes!,
++      { flag: "wx" },
++    );
++    if (boundaryPatchSupersessionBytes)
++      await writeFile(
++        join(output, "source-boundary-patch-supersessions.json"),
++        boundaryPatchSupersessionBytes,
++        { flag: "wx" },
++      );
++    console.log(
++      JSON.stringify({
++        stage: "source-boundary-patches-added",
++        rows: boundaryPatches!.rows.length,
++        receiptSha256: createHash("sha256")
++          .update(boundaryPatchReceiptBytes)
++          .digest("hex"),
++      }),
++    );
++  }
+   if (doorApertureReplay) {
+     const receiptBytes =
+       JSON.stringify(doorApertureReplay.receipt, null, 2) + "\n";
+@@ -870,7 +961,11 @@ async function compileAndExportMaster() {
+   // The compiler hashes hydrated annotations. A portable package binds the exact
+   // preserved source entry, whose review companions may use archive wire storage.
+   dataset.source.roomsSha256 =
+-    sourceReview || drawingFloorReplay || boundaryReplay || doorBoundaryReplay
++    sourceReview ||
++    drawingFloorReplay ||
++    boundaryReplay ||
++    doorBoundaryReplay ||
++    boundaryPatches
+       ? createHash("sha256")
+           .update((await serializeRoomsForArchive(rooms)).rooms)
+           .digest("hex")
+@@ -965,7 +1060,8 @@ async function compileAndExportMaster() {
+         (sourceReview ||
+           drawingFloorReplay ||
+           boundaryReplay ||
+-          doorBoundaryReplay) &&
++          doorBoundaryReplay ||
++          boundaryPatches) &&
+         path === "floors/rooms.json"
+       ),
+   );
+@@ -1074,6 +1170,33 @@ async function compileAndExportMaster() {
+           },
+         }
+       : {}),
++    ...(boundaryPatches
++      ? {
++          sourceBoundaryPatchReview: {
++            path: resolve(boundaryPatchReviewPath!),
++            reviewSha256: boundaryPatches.receipt.patchFileSha256,
++            ...(boundaryPatchSupersessionsPath
++              ? {
++                  supersessionsPath: resolve(boundaryPatchSupersessionsPath),
++                  supersessionsSha256:
++                    boundaryPatches.receipt.supersessionsSha256,
++                }
++              : {}),
++            appliedMasterPath: resolve(appliedBoundaryPatchMasterPath!),
++            appliedMasterSha256: boundaryPatches.receipt.appliedMasterSha256,
++            receiptPath: boundaryPatchReceiptPath,
++            receiptSha256: createHash("sha256")
++              .update(boundaryPatchReceiptBytes!)
++              .digest("hex"),
++            algorithm: {
++              path: boundaryPatchAlgorithmPath,
++              sha256: sha(await readFile(boundaryPatchAlgorithmPath)),
++            },
++            appliedRows: boundaryPatches.rows.length,
++            physicalGuardsWaived: false,
++          },
++        }
++      : {}),
+     ...(doorBoundaryReplay
+       ? {
+           sourceDoorBoundaryClosureReview: {
+diff --git a/scripts/indoor/source-boundary-patch-review.ts b/scripts/indoor/source-boundary-patch-review.ts
+new file mode 100644
+index 0000000..3cdf2ea
+--- /dev/null
++++ b/scripts/indoor/source-boundary-patch-review.ts
+@@ -0,0 +1,264 @@
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { strFromU8, unzipSync } from "fflate";
++import { importNativeBoundaryPatchFile } from "../../app/indoor-project/native-boundary-patch-file";
++import type { NativeBoundaryPatch } from "../../app/indoor-project/native-boundary-patches";
++import type { NativeSelectionContactRepairs } from "../../app/indoor-project/native-selection-contact-repairs";
++import type { IndoorProject } from "../../app/indoor-project/package";
++
++/** Owner-reviewed native-boundary patches as a regeneration source review.
++ *
++ * Applying patches to an authoring master (saveNativeBoundaryPatches with
++ * apply=true) adds tagged wall faces, drops the prepared circulation geometry
++ * and marks the dataset regenerated=false. Such a master is not a regeneration
++ * input: its unchanged prepared graph can no longer prove its native-cell
++ * floor aliases, and every other source review binds the original dataset and
++ * rooms bytes. So the source master stays unchanged, and the applied rows join
++ * the reviewed source rooms here, like the door aperture review. The compiler
++ * then consumes them (reviewedBoundaryWalls per level) and refuses any applied
++ * patch it cannot compile.
++ *
++ * The rows themselves come from a master that the project's own application
++ * (importNativeBoundaryPatchFile, the guard pass, saveNativeBoundaryPatches per
++ * row) wrote from this same source. That application takes hours, so it is not
++ * repeated on every resumed run. Instead this check proves the delta exactly:
++ * - the patch file still imports into the unchanged source (exact model, wall,
++ *   level and door evidence) with importNativeBoundaryPatchFile;
++ * - the applied master has the same model, and its rooms differ from the source
++ *   rooms only in nativeBoundaryPatches and nativeSelectionContactRepairs;
++ * - every source patch row is unchanged, and the only added rows are the file's
++ *   rows, each equal to its imported proposal with status "applied";
++ * - the only changed contact repairs are the listed supersessions, each from
++ *   "applied" to "restored" with its original notes kept as a prefix. */
++export type SourceBoundaryPatchReceipt = {
++  format: "checked-source-boundary-patch-review-v1";
++  sourceModelSha256: string;
++  originalSourceRoomsSha256: string;
++  patchFileSha256: string;
++  supersessionsSha256?: string;
++  appliedMasterSha256: string;
++  appliedMasterRoomsSha256: string;
++  appliedRows: { id: string; levelId: number }[];
++  restoredContactRepairIds: string[];
++  sourceBoundaryRowsUnchanged: true;
++  onlyBoundaryPatchesAndContactRepairsChanged: true;
++};
++export type CheckedSourceBoundaryPatches = {
++  rows: NativeBoundaryPatch[];
++  sourceContactRepairs?: NativeSelectionContactRepairs;
++  contactRepairs?: NativeSelectionContactRepairs;
++  receipt: SourceBoundaryPatchReceipt;
++};
++
++const sha = (bytes: Uint8Array | string) =>
++  createHash("sha256").update(bytes).digest("hex");
++// Key-order independent comparison: saved rows are rebuilt object spreads.
++const canonical = (value: unknown): string =>
++  JSON.stringify(value, (_key, v) =>
++    v && typeof v === "object" && !Array.isArray(v)
++      ? Object.fromEntries(
++          Object.keys(v)
++            .sort()
++            .map((k) => [k, (v as Record<string, unknown>)[k]]),
++        )
++      : v,
++  );
++
++export function checkSourceBoundaryPatches(
++  source: IndoorProject,
++  patchFileBytes: Uint8Array,
++  supersessionBytes: Uint8Array | undefined,
++  appliedMasterBytes: Uint8Array,
++): CheckedSourceBoundaryPatches {
++  const modelSha256 = source.dataset.source.modelSha256;
++  const file = JSON.parse(strFromU8(patchFileBytes));
++  const fileRows: NativeBoundaryPatch[] = file?.nativeBoundaryPatches?.patches;
++  assert.ok(Array.isArray(fileRows) && fileRows.length > 0, "Empty patch file");
++  const ids = fileRows.map((p) => p.id);
++  assert.equal(new Set(ids).size, ids.length, "Duplicate patch ids");
++  // Exact evidence against the unchanged source: model, levels, supporting
++  // wall footprints and doors. New rows come back as proposals.
++  const imported = importNativeBoundaryPatchFile(source, file);
++  const proposals = new Map(
++    imported.rooms
++      .nativeBoundaryPatches!.patches.filter((p) => ids.includes(p.id))
++      .map((p) => [p.id, p]),
++  );
++  assert.equal(proposals.size, ids.length, "A patch row did not import");
++  for (const p of proposals.values())
++    assert.equal(p.status, "proposed", `${p.id} must import as a proposal`);
++
++  // Only the manifest and the source rooms are read from the applied master.
++  const roomsPath = source.manifest.floors.path;
++  const archive = unzipSync(appliedMasterBytes, {
++    filter: (e) => e.name === "manifest.json" || e.name === roomsPath,
++  });
++  const manifest = JSON.parse(strFromU8(archive["manifest.json"]!));
++  assert.equal(manifest.format, "reviter-project", "Not an authoring master");
++  assert.equal(
++    manifest.model.sha256,
++    modelSha256,
++    "Applied master belongs to a different Revit model",
++  );
++  assert.equal(
++    manifest.model.sha256,
++    source.manifest.model.sha256,
++    "Applied master model differs from the source",
++  );
++  assert.equal(manifest.floors.path, roomsPath, "Source rooms path differs");
++  const roomsBytes = archive[roomsPath]!;
++  assert.ok(roomsBytes, "Applied master has no source rooms");
++  assert.equal(roomsBytes.length, manifest.floors.bytes);
++  const appliedMasterRoomsSha256 = sha(roomsBytes);
++  assert.equal(appliedMasterRoomsSha256, manifest.floors.sha256);
++  const sourceRoomsBytes = source.files[source.manifest.floors.path]!;
++  assert.equal(sha(sourceRoomsBytes), source.manifest.floors.sha256);
++  const after = JSON.parse(strFromU8(roomsBytes)) as Record<string, unknown>;
++  const before = JSON.parse(strFromU8(sourceRoomsBytes)) as Record<
++    string,
++    unknown
++  >;
++  const changed = ["nativeBoundaryPatches", "nativeSelectionContactRepairs"];
++  for (const key of new Set([...Object.keys(before), ...Object.keys(after)]))
++    if (!changed.includes(key))
++      assert.equal(
++        JSON.stringify(after[key]),
++        JSON.stringify(before[key]),
++        `Applied master changed source rooms field ${key}`,
++      );
++
++  type Patches = { version: 1; patches: NativeBoundaryPatch[] } & Record<
++    string,
++    unknown
++  >;
++  const priorPatches = before.nativeBoundaryPatches as Patches | undefined,
++    appliedPatches = after.nativeBoundaryPatches as Patches;
++  assert.equal(
++    canonical({ ...appliedPatches, patches: undefined }),
++    canonical({ ...(priorPatches ?? { version: 1 }), patches: undefined }),
++    "Applied master changed the boundary patch collection",
++  );
++  const prior = priorPatches?.patches ?? [];
++  assert.equal(appliedPatches.patches.length, prior.length + ids.length);
++  for (const p of prior)
++    assert.equal(
++      canonical(appliedPatches.patches.find((a) => a.id === p.id)),
++      canonical(p),
++      `Source boundary patch ${p.id} changed`,
++    );
++  const rows = appliedPatches.patches.filter((p) => ids.includes(p.id));
++  assert.equal(rows.length, ids.length, "Applied master lacks a patch row");
++  for (const row of rows)
++    assert.equal(
++      canonical(row),
++      canonical({
++        ...proposals.get(row.id)!,
++        status: "applied",
++        notes: proposals.get(row.id)!.notes.trim(),
++      }),
++      `${row.id} differs from its reviewed proposal`,
++    );
++
++  const supersessions: Record<string, string[]> = supersessionBytes
++    ? JSON.parse(strFromU8(supersessionBytes)).supersessions
++    : {};
++  const by = new Map<string, string>();
++  for (const [patchId, repairIds] of Object.entries(supersessions)) {
++    assert.ok(ids.includes(patchId), `Supersession for unknown ${patchId}`);
++    for (const r of repairIds) by.set(r, patchId);
++  }
++  type Repairs = NativeSelectionContactRepairs | undefined;
++  const priorRepairs = before.nativeSelectionContactRepairs as Repairs,
++    appliedRepairs = after.nativeSelectionContactRepairs as Repairs;
++  assert.equal(
++    canonical({ ...appliedRepairs, repairs: undefined }),
++    canonical({ ...priorRepairs, repairs: undefined }),
++    "Applied master changed the contact repair collection",
++  );
++  const restored: string[] = [];
++  const priorList = priorRepairs?.repairs ?? [];
++  assert.equal(appliedRepairs?.repairs.length ?? 0, priorList.length);
++  for (const [i, r] of priorList.entries()) {
++    const a = appliedRepairs!.repairs[i]!;
++    if (!by.has(r.id)) {
++      assert.equal(
++        canonical(a),
++        canonical(r),
++        `Contact repair ${r.id} changed`,
++      );
++      continue;
++    }
++    assert.equal(r.status, "applied", `${r.id} was not applied in the source`);
++    assert.equal(a.status, "restored", `${r.id} was not restored`);
++    assert.ok(
++      a.notes.startsWith(r.notes) && a.notes.includes(by.get(r.id)!),
++      `${r.id} lost its notes or its superseding patch`,
++    );
++    assert.equal(
++      canonical({ ...a, status: r.status, notes: r.notes }),
++      canonical(r),
++      `${r.id} changed beyond its status and notes`,
++    );
++    restored.push(r.id);
++  }
++  assert.equal(restored.length, by.size, "A listed contact repair is missing");
++
++  return {
++    rows,
++    sourceContactRepairs: priorRepairs,
++    contactRepairs: appliedRepairs,
++    receipt: {
++      format: "checked-source-boundary-patch-review-v1",
++      sourceModelSha256: modelSha256,
++      originalSourceRoomsSha256: source.manifest.floors.sha256,
++      patchFileSha256: sha(patchFileBytes),
++      ...(supersessionBytes
++        ? { supersessionsSha256: sha(supersessionBytes) }
++        : {}),
++      appliedMasterSha256: sha(appliedMasterBytes),
++      appliedMasterRoomsSha256,
++      appliedRows: rows.map((p) => ({ id: p.id, levelId: p.levelId })),
++      restoredContactRepairIds: restored,
++      sourceBoundaryRowsUnchanged: true,
++      onlyBoundaryPatchesAndContactRepairsChanged: true,
++    },
++  };
++}
++
++/** Add the checked rows to the reviewed source rooms. Earlier source reviews
++ * may have replaced or added boundary rows; they never touch these ids or the
++ * contact repairs, which must still equal the source. */
++export function roomsWithSourceBoundaryPatches<T extends object>(
++  reviewed: T,
++  checked: CheckedSourceBoundaryPatches,
++): T {
++  const rooms = reviewed as {
++    nativeBoundaryPatches?: { patches: NativeBoundaryPatch[] };
++    nativeSelectionContactRepairs?: NativeSelectionContactRepairs;
++  };
++  const existing = rooms.nativeBoundaryPatches?.patches ?? [];
++  for (const row of checked.rows)
++    assert.ok(
++      !existing.some((p) => p.id === row.id),
++      `${row.id} already exists in the reviewed rooms`,
++    );
++  assert.equal(
++    canonical(rooms.nativeSelectionContactRepairs),
++    canonical(checked.sourceContactRepairs),
++    "Reviewed rooms changed the source contact repairs",
++  );
++  return {
++    ...reviewed,
++    nativeBoundaryPatches: {
++      ...(rooms.nativeBoundaryPatches ?? { version: 1 }),
++      patches: [...existing, ...structuredClone(checked.rows)],
++    },
++    ...(checked.contactRepairs
++      ? {
++          nativeSelectionContactRepairs: structuredClone(
++            checked.contactRepairs,
++          ),
++        }
++      : {}),
++  } as T;
++}
+-- 
+2.54.0 (Apple Git-157)
+

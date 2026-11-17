@@ -1,0 +1,2 @@
+import subprocess
+print(subprocess.run(r'''cd /content/unbc; f=$(ls -t run/compile-*.log 2>/dev/null | head -1); echo "LOG $f $(wc -l < $f) lines $(date -u +%T)"; grep -n "native-door-owner\|door-apertures-rechecked\|Error:\|refused for" $f | grep -v '"refused": \[' | tail -5 | cut -c1-400; tail -n 2 $f | cut -c1-240; grep -a "Compile exit status" run.out | tail -1; pgrep -f "regenerate-from-native-cach[e]" >/dev/null && echo RUNNING || echo NOT_RUNNING; ls run/output 2>/dev/null | grep -c . ; free -g | sed -n 2p''',shell=True,capture_output=True,text=True).stdout)

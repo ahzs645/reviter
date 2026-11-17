@@ -1,0 +1,45 @@
+diff --git a/lib/reviter/native-circulation-geometry.ts b/lib/reviter/native-circulation-geometry.ts
+index 3b2eed4..f24230d 100644
+--- a/lib/reviter/native-circulation-geometry.ts
++++ b/lib/reviter/native-circulation-geometry.ts
+@@ -1066,19 +1066,28 @@ function nativeCellDoorApproach(
+         )
+         .flatMap((p) => p.exactParts??nativeRationalOverlay("union",[p.rings]));
+       try {
+-        let parts=nativeRationalOverlay("intersection",nativeRationalThresholdHalf(footprint,normal,node!.pointFeet),floors);
+-        parts=nativeRationalOverlay("intersection",parts,envelope);
+-        if(masks.length)parts=nativeRationalOverlay("difference",parts,masks);
+-        for(const part of parts){
+-          if(local){
+-            // Same exact decision as the global union below, made in a window.
+-            if(nativeLocalFaceJoins(local,[part],node!.pointFeet))acceptNativeLocalFacePiece(local,[part]);
+-            continue;
+-          }
+-          const joined=context.exactDoorUnion.union(exactParts,[part]);
+-          if(joined.length===1&&nativeRationalPointInParts(node!.pointFeet,joined)){
+-            exactParts=freezeNativeRationalParts(joined);rings=nativeExactPartsForProposals(joined)[0];context.exactApproaches.set(rings,exactParts);
++        const halfOnFloor=nativeRationalOverlay("intersection",nativeRationalThresholdHalf(footprint,normal,node!.pointFeet),floors);
++        const tryJoin=(inside:any):boolean=>{
++          let parts=inside,joinedAny=false;
++          if(masks.length)parts=nativeRationalOverlay("difference",parts,masks);
++          for(const part of parts){
++            if(local){
++              // Same exact decision as the global union below, made in a window.
++              if(nativeLocalFaceJoins(local,[part],node!.pointFeet)){acceptNativeLocalFacePiece(local,[part]);joinedAny=true;}
++              continue;
++            }
++            const joined=context.exactDoorUnion.union(exactParts,[part]);
++            if(joined.length===1&&nativeRationalPointInParts(node!.pointFeet,joined)){
++              exactParts=freezeNativeRationalParts(joined);rings=nativeExactPartsForProposals(joined)[0];context.exactApproaches.set(rings,exactParts);joinedAny=true;
++            }
+           }
++          return joinedAny;
++        };
++        if(!tryJoin(nativeRationalOverlay("intersection",halfOnFloor,envelope))){
++          // The door's own host material inside its aperture is indoors. Used only when the
++          // envelope-cut half does not join: the envelope strip can miss the cell by a float residue.
++          const ownHost=level.masks.filter((p:any)=>!p.column&&!p.repair&&p.nativeId!==undefined&&level.ownsAperture(door.hostWallNativeElementId,door.nativeElementId,p.nativeId)&&near(p)).map((p:any)=>p.rings);
++          if(ownHost.length)tryJoin(nativeRationalOverlay("intersection",halfOnFloor,nativeRationalOverlay("union",envelope,ownHost)));
+         }
+       } catch { /* Unknown exact doorway support remains blocked. */ }
+     }

@@ -1,0 +1,144 @@
+[
+  {
+    "id": "vestibule-03-1052:to-03-1104",
+    "from": "rm-694-484f9eec97d0",
+    "to": "rm-694-70a5a7eafba5",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": false,
+      "endpointMode": "hallway"
+    },
+    "expected": true,
+    "requiredNativeDoorId": 1425507,
+    "requiredSourceEdgeIds": [
+      "door:694:1425507"
+    ]
+  },
+  {
+    "id": "vestibule-03-1052:from-03-1104",
+    "from": "rm-694-70a5a7eafba5",
+    "to": "rm-694-484f9eec97d0",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": false,
+      "endpointMode": "hallway"
+    },
+    "expected": true,
+    "requiredNativeDoorId": 1425507,
+    "requiredSourceEdgeIds": [
+      "door:694:1425507"
+    ]
+  },
+  {
+    "id": "vestibule-03-1052:to-10-1302",
+    "from": "rm-694-484f9eec97d0",
+    "to": "rm-1487816-555ae048650d",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "hallway"
+    },
+    "expected": true,
+    "requireSharedGuide": true
+  },
+  {
+    "id": "vestibule-07-309:to-07-305:inside",
+    "from": "rm-311-3f5ed3792618",
+    "to": "rm-311-3f6fcd792626",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "inside"
+    },
+    "expected": true,
+    "requiredNativeDoorId": 621887,
+    "requiredSourceEdgeIds": [
+      "door:311:621887"
+    ]
+  },
+  {
+    "id": "vestibule-07-309:from-07-305:inside",
+    "from": "rm-311-3f6fcd792626",
+    "to": "rm-311-3f5ed3792618",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "inside"
+    },
+    "expected": true,
+    "requiredNativeDoorId": 621887,
+    "requiredSourceEdgeIds": [
+      "door:311:621887"
+    ]
+  },
+  {
+    "id": "vestibule-06-313:to-06-314:inside",
+    "from": "rm-1487353-4e2c5cd7875d",
+    "to": "rm-1487353-4e224ad78755",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "inside"
+    },
+    "expected": true,
+    "requiredNativeDoorId": 1779388,
+    "requiredSourceEdgeIds": [
+      "door:1487353:1779388"
+    ]
+  },
+  {
+    "id": "vestibule-06-207:to-06-208",
+    "from": "rm-694-0e3aecab6512",
+    "to": "rm-694-0e2cd4ab6506",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": false,
+      "endpointMode": "hallway"
+    },
+    "expected": true
+  },
+  {
+    "id": "vestibule-07-309:island-to-03-1104",
+    "from": "rm-311-3f5ed3792618",
+    "to": "rm-694-70a5a7eafba5",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "hallway"
+    },
+    "expected": false
+  },
+  {
+    "id": "vestibule-06-313:island-to-06-210",
+    "from": "rm-1487353-4e2c5cd7875d",
+    "to": "rm-694-0e0ebcab64ec",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "hallway"
+    },
+    "expected": false
+  },
+  {
+    "id": "vestibule-06-207:island-to-06-210",
+    "from": "rm-694-0e3aecab6512",
+    "to": "rm-694-0e0ebcab64ec",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "hallway"
+    },
+    "expected": false
+  },
+  {
+    "id": "vestibule-10-1300:no-entrance-to-10-1302",
+    "from": "rm-1487816-5550ce486504",
+    "to": "rm-1487816-555ae048650d",
+    "mode": "public",
+    "options": {
+      "allowOtherRoomTransit": true,
+      "endpointMode": "hallway"
+    },
+    "expected": false
+  }
+]

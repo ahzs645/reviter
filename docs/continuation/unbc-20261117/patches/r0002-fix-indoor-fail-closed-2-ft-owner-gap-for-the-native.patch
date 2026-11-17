@@ -1,0 +1,84 @@
+From 6e5f3e0d628b389477a31b998b7b60c6cb296bcf Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 1 Nov 2026 10:24:30 +0000
+Subject: [PATCH 2/4] fix(indoor): fail-closed 2 ft owner gap for the
+ native-cell door matcher
+
+The opt-in native-cell matcher defaulted maxOwnerGapFeet to Infinity, so
+enabling it would let native owners (and reviewed doorLinks validated against
+them) bypass the legacy 2 ft outline reach. Default to the legacy reach and
+pin it with a test; wider limits stay an explicit, reviewed option.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01F5YScMjv2Mnt4v2xjsTFru
+---
+ lib/reviter/directory-navigation.ts          |  7 +++++--
+ tests/native-cell-door-owner-matcher.test.ts | 16 ++++++++++++++++
+ 2 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/lib/reviter/directory-navigation.ts b/lib/reviter/directory-navigation.ts
+index 9b596f1..84dadd0 100644
+--- a/lib/reviter/directory-navigation.ts
++++ b/lib/reviter/directory-navigation.ts
+@@ -252,7 +252,9 @@ export type NativeDoorCell = {
+ export type NativeCellOwnerOptions = {
+   /** Feet beyond each footprint face; first step that lands in a cell wins. */
+   stepsFeet?: readonly number[];
+-  /** Optional bound on the probe-to-owner-outline gap; unbounded by default. */
++  /** Bound on the probe-to-owner-outline gap. Defaults to the legacy 2 ft
++   * candidate reach so enabling the mode never widens ownership; raise it only
++   * with per-door review. */
+   maxOwnerGapFeet?: number;
+ };
+ export type DoorOwnerMatcher =
+@@ -264,6 +266,7 @@ export type DoorOwnerMatcher =
+       overrideLegacy?: boolean;
+     } & NativeCellOwnerOptions);
+ export const NATIVE_DOOR_SIDE_STEPS_FEET = [0.25, 0.5, 1, 1.5] as const;
++export const NATIVE_DOOR_OWNER_MAX_GAP_FEET = 2;
+ export type NativeDoorSide = {
+   cellId?: string;
+   stepFeet?: number;
+@@ -333,7 +336,7 @@ export function nativeCellDoorOwners(
+   rooms: readonly DirectoryRoom[],
+   door: DirectoryDoor,
+   cells: readonly NativeDoorCell[],
+-  { stepsFeet = NATIVE_DOOR_SIDE_STEPS_FEET, maxOwnerGapFeet = Infinity }: NativeCellOwnerOptions = {},
++  { stepsFeet = NATIVE_DOOR_SIDE_STEPS_FEET, maxOwnerGapFeet = NATIVE_DOOR_OWNER_MAX_GAP_FEET }: NativeCellOwnerOptions = {},
+ ): NativeCellDoorOwners {
+   const none: [NativeDoorSide, NativeDoorSide] = [{}, {}];
+   if (!door.footprint?.length || !door.normal)
+diff --git a/tests/native-cell-door-owner-matcher.test.ts b/tests/native-cell-door-owner-matcher.test.ts
+index 467576b..0b725fc 100644
+--- a/tests/native-cell-door-owner-matcher.test.ts
++++ b/tests/native-cell-door-owner-matcher.test.ts
+@@ -3,6 +3,7 @@ import test from "node:test";
+ import {
+   directoryDoorReviews,
+   doorCandidates,
++  NATIVE_DOOR_OWNER_MAX_GAP_FEET,
+   nativeCellDoorOwners,
+   type DoorOwnerMatcher,
+   type NativeDoorCell,
+@@ -161,3 +162,18 @@ test("default behaviour is unchanged: same output, no native fields", () => {
+   assert.deepEqual(directoryDoorReviews(rooms, doors, [], [], { mode: "legacy" }), before);
+   assert.ok(before.every((r) => !("nativeOwners" in r)));
+ });
++
++test("the default owner gap is fail-closed at the legacy 2 ft reach", () => {
++  // The office outline starts 2.4 ft past the probe: native cells pair the
++  // sides, but the default bound refuses to decide rather than widen reach.
++  const rooms = [room("corridor", rect(0, 0, 9.9, 10)), room("office", rect(12.75, 0, 20, 10))];
++  const cells = [cell("A", ["corridor"], rect(0, 0, 9.9, 10)), cell("B", ["office"], rect(10.1, 0, 20, 10))];
++  assert.equal(NATIVE_DOOR_OWNER_MAX_GAP_FEET, 2);
++  const bounded = nativeCellDoorOwners(rooms, door(), cells);
++  assert.equal(bounded.rooms, undefined);
++  assert.match(bounded.sides[1].reason!, /limit 2 ft/);
++  const [review] = directoryDoorReviews(rooms, [door()], [], [], native(cells));
++  assert.equal(review!.state, "unmatched");
++  const widened = nativeCellDoorOwners(rooms, door(), cells, { maxOwnerGapFeet: 3 });
++  assert.deepEqual(widened.rooms, ["corridor", "office"]);
++});
+-- 
+2.54.0 (Apple Git-157)
+

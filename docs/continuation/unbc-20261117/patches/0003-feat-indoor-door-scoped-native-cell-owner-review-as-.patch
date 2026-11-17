@@ -1,0 +1,946 @@
+From 131a8e2ec63f61ff3e15fbd7f5820c2c3b5f035e Mon Sep 17 00:00:00 2001
+From: Ahmad Jalil <ahzs645@gmail.com>
+Date: Mon, 16 Nov 2026 09:03:19 -0700
+Subject: [PATCH 3/3] feat(indoor): door-scoped native-cell owner review as a
+ regeneration source review
+
+Adds --native-door-owner-review FILE to regenerate-from-native-cache.ts and
+NATIVE_DOOR_OWNER_REVIEW to the recompile run.sh, modelled on the door
+aperture review and the boundary patch review. Unset, the regeneration runs
+exactly as before: no compiler option is passed and nothing else changes.
+
+The file (source-native-door-owner-review-v1) lists native doors and the two
+rooms each should join. It can carry no tolerance, geometry or access
+decision; unknown fields are refused. Only the listed doors are affected.
+
+scripts/indoor/source-native-door-owner-review.ts refuses before the compile
+starts when the model digest differs, a room is not a walkable area on the
+door's level, a reviewed door link already names the door, the door has no
+precise footprint and normal, or the legacy matcher already pairs it. The
+source rooms are not changed. The native cells exist only inside the compile,
+so Reviter makes the final decision at door matching and aborts the compile
+unless the native-cell matcher, with its default 2 ft owner gap, finds exactly
+the two listed rooms.
+
+The regeneration copies the review to source-native-door-owner-review.json
+and writes source-native-door-owner-replay.json as soon as the last listed
+door is applied: door, native sides, cell ids and bounds, owner gaps in feet,
+applied rooms and the review digests. regeneration.json records the review
+when the flag is given.
+
+Requires the Reviter commit that adds nativeDoorOwnerReview to
+prepareIndoorDataset. The runtime binding fingerprints are unchanged.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ .../unbc-20261021/recompile/run.sh            |   5 +
+ .../indoor/regenerate-from-native-cache.ts    |  99 ++++-
+ .../indoor/source-native-door-owner-review.ts | 324 +++++++++++++++
+ .../source-native-door-owner-review.test.ts   | 387 ++++++++++++++++++
+ 4 files changed, 814 insertions(+), 1 deletion(-)
+ create mode 100644 scripts/indoor/source-native-door-owner-review.ts
+ create mode 100644 tests/unit/source-native-door-owner-review.test.ts
+
+diff --git a/docs/continuation/unbc-20261021/recompile/run.sh b/docs/continuation/unbc-20261021/recompile/run.sh
+index f1c0215..75d7986 100755
+--- a/docs/continuation/unbc-20261021/recompile/run.sh
++++ b/docs/continuation/unbc-20261021/recompile/run.sh
+@@ -20,6 +20,10 @@
+ #     master stays the unchanged source; applied.zip is the project's own
+ #     application of the same file to it, checked row by row
+ #     (scripts/indoor/source-boundary-patch-review.ts). Unset: unchanged run.
++#   NATIVE_DOOR_OWNER_REVIEW=review.json
++#     connect an explicitly listed set of native doors by native-cell
++#     ownership (scripts/indoor/source-native-door-owner-review.ts). Every
++#     other door is matched as before. Unset: unchanged run.
+ #   SYNC_DIR=dir   copy checkpoints there every 10 minutes and restore them
+ #     at start when WORK/run/checkpoints is empty (Colab: a Drive folder).
+ #   DRY_RUN=1      print the command without running it.
+@@ -79,6 +83,7 @@ cmd=(node --max-old-space-size="$heap" --expose-gc --import tsx
+   ${BOUNDARY_PATCH_REVIEW:+--boundary-patch-review "$BOUNDARY_PATCH_REVIEW"}
+   ${APPLIED_BOUNDARY_PATCH_MASTER:+--applied-boundary-patch-master "$APPLIED_BOUNDARY_PATCH_MASTER"}
+   ${BOUNDARY_PATCH_SUPERSESSIONS:+--boundary-patch-supersessions "$BOUNDARY_PATCH_SUPERSESSIONS"}
++  ${NATIVE_DOOR_OWNER_REVIEW:+--native-door-owner-review "$NATIVE_DOOR_OWNER_REVIEW"}
+   --validated-import-checkpoint-dir "$RUN/imports"
+   --prepared-diagnostic-dir "$RUN/diagnostic")
+ if [ -n "${DRY_RUN:-}" ]; then (cd "$OIM" && printf '%q ' "${cmd[@]}"; echo); exit 0; fi
+diff --git a/scripts/indoor/regenerate-from-native-cache.ts b/scripts/indoor/regenerate-from-native-cache.ts
+index 87e9867..addb419 100644
+--- a/scripts/indoor/regenerate-from-native-cache.ts
++++ b/scripts/indoor/regenerate-from-native-cache.ts
+@@ -15,6 +15,7 @@ import { roomsWithCheckedNativeBoundaryReviewBundle } from "./source-native-boun
+ import { roomsWithCheckedSourceDoorBoundaryClosureReview } from "./source-door-boundary-closure-review";
+ import { roomsWithCheckedSourceAccessDecision } from "./source-access-decision-review";
+ import { roomsWithCheckedSourceDoorApertures } from "./source-door-aperture-review";
++import { checkSourceNativeDoorOwnerReview } from "./source-native-door-owner-review";
+ import {
+   checkSourceBoundaryPatches,
+   roomsWithSourceBoundaryPatches,
+@@ -33,6 +34,7 @@ import { createHash } from "node:crypto";
+ import { createReadStream } from "node:fs";
+ import { fileURLToPath } from "node:url";
+ import { serialize } from "node:v8";
++import { writeFileSync } from "node:fs";
+ import { mkdir, readFile, writeFile } from "node:fs/promises";
+ import path from "node:path";
+ const { join, resolve } = path;
+@@ -62,7 +64,7 @@ import {
+ const [input, nativeCache, destination, ...workerArgs] = process.argv.slice(2);
+ if (!input || !nativeCache || !destination)
+   throw new Error(
+-    "Usage: regenerate-from-native-cache.ts master.zip native-cache.json output-directory [--native-workers 1|2] [--native-worker-heap-mib 256..8192] [--landing-workers N] [--landing-worker-heap-mib 256..8192] [--checkpoint-dir directory] [--drawing-reference-review review.json] [--refresh-drawing-floor-bindings checked] [--boundary-contact-review review.json] [--door-boundary-closure-review review.json] [--access-decision-review decision.json] [--door-aperture-review review.json] [--boundary-patch-review patches.json --applied-boundary-patch-master applied.zip [--boundary-patch-supersessions supersessions.json]] [--source-flat-landing-review checked] [--source-stepped-stair-review review.json] [--source-door-standing-review review.json] [--source-stair-base-standing-review review.json] [--validated-import-checkpoint-dir private-directory] [--prepared-diagnostic-dir NEW-directory]",
++    "Usage: regenerate-from-native-cache.ts master.zip native-cache.json output-directory [--native-workers 1|2] [--native-worker-heap-mib 256..8192] [--landing-workers N] [--landing-worker-heap-mib 256..8192] [--checkpoint-dir directory] [--drawing-reference-review review.json] [--refresh-drawing-floor-bindings checked] [--boundary-contact-review review.json] [--door-boundary-closure-review review.json] [--access-decision-review decision.json] [--door-aperture-review review.json] [--native-door-owner-review review.json] [--boundary-patch-review patches.json --applied-boundary-patch-master applied.zip [--boundary-patch-supersessions supersessions.json]] [--source-flat-landing-review checked] [--source-stepped-stair-review review.json] [--source-door-standing-review review.json] [--source-stair-base-standing-review review.json] [--validated-import-checkpoint-dir private-directory] [--prepared-diagnostic-dir NEW-directory]",
+   );
+ const workerOptions = new Map<string, string>();
+ for (let i = 0; i < workerArgs.length; i += 2) {
+@@ -82,6 +84,7 @@ for (let i = 0; i < workerArgs.length; i += 2) {
+       "--door-boundary-closure-review",
+       "--access-decision-review",
+       "--door-aperture-review",
++      "--native-door-owner-review",
+       "--boundary-patch-review",
+       "--boundary-patch-supersessions",
+       "--applied-boundary-patch-master",
+@@ -613,6 +616,77 @@ async function compileAndExportMaster() {
+       }),
+     );
+   }
++  // Door-scoped native-cell owner review: only the listed doors, decided from
++  // the native cells inside the compile. The source rooms are not changed.
++  const nativeDoorOwnerPath = workerOptions.get("--native-door-owner-review");
++  const nativeDoorOwnerBytes = nativeDoorOwnerPath
++    ? await readFile(resolve(nativeDoorOwnerPath))
++    : undefined;
++  const nativeDoorOwnerCheck = nativeDoorOwnerBytes
++    ? checkSourceNativeDoorOwnerReview(
++        rooms,
++        JSON.parse(nativeDoorOwnerBytes.toString("utf8")),
++        sourceModelSha256,
++        cache.nativeModel,
++        nativeDoorOwnerBytes,
++      )
++    : undefined;
++  const nativeDoorOwnerReceiptPath = join(
++    output,
++    "source-native-door-owner-replay.json",
++  );
++  let nativeDoorOwnerReceiptSha256: string | undefined;
++  if (nativeDoorOwnerCheck) {
++    await mkdir(output, { recursive: true });
++    await writeFile(
++      join(output, "source-native-door-owner-review.json"),
++      nativeDoorOwnerBytes!,
++      { flag: "wx" },
++    );
++    console.log(
++      JSON.stringify({
++        stage: "source-native-door-owner-review-checked",
++        doors: nativeDoorOwnerCheck.decisions.length,
++      }),
++    );
++  }
++  const nativeDoorOwnerReview = nativeDoorOwnerCheck
++    ? {
++        decisions: nativeDoorOwnerCheck.decisions,
++        onEvidence: (
++          evidence: Parameters<typeof nativeDoorOwnerCheck.onEvidence>[0],
++        ) => {
++          if (!evidence.accepted) {
++            console.log(
++              JSON.stringify({
++                stage: "source-native-door-owner-refused",
++                evidence,
++              }),
++            );
++            return;
++          }
++          nativeDoorOwnerCheck.onEvidence(evidence);
++          if (!nativeDoorOwnerCheck.complete()) return;
++          // Written as soon as the last listed door is applied, so the
++          // evidence survives a failure in a later compile stage.
++          const receiptBytes =
++            JSON.stringify(nativeDoorOwnerCheck.receipt(), null, 2) + "\n";
++          writeFileSync(nativeDoorOwnerReceiptPath, receiptBytes, {
++            flag: "wx",
++          });
++          nativeDoorOwnerReceiptSha256 = createHash("sha256")
++            .update(receiptBytes)
++            .digest("hex");
++          console.log(
++            JSON.stringify({
++              stage: "source-native-door-owners-applied",
++              doors: nativeDoorOwnerCheck.decisions.length,
++              receiptSha256: nativeDoorOwnerReceiptSha256,
++            }),
++          );
++        },
++      }
++    : undefined;
+   const sourceRooms = JSON.stringify(rooms);
+   if (sourceFlatLandingReview) {
+     const originalModelBytes = before.files[original.manifest.model.path];
+@@ -781,8 +855,14 @@ async function compileAndExportMaster() {
+       originalStairBaseDerivedStandings: sourceStairBaseStandings?.proofs,
+       nativeCirculationCompiler,
+       nativeLandingApproaches,
++      ...(nativeDoorOwnerReview ? { nativeDoorOwnerReview } : {}),
+     },
+   );
++  if (nativeDoorOwnerCheck)
++    assert.ok(
++      nativeDoorOwnerCheck.complete() && nativeDoorOwnerReceiptSha256,
++      "Every listed native door owner must be applied by the compile",
++    );
+   sourceDoorStandings?.assertUnchanged();
+   await assertSourceStairBaseStandingUnchanged();
+   if (sourceStairBaseStandings) {
+@@ -1197,6 +1277,23 @@ async function compileAndExportMaster() {
+           },
+         }
+       : {}),
++    ...(nativeDoorOwnerCheck
++      ? {
++          sourceNativeDoorOwnerReview: {
++            path: resolve(nativeDoorOwnerPath!),
++            reviewSha256: sha(nativeDoorOwnerBytes!),
++            receiptPath: nativeDoorOwnerReceiptPath,
++            receiptSha256: nativeDoorOwnerReceiptSha256,
++            appliedDoors: nativeDoorOwnerCheck.decisions.map((d) => ({
++              levelId: d.levelId,
++              nativeDoorId: d.nativeDoorId,
++              roomKeys: d.roomKeys,
++            })),
++            sourceRoomsChanged: false,
++            accessOrAccessibilityGranted: false,
++          },
++        }
++      : {}),
+     ...(doorBoundaryReplay
+       ? {
+           sourceDoorBoundaryClosureReview: {
+diff --git a/scripts/indoor/source-native-door-owner-review.ts b/scripts/indoor/source-native-door-owner-review.ts
+new file mode 100644
+index 0000000..3d3afbc
+--- /dev/null
++++ b/scripts/indoor/source-native-door-owner-review.ts
+@@ -0,0 +1,324 @@
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import {
++  directoryDoorReviews,
++  directoryDoors,
++  NATIVE_DOOR_OWNER_MAX_GAP_FEET,
++  NATIVE_DOOR_SIDE_STEPS_FEET,
++} from "../../../reviter/lib/reviter/directory-navigation.ts";
++import {
++  validateNativeDoorOwnerDecisions,
++  type NativeDoorOwnerDecision,
++  type NativeDoorOwnerEvidence,
++} from "../../../reviter/lib/reviter/reviewed-native-door-owners.ts";
++import {
++  isWalkable,
++  type RoomDirectoryData,
++} from "../../../reviter/lib/reviter/room-directory.ts";
++import type { ConvertResult } from "../../../reviter/lib/reviter/types.ts";
++
++/** Door-scoped native-cell owner review, kept outside the authoring master
++ * like the door aperture and boundary patch reviews.
++ *
++ * Each listed native door takes its two owner rooms from the native
++ * wall-bounded cells on each side of the door, where the registered room
++ * outline stops short of the real wall and the ordinary matcher therefore
++ * leaves the door unmatched. Every other door is matched exactly as before.
++ *
++ * The file names the door and the two rooms and nothing else: it carries no
++ * tolerance, no geometry and no access decision. The compiler decides each
++ * door from the native model (Reviter `reviewed-native-door-owners.ts`) and
++ * refuses the whole compile unless the native rule, with its default 2 ft
++ * owner gap, finds exactly the two listed rooms. The source rooms are not
++ * changed by this review. */
++export type SourceNativeDoorOwnerReview = {
++  format: "source-native-door-owner-review-v1";
++  id: string;
++  sourceModelSha256: string;
++  notes: string;
++  doors: {
++    levelId: number;
++    nativeDoorId: number;
++    roomKeys: [string, string];
++    notes: string;
++  }[];
++};
++export type SourceNativeDoorOwnerReceipt = {
++  format: "checked-source-native-door-owner-review-v1";
++  id: string;
++  sourceModelSha256: string;
++  /** SHA-256 of the parsed review as JSON, as in the aperture receipt. */
++  reviewSha256: string;
++  /** SHA-256 of the review file's bytes, when they were supplied. */
++  reviewFileSha256?: string;
++  /** The reviewed source rooms the compile used; this review leaves them as is. */
++  sourceRoomsSha256: string;
++  sourceRoomsChanged: false;
++  rule: {
++    matcher: "native-cell";
++    stepsFeet: number[];
++    maxOwnerGapFeet: number;
++    cells: string;
++  };
++  doors: {
++    levelId: number;
++    nativeDoorId: number;
++    listedRoomKeys: [string, string];
++    notes: string;
++    elevationFeet: number;
++    doorPointFeet: [number, number];
++    doorNormalFeet: [number, number];
++    doorFootprintFeet: [number, number][];
++    beforeReview: { state: string; candidates: string[] };
++    /** Side against the door normal first, then along it. */
++    nativeSides: {
++      side: "against-normal" | "along-normal";
++      cellId: string;
++      cellRoomKeys: string[];
++      cellBoundsFeet: [number, number, number, number];
++      stepFeet: number;
++      probeFeet: [number, number];
++      owner: string;
++      ownerGapFeet: number;
++    }[];
++    appliedRoomKeys: [string, string];
++    portalFromFeet: [number, number];
++    portalToFeet: [number, number];
++  }[];
++  onlyListedDoorsChanged: true;
++  accessOrAccessibilityGranted: false;
++};
++const digest = (value: unknown) =>
++  createHash("sha256").update(JSON.stringify(value)).digest("hex");
++const sha = /^[a-f0-9]{64}$/;
++const onlyKeys = (value: object, allowed: string[], what: string) =>
++  assert.deepEqual(
++    Object.keys(value).filter((k) => !allowed.includes(k)),
++    [],
++    `${what} has fields this review does not accept.`,
++  );
++
++/** Check the review against the reviewed source rooms and the native model,
++ * then hand the compiler the listed decisions. Everything that does not need
++ * the native plane is refused here, before the compile starts; the native
++ * cells exist only inside the compile, which makes the final decision and
++ * reports it through `onEvidence`. `receipt()` is available once every listed
++ * door has been applied. */
++export function checkSourceNativeDoorOwnerReview(
++  rooms: RoomDirectoryData,
++  review: SourceNativeDoorOwnerReview,
++  sourceModelSha256: string,
++  model: ConvertResult,
++  reviewBytes?: Uint8Array,
++): {
++  decisions: NativeDoorOwnerDecision[];
++  onEvidence: (evidence: NativeDoorOwnerEvidence) => void;
++  complete: () => boolean;
++  receipt: () => SourceNativeDoorOwnerReceipt;
++} {
++  assert.equal(
++    review?.format,
++    "source-native-door-owner-review-v1",
++    "An explicit source native door owner review is required.",
++  );
++  onlyKeys(
++    review,
++    ["format", "id", "sourceModelSha256", "notes", "doors"],
++    "The review",
++  );
++  assert.ok(
++    typeof review.id === "string" &&
++      review.id.trim() &&
++      typeof review.notes === "string" &&
++      review.notes.trim(),
++    "Review id and notes are required.",
++  );
++  assert.match(review.sourceModelSha256, sha, "Invalid source model digest.");
++  assert.equal(
++    review.sourceModelSha256,
++    sourceModelSha256,
++    "Native door owner review belongs to a different Revit model.",
++  );
++  assert.ok(
++    Array.isArray(review.doors) && review.doors.length > 0,
++    "A native door owner review needs doors.",
++  );
++  for (const door of review.doors) {
++    assert.ok(door && typeof door === "object", "Invalid door row.");
++    onlyKeys(
++      door,
++      ["levelId", "nativeDoorId", "roomKeys", "notes"],
++      `Door ${door.nativeDoorId}`,
++    );
++    assert.ok(
++      typeof door.notes === "string" && door.notes.trim(),
++      `Door ${door.nativeDoorId}: notes are required.`,
++    );
++  }
++  const decisions = review.doors.map((d) => ({
++    levelId: d.levelId,
++    nativeDoorId: d.nativeDoorId,
++    roomKeys: d.roomKeys,
++  }));
++  validateNativeDoorOwnerDecisions(decisions);
++  const links = rooms.navigation?.doorLinks ?? [];
++  const levelDoors = new Map<number, ReturnType<typeof directoryDoors>>();
++  for (const d of decisions) {
++    const name = `Door ${d.nativeDoorId} on level ${d.levelId}`;
++    assert.ok(
++      !links.some(
++        (l) => l.doorId === d.nativeDoorId && l.levelId === d.levelId,
++      ),
++      `${name}: a reviewed door link already names this door; explicit reviews keep precedence.`,
++    );
++    const levelRooms = rooms.annotations.filter(
++      (r) => r.levelId === d.levelId && r.status !== "deleted",
++    );
++    for (const key of d.roomKeys)
++      assert.ok(
++        levelRooms.some((r) => r.key === key && isWalkable(r)),
++        `${name}: room ${key} is not a walkable area on the door's level.`,
++      );
++    if (!levelDoors.has(d.levelId))
++      levelDoors.set(d.levelId, directoryDoors(model, d.levelId));
++    const door = levelDoors
++      .get(d.levelId)!
++      .find((x) => x.id === d.nativeDoorId);
++    assert.ok(door, `${name}: no such native door on this level.`);
++    assert.ok(
++      door.footprint && door.footprint.length >= 3 && door.normal,
++      `${name}: the door has no precise footprint and normal.`,
++    );
++    // Early refusal only. The compile repeats this on the rooms it routes with.
++    const legacy = directoryDoorReviews(levelRooms, [door])[0]!;
++    assert.ok(
++      !legacy.portal,
++      `${name}: the legacy matcher already pairs this door (${legacy.portal?.rooms.join(", ")}).`,
++    );
++  }
++  const evidence = new Map<string, NativeDoorOwnerEvidence>();
++  const key = (levelId: number, nativeDoorId: number) =>
++    `${levelId}:${nativeDoorId}`;
++  const complete = () =>
++    decisions.every(
++      (d) => evidence.get(key(d.levelId, d.nativeDoorId))?.applied === true,
++    );
++  const sourceRoomsSha256 = digest(rooms);
++  return {
++    decisions: structuredClone(decisions),
++    onEvidence(row) {
++      if (!row.listedRoomKeys) return;
++      const id = key(row.levelId, row.nativeDoorId);
++      assert.ok(
++        decisions.some((d) => key(d.levelId, d.nativeDoorId) === id),
++        `Door ${row.nativeDoorId} is not in the native door owner review.`,
++      );
++      assert.ok(
++        !evidence.get(id)?.applied,
++        `Door ${row.nativeDoorId} was applied more than once.`,
++      );
++      evidence.set(id, structuredClone(row));
++    },
++    complete,
++    receipt() {
++      assert.ok(
++        complete(),
++        "Every listed door must be applied by the compile before a receipt exists.",
++      );
++      return {
++        format: "checked-source-native-door-owner-review-v1",
++        id: review.id,
++        sourceModelSha256,
++        reviewSha256: digest(review),
++        ...(reviewBytes
++          ? {
++              reviewFileSha256: createHash("sha256")
++                .update(reviewBytes)
++                .digest("hex"),
++            }
++          : {}),
++        sourceRoomsSha256,
++        sourceRoomsChanged: false,
++        rule: {
++          matcher: "native-cell",
++          stepsFeet: [...NATIVE_DOOR_SIDE_STEPS_FEET],
++          maxOwnerGapFeet: NATIVE_DOOR_OWNER_MAX_GAP_FEET,
++          cells:
++            "Exact native free floor of the door's plane minus every door threshold, named by the majority rule; computed in the compile at door matching.",
++        },
++        doors: review.doors.map((listed) => {
++          const row = evidence.get(key(listed.levelId, listed.nativeDoorId))!;
++          const name = `Door ${listed.nativeDoorId}`;
++          assert.ok(
++            row.accepted && row.applied && row.portal,
++            `${name}: not applied.`,
++          );
++          const applied = row.portal.rooms;
++          assert.deepEqual(
++            [...applied].sort(),
++            [...listed.roomKeys].sort(),
++            `${name}: applied rooms differ from the listed rooms.`,
++          );
++          assert.deepEqual(
++            [...(row.native?.rooms ?? [])].sort(),
++            [...listed.roomKeys].sort(),
++            `${name}: native owners differ from the listed rooms.`,
++          );
++          const sides = row.native!.sides.map((s) => {
++            assert.ok(
++              s.cellId !== undefined &&
++                s.owner !== undefined &&
++                s.cellBoundsFeet !== undefined &&
++                s.stepFeet !== undefined &&
++                s.probeFeet !== undefined &&
++                s.ownerGapFeet !== undefined &&
++                s.ownerGapFeet >= 0 &&
++                s.ownerGapFeet <= NATIVE_DOOR_OWNER_MAX_GAP_FEET,
++              `${name}: a native side is undecided or beyond the owner gap.`,
++            );
++            return {
++              side: s.side,
++              cellId: s.cellId,
++              cellRoomKeys: [...(s.cellRoomKeys ?? [])],
++              cellBoundsFeet: s.cellBoundsFeet,
++              stepFeet: s.stepFeet,
++              probeFeet: s.probeFeet,
++              owner: s.owner,
++              ownerGapFeet: s.ownerGapFeet,
++            };
++          });
++          assert.equal(
++            sides.length,
++            2,
++            `${name}: two native sides are required.`,
++          );
++          assert.notEqual(
++            sides[0]!.cellId,
++            sides[1]!.cellId,
++            `${name}: both sides lie in one native cell.`,
++          );
++          return {
++            levelId: listed.levelId,
++            nativeDoorId: listed.nativeDoorId,
++            listedRoomKeys: listed.roomKeys,
++            notes: listed.notes,
++            elevationFeet: row.elevationFeet!,
++            doorPointFeet: row.door!.pointFeet,
++            doorNormalFeet: row.door!.normalFeet!,
++            doorFootprintFeet: row.door!.footprintFeet!,
++            beforeReview: {
++              state: row.ordinary!.state,
++              candidates: row.ordinary!.candidates,
++            },
++            nativeSides: sides,
++            appliedRoomKeys: applied,
++            portalFromFeet: row.portal.from,
++            portalToFeet: row.portal.to,
++          };
++        }),
++        onlyListedDoorsChanged: true,
++        accessOrAccessibilityGranted: false,
++      };
++    },
++  };
++}
+diff --git a/tests/unit/source-native-door-owner-review.test.ts b/tests/unit/source-native-door-owner-review.test.ts
+new file mode 100644
+index 0000000..b243559
+--- /dev/null
++++ b/tests/unit/source-native-door-owner-review.test.ts
+@@ -0,0 +1,387 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { execFileSync } from "node:child_process";
++import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import path from "node:path";
++import {
++  directoryDoorReviews,
++  directoryDoors,
++  type NativeDoorCell,
++} from "../../../reviter/lib/reviter/directory-navigation";
++import {
++  evaluateNativeDoorOwner,
++  reviewedNativeDoorOwnerPortal,
++  type NativeDoorOwnerEvidence,
++} from "../../../reviter/lib/reviter/reviewed-native-door-owners";
++import type {
++  DirectoryRoom,
++  RoomDirectoryData,
++} from "../../../reviter/lib/reviter/room-directory";
++import type { ConvertResult } from "../../../reviter/lib/reviter/types";
++import {
++  checkSourceNativeDoorOwnerReview,
++  type SourceNativeDoorOwnerReview,
++} from "../../scripts/indoor/source-native-door-owner-review";
++
++type Point = [number, number];
++const sha = "a".repeat(64);
++const rect = (x0: number, y0: number, x1: number, y1: number): Point[] => [
++  [x0, y0],
++  [x1, y0],
++  [x1, y1],
++  [x0, y1],
++];
++// One native door (id 10) in a thin wall along y = 0, spanning x 1..5.
++const boundsFeet = { min: { x: -2, y: -2, z: 0 }, max: { x: 8, y: 2, z: 10 } };
++const model = {
++  levels: [{ levelId: 1, elevation: 0 }],
++  elementBounds: [
++    {
++      elementId: 10,
++      categoryId: -2_000_023,
++      boundsFeet,
++      orientedBox: [
++        [1, -0.1, 0],
++        [5, -0.1, 0],
++        [5, 0.1, 0],
++        [1, 0.1, 0],
++      ],
++    },
++    // A door with no decoded opening: bounds only, so no precise footprint.
++    { elementId: 11, categoryId: -2_000_023, boundsFeet },
++  ],
++  nativeAssociatedLevelRelations: [
++    { elementId: 10, levelId: 1 },
++    { elementId: 11, levelId: 1 },
++  ],
++  nativeHostRelations: [],
++} as unknown as ConvertResult;
++const room = (
++  key: string,
++  ring: Point[],
++  extra: Partial<DirectoryRoom> = {},
++): DirectoryRoom => ({
++  key,
++  levelId: 1,
++  name: key,
++  polygonFeet: ring,
++  labelPointFeet: ring[0]!,
++  confidence: 1,
++  ...extra,
++});
++// Outlines stop 1.4 ft short of the wall faces at y = -0.1 and y = 0.1.
++const rooms = (
++  annotations = [
++    room("south", rect(0, -10, 6, -1.5)),
++    room("north", rect(0, 1.5, 6, 10)),
++  ],
++  extra: Partial<RoomDirectoryData> = {},
++) =>
++  ({
++    format: "reviter-room-annotations",
++    version: 1,
++    annotations,
++    ...extra,
++  }) as unknown as RoomDirectoryData;
++const review = (
++  doors: unknown = [
++    {
++      levelId: 1,
++      nativeDoorId: 10,
++      roomKeys: ["north", "south"],
++      notes: "Synthetic door.",
++    },
++  ],
++  extra: Record<string, unknown> = {},
++) =>
++  ({
++    format: "source-native-door-owner-review-v1",
++    id: "synthetic-native-door-owners",
++    sourceModelSha256: sha,
++    notes: "Synthetic review.",
++    doors,
++    ...extra,
++  }) as SourceNativeDoorOwnerReview;
++const cells: NativeDoorCell[] = [
++  { id: "S", roomKeys: ["south"], ringsFeet: [rect(0, -10, 6, -0.1)] },
++  { id: "N", roomKeys: ["north"], ringsFeet: [rect(0, 0.1, 6, 10)] },
++];
++/** What the compiler reports for the listed door once it has applied it. */
++function compiled(
++  data: RoomDirectoryData,
++  listed: [string, string] = ["north", "south"],
++): NativeDoorOwnerEvidence {
++  const door = directoryDoors(model, 1).find((d) => d.id === 10)!,
++    level = data.annotations;
++  const evidence = evaluateNativeDoorOwner({
++    levelId: 1,
++    nativeDoorId: 10,
++    listedRoomKeys: listed,
++    rooms: level,
++    door,
++    review: directoryDoorReviews(level, [door])[0]!,
++    explicitLinks: [],
++    cells,
++    roomElevationFeet: () => 0,
++  });
++  assert.equal(evidence.accepted, true, evidence.reason);
++  return {
++    ...evidence,
++    elevationFeet: 0,
++    applied: true,
++    portal: reviewedNativeDoorOwnerPortal(level, door, cells)!,
++  };
++}
++
++test("an accepted review hands the compiler only the listed doors and leaves the rooms alone", () => {
++  const data = rooms();
++  const snapshot = JSON.stringify(data);
++  const bytes = new TextEncoder().encode(JSON.stringify(review()));
++  const check = checkSourceNativeDoorOwnerReview(
++    data,
++    review(),
++    sha,
++    model,
++    bytes,
++  );
++  assert.equal(JSON.stringify(data), snapshot, "source rooms are not changed");
++  assert.deepEqual(check.decisions, [
++    { levelId: 1, nativeDoorId: 10, roomKeys: ["north", "south"] },
++  ]);
++  // No receipt before the compile has applied every listed door.
++  assert.equal(check.complete(), false);
++  assert.throws(() => check.receipt(), /must be applied by the compile/);
++  // Observations of other doors are not part of the review.
++  check.onEvidence({
++    ...compiled(data),
++    nativeDoorId: 99,
++    listedRoomKeys: undefined,
++  });
++  assert.equal(check.complete(), false);
++  check.onEvidence(compiled(data));
++  assert.equal(check.complete(), true);
++  const receipt = check.receipt();
++  assert.equal(receipt.format, "checked-source-native-door-owner-review-v1");
++  assert.equal(receipt.sourceModelSha256, sha);
++  assert.match(receipt.reviewSha256, /^[a-f0-9]{64}$/);
++  assert.match(receipt.reviewFileSha256!, /^[a-f0-9]{64}$/);
++  assert.equal(receipt.sourceRoomsChanged, false);
++  assert.equal(receipt.accessOrAccessibilityGranted, false);
++  assert.deepEqual(receipt.rule.stepsFeet, [0.25, 0.5, 1, 1.5]);
++  assert.equal(receipt.rule.maxOwnerGapFeet, 2);
++  assert.equal(receipt.doors.length, 1);
++  const door = receipt.doors[0]!;
++  assert.deepEqual(door.listedRoomKeys, ["north", "south"]);
++  assert.deepEqual(door.appliedRoomKeys, ["south", "north"]);
++  assert.deepEqual(door.beforeReview, { state: "unmatched", candidates: [] });
++  assert.deepEqual(
++    door.nativeSides.map((s) => [s.side, s.cellId, s.owner, s.stepFeet]),
++    [
++      ["against-normal", "S", "south", 0.25],
++      ["along-normal", "N", "north", 0.25],
++    ],
++  );
++  for (const side of door.nativeSides)
++    assert.ok(Math.abs(side.ownerGapFeet - 1.15) < 1e-9);
++  assert.deepEqual(
++    door.nativeSides.map((s) => s.cellBoundsFeet),
++    [
++      [0, -10, 6, -0.1],
++      [0, 0.1, 6, 10],
++    ],
++  );
++  assert.equal(JSON.stringify(data), snapshot);
++  // A door is applied once.
++  assert.throws(() => check.onEvidence(compiled(data)), /more than once/);
++});
++
++test("each static refusal is raised before the compile starts", () => {
++  const refuse = (
++    pattern: RegExp,
++    value = review(),
++    data = rooms(),
++    modelSha = sha,
++  ) =>
++    assert.throws(
++      () => checkSourceNativeDoorOwnerReview(data, value, modelSha, model),
++      pattern,
++    );
++  const row = (extra: Record<string, unknown> = {}) => ({
++    levelId: 1,
++    nativeDoorId: 10,
++    roomKeys: ["north", "south"],
++    notes: "Synthetic door.",
++    ...extra,
++  });
++  refuse(/explicit source native door owner review/, {
++    ...review(),
++    format: "source-door-aperture-review-v1",
++  } as never);
++  refuse(/different Revit model/, review(), rooms(), "f".repeat(64));
++  refuse(
++    /Invalid source model digest/,
++    review([row()], {
++      sourceModelSha256: "nope",
++    }),
++  );
++  refuse(/id and notes are required/, review([row()], { notes: " " }));
++  refuse(/needs doors/, review([]));
++  refuse(/notes are required/, review([row({ notes: "" })]));
++  // No tolerance, geometry or access can be carried by the file.
++  refuse(
++    /fields this review does not accept/,
++    review([row()], {
++      maxOwnerGapFeet: 5,
++    }),
++  );
++  refuse(
++    /fields this review does not accept/,
++    review([row({ maxOwnerGapFeet: 5 })]),
++  );
++  refuse(
++    /fields this review does not accept/,
++    review([row({ overrideLegacy: true })]),
++  );
++  refuse(/two different room keys/, review([row({ roomKeys: ["north"] })]));
++  refuse(
++    /two different room keys/,
++    review([row({ roomKeys: ["north", "north"] })]),
++  );
++  refuse(/more than once/, review([row(), row({ notes: "Again." })]));
++  // Rooms must be walkable areas on the door's own level.
++  refuse(
++    /room attic is not a walkable area on the door's level/,
++    review([row({ roomKeys: ["north", "attic"] })]),
++  );
++  refuse(
++    /room north is not a walkable area/,
++    review(),
++    rooms([
++      room("south", rect(0, -10, 6, -1.5)),
++      room("north", rect(0, 1.5, 6, 10), { levelId: 2 }),
++    ]),
++  );
++  refuse(
++    /room north is not a walkable area/,
++    review(),
++    rooms([
++      room("south", rect(0, -10, 6, -1.5)),
++      room("north", rect(0, 1.5, 6, 10), { walkability: "void" }),
++    ]),
++  );
++  refuse(
++    /room north is not a walkable area/,
++    review(),
++    rooms([
++      room("south", rect(0, -10, 6, -1.5)),
++      room("north", rect(0, 1.5, 6, 10), { status: "deleted" }),
++    ]),
++  );
++  // An explicit reviewed link for the door keeps precedence.
++  refuse(
++    /explicit reviews keep precedence/,
++    review(),
++    rooms(undefined, {
++      navigation: {
++        version: 1,
++        doorLinks: [{ doorId: 10, levelId: 1, rooms: ["north", "south"] }],
++      },
++    }),
++  );
++  // The door must exist on the level with a precise footprint and normal.
++  refuse(/no such native door/, review([row({ nativeDoorId: 404 })]));
++  refuse(
++    /is not a walkable area|no such native door/,
++    review([row({ levelId: 2 })]),
++  );
++  refuse(
++    /no precise footprint and normal/,
++    review([row({ nativeDoorId: 11 })]),
++  );
++  // The legacy matcher already pairs the door: nothing to review.
++  refuse(
++    /legacy matcher already pairs this door/,
++    review(),
++    rooms([
++      room("south", rect(0, -10, 6, -0.1)),
++      room("north", rect(0, 0.1, 6, 10)),
++    ]),
++  );
++});
++
++test("a receipt is refused unless the compile applied exactly the listed rooms", () => {
++  const data = rooms([
++    room("south", rect(0, -10, 6, -1.5)),
++    room("north", rect(0, 1.5, 6, 10)),
++    room("other", rect(20, 1.5, 26, 10)),
++  ]);
++  const check = checkSourceNativeDoorOwnerReview(data, review(), sha, model);
++  // Evidence for a door outside the review is rejected outright.
++  assert.throws(
++    () => check.onEvidence({ ...compiled(data), nativeDoorId: 404 }),
++    /not in the native door owner review/,
++  );
++  // Accepted but not applied: still no receipt.
++  check.onEvidence({ ...compiled(data), applied: false });
++  assert.equal(check.complete(), false);
++  // Applied to rooms other than the listed pair.
++  const wrong = compiled(data);
++  check.onEvidence({
++    ...wrong,
++    portal: { ...wrong.portal!, rooms: ["south", "other"] },
++  });
++  assert.throws(() => check.receipt(), /applied rooms differ/);
++});
++
++test("the regeneration passes the review to the compiler only when the flag is given", () => {
++  const root = path.resolve(import.meta.dirname, "../..");
++  const script = readFileSync(
++    path.join(root, "scripts/indoor/regenerate-from-native-cache.ts"),
++    "utf8",
++  );
++  assert.ok(script.includes('"--native-door-owner-review",'));
++  assert.ok(
++    script.includes(
++      "...(nativeDoorOwnerReview ? { nativeDoorOwnerReview } : {}),",
++    ),
++    "unset flag adds no compiler option",
++  );
++  assert.equal(script.split("checkSourceNativeDoorOwnerReview(").length, 2);
++  // run.sh: unset adds nothing to the command line; set adds one flag pair.
++  const work = mkdtempSync(path.join(tmpdir(), "recompile-run-"));
++  try {
++    for (const dir of ["openindoormaps", "reviter", "inputs"])
++      mkdirSync(path.join(work, dir));
++    const run = (env: Record<string, string>) =>
++      execFileSync(
++        "bash",
++        [
++          path.join(root, "docs/continuation/unbc-20261021/recompile/run.sh"),
++          work,
++        ],
++        {
++          encoding: "utf8",
++          env: {
++            ...process.env,
++            DRY_RUN: "1",
++            NATIVE_WORKERS: "1",
++            LANDING_WORKERS: "1",
++            PARENT_HEAP_MIB: "6144",
++            ...env,
++          },
++        },
++      )
++        .split("\n")
++        .find((line) => line.includes("regenerate-from-native-cache.ts"))!;
++    const plain = run({ NATIVE_DOOR_OWNER_REVIEW: "" });
++    assert.ok(!plain.includes("native-door-owner"));
++    const set = run({ NATIVE_DOOR_OWNER_REVIEW: "/tmp/owners.json" });
++    assert.equal(
++      set.replace(" --native-door-owner-review /tmp/owners.json", ""),
++      plain,
++    );
++  } finally {
++    rmSync(work, { recursive: true, force: true });
++  }
++});
+-- 
+2.54.0 (Apple Git-157)
+

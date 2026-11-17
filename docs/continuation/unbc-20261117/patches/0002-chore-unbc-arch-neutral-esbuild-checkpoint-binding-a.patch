@@ -1,0 +1,46 @@
+From 53e7c31fc1c709cf55c5a1c37593d9618a30bffa Mon Sep 17 00:00:00 2001
+From: Ahmad Jalil <ahzs645@gmail.com>
+Date: Mon, 16 Nov 2026 08:22:01 -0700
+Subject: [PATCH 2/3] chore(unbc): arch-neutral esbuild checkpoint binding and
+ overridable aperture review path
+
+Re-applies the two uncommitted local edits carried in the regeneration
+working tree: resolve the esbuild binary for the running architecture in
+private-import-checkpoint.ts, and let run.sh take REVIEW from the
+environment.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+---
+ docs/continuation/unbc-20261021/recompile/run.sh | 2 +-
+ scripts/indoor/private-import-checkpoint.ts      | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/docs/continuation/unbc-20261021/recompile/run.sh b/docs/continuation/unbc-20261021/recompile/run.sh
+index fe9d3b4..f1c0215 100755
+--- a/docs/continuation/unbc-20261021/recompile/run.sh
++++ b/docs/continuation/unbc-20261021/recompile/run.sh
+@@ -26,7 +26,7 @@
+ set -euo pipefail
+ WORK=$(cd "${1:?usage: run.sh WORK}" && pwd -P)
+ OIM=$WORK/openindoormaps IN=$WORK/inputs RUN=$WORK/run
+-REVIEW=$OIM/docs/continuation/unbc-20261021/link-doors/DOOR-APERTURE-REVIEW.json
++REVIEW=${REVIEW:-$OIM/docs/continuation/unbc-20261021/link-doors/DOOR-APERTURE-REVIEW.json}
+ 
+ for d in "$OIM" "$WORK/reviter" "$IN"; do [ -d "$d" ] || { echo "Missing $d" >&2; exit 1; }; done
+ node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<22||(a===22&&b<15))throw Error("Node 22.15 or newer is required, found "+process.version)'
+diff --git a/scripts/indoor/private-import-checkpoint.ts b/scripts/indoor/private-import-checkpoint.ts
+index 9b11124..ea9ea2d 100644
+--- a/scripts/indoor/private-import-checkpoint.ts
++++ b/scripts/indoor/private-import-checkpoint.ts
+@@ -71,7 +71,7 @@ export async function bindPrivateImportCheckpoint(
+     path.join(sourceRoot, "lib/reviter/vendor/native-exact-geos/native-exact-geos.wasm"),
+     ...[root, sourceRoot].flatMap((r) => [path.join(r, "package.json"), path.join(r, "package-lock.json")]),
+   ];
+-  extras.push(require.resolve("@esbuild/linux-x64/bin/esbuild"));
++  extras.push(require.resolve(`@esbuild/linux-${process.arch}/bin/esbuild`));
+   for (const match of execFileSync("ldd", [process.execPath], { encoding: "utf8" })
+     .matchAll(/(?:=>\s*)?(\/[^\s(]+)\s*\(/g)) extras.push(match[1]!);
+   const paths = [...new Set([
+-- 
+2.54.0 (Apple Git-157)
+
