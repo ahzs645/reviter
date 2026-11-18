@@ -3,8 +3,11 @@
 type Point = [number, number];
 type Rings = Point[][];
 const joinToleranceFeet = 1e-7;
-const close = (a: Point, b: Point) =>
-  (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 <= joinToleranceFeet ** 2;
+const close = (a: Point, b: Point) => {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy <= joinToleranceFeet * joinToleranceFeet;
+};
 
 export function matchingDoorSeams(
   footprint: Point[],
