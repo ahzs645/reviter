@@ -1,3 +1,4 @@
+import { matchingDoorSeams } from "./native-door-seams.ts";
 import * as DMath from "./deterministic-math.ts";
 import { createExactDoorApproachUnionMemo } from "./native-door-approach-exact-union-memo.ts";
 import {nativeRationalOverlay,nativeRationalScalarToIEEE,NATIVE_RATIONAL_OVERLAY_KERNEL_VERSION,type NativeRationalParts} from "./native-rational-overlay.ts";
@@ -1066,8 +1067,17 @@ function nativeCellDoorApproach(
         )
         .flatMap((p) => p.exactParts??nativeRationalOverlay("union",[p.rings]));
       try {
-        let parts=nativeRationalOverlay("intersection",nativeRationalThresholdHalf(footprint,normal,node!.pointFeet),floors);
-        parts=nativeRationalOverlay("intersection",parts,envelope);
+        const floorHalf=nativeRationalOverlay("intersection",nativeRationalThresholdHalf(footprint,normal,node!.pointFeet),floors);
+        let parts=nativeRationalOverlay("intersection",floorHalf,envelope);
+        const seams=matchingDoorSeams(door.footprintFeet ?? footprint,envelope);
+        if(seams.length){
+          const owned=level.masks.filter(p=>near(p)&&!p.column&&!p.repair&&p.nativeId!==undefined&&level.ownsAperture(door.hostWallNativeElementId,door.nativeElementId,p.nativeId))
+            .flatMap(p=>p.exactParts??nativeRationalOverlay("union",[p.rings]));
+          if(owned.length){
+            const supported=nativeRationalOverlay("intersection",floorHalf,seams,owned);
+            if(supported.length)parts=nativeRationalOverlay("union",parts,supported);
+          }
+        }
         if(masks.length)parts=nativeRationalOverlay("difference",parts,masks);
         for(const part of parts){
           if(local){

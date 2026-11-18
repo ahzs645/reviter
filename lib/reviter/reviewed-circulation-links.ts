@@ -1,3 +1,4 @@
+import { checkedBayMask, validBay, type ReviewedOpenBay } from "./reviewed-open-bay.ts";
 import * as DMath from "./deterministic-math.ts";
 import { nativeRationalOverlay, type NativeRationalParts } from "./native-rational-overlay.ts";
 import { nativeRationalPathSupported } from "./native-exact-planar-topology.ts";
@@ -30,6 +31,7 @@ export type ReviewedCirculationLink = {
   toNodeId: string;
   pointsFeet: P3[];
   decision: { source: string; id: string; summary: string };
+  openBay?: ReviewedOpenBay;
   notes?: string;
 };
 export type ReviewedCirculationLinks = { version: 1; sourceModelSha256: string; links: ReviewedCirculationLink[] };
@@ -48,7 +50,7 @@ export function validateReviewedCirculationLinks(value: unknown, sourceModelSha2
         !l || !text(l.id, 200) || ids.has(l.id) || !text(l.fromNodeId, 2000) || !text(l.toNodeId, 2000) || l.fromNodeId === l.toNodeId ||
         !Array.isArray(l.pointsFeet) || l.pointsFeet.length < 2 || l.pointsFeet.length > 1000 ||
         l.pointsFeet.some((p) => !Array.isArray(p) || p.length !== 3 || p.some((n) => typeof n !== "number" || !Number.isFinite(n) || Math.abs(n) > 1e7)) ||
-        !l.decision || !text(l.decision.source, 500) || !text(l.decision.id, 200) || !text(l.decision.summary, 10000) ||
+        (l.openBay !== undefined && !validBay(l.openBay)) || !l.decision || !text(l.decision.source, 500) || !text(l.decision.id, 200) || !text(l.decision.summary, 10000) ||
         (l.notes !== undefined && !text(l.notes, 10000))
       )
         return true;
@@ -114,9 +116,16 @@ export function reviewedCirculationLinkSupport(
       ...data.records.filter((r) => Math.abs(r.elevationFeet - z) < 0.05 && (r.access === "staff" || !r.walkable)).map((r) => nativeRoomIdentityRings(data, r) as Rings),
     ].filter((m) => near(m as Rings));
     // Reviewed boundary patches keep their exact (rational) bodies.
+    const bay=link.openBay;
+    const bayMask=bay ? checkedBayMask(data,bay,from,to,material.known) : undefined;
     const patched: NativeRationalParts = data.walls
       .filter((w) => levels.has(w.levelId) && near(w.ringsFeet as Rings) && (!material.known.has(w.nativeElementId) || (w.reviewPatchId && material.present.has(w.nativeElementId))))
-      .flatMap((w) => boundary(w));
+      .flatMap((w) => {
+        const body=boundary(w);
+        if (!bay || !bayMask || w.nativeElementId!==bay.hostWallId || w.reviewPatchId || w.approximate ||
+            JSON.stringify(w.ringsFeet)!==JSON.stringify(bay.hostRingsFeet)) return body;
+        return nativeRationalOverlay("difference",body,bayMask);
+      });
     const zoneParts = nativeAccessZonesAt(data, z).flatMap((zone) => zone.parts);
     const vetoes: NativeRationalParts = masks.length || patched.length ? nativeRationalOverlay("union", [...masks, ...patched] as Rings[]) : [];
     const exempt = ownDoors.map((d) => [d.footprintFeet!] as Rings);

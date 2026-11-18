@@ -1,3 +1,4 @@
+import {verifyOpenBayDrawing} from "./reviewed-open-bay.ts";
 import { validateNativeDoorBoundarySourceReviewEvidence, type NativeDoorBoundarySourceReviewEvidence } from "./native-door-boundary-source-review-evidence.ts";
 import { validateReviewedDrawingReferences, type ReviewedDrawingReferences } from "./reviewed-drawing-references.ts";
 import * as DMath from "./deterministic-math.ts";
@@ -235,6 +236,7 @@ export function parseRoomDirectory(text: string): RoomDirectoryData {
     data.annotations.filter(r => r.status !== "deleted").map(r => ({key: r.key, number: r.number, levelId: r.levelId})));
   validateNativeAccessZones(data.nativeAccessZones);
   validateReviewedCirculationLinks(data.reviewedCirculationLinks);
+  for (const link of data.reviewedCirculationLinks?.links ?? []) if (link.openBay) verifyOpenBayDrawing(link.openBay, data.boundaryReference);
   validateReviewedDoorApertures(data.reviewedDoorApertures);
   return data;
 }
