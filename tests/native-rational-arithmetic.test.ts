@@ -13,7 +13,7 @@ const real=()=>next()/2147483647;
 const big=(bits:number)=>{let v=0n;for(let i=0;i<bits;i+=31)v=(v<<31n)|BigInt(next());return v;};
 const signed=(x:bigint)=>next()%2?x:-x;
 const euclid=(a:bigint,b:bigint)=>{a=a<0n?-a:a;b=b<0n?-b:b;while(b){const r=a%b;a=b;b=r;}return a;};
-type Pair=[any,any];
+type Pair = [fast.Rational, reference.Rational];
 function pair():Pair{
  const kind=next()%7;
  if(kind<2){const x=(real()-.5)*1800;return [fast.rational(x),reference.rational(x)];}
@@ -23,7 +23,12 @@ function pair():Pair{
  if(kind===5)return [new fast.Rational(0n,7n),new reference.Rational(0n,7n)];
  const n=BigInt(next()%9)-4n;return [new fast.Rational(n,3n),new reference.Rational(n,3n)];
 }
-const same=(a:any,b:any,what:string)=>{assert.equal(a.n,b.n,what);assert.equal(a.d,b.d,what);assert.ok(a.d>0n,what);};
+function same(a: number | fast.Rational, b: number | reference.Rational, what: string) {
+ assert.ok(typeof a !== 'number' && typeof b !== 'number', what);
+ assert.equal(a.n,b.n,what);
+ assert.equal(a.d,b.d,what);
+ assert.ok(a.d>0n,what);
+}
 
 test('both gcd paths equal Euclid',()=>{
  const edges:[bigint,bigint][]=[[0n,5n],[5n,0n],[0n,0n],[-12n,18n],[1n<<2000n,(1n<<1999n)+1n],[1n<<64n,1n<<64n],[(1n<<64n)-1n,1n<<64n],[3n<<128n,9n<<70n],[1n<<53n,(1n<<53n)-1n],[1n<<20000n,3n]];
@@ -35,22 +40,29 @@ test('reduced fractions and comparisons equal the reference',()=>{
  for(let i=0;i<60000;i++){
   const [a,c]=pair(),[b,d]=pair();
   for(const op of ['add','sub','mul'] as const)same(fast[op](a,b),reference[op](c,d),op);
-  if(d.n!==0n)same(fast.div(a,b),reference.div(c,d),'div');
+  assert.equal(b.n,d.n,'divisor numerator');
+  if(b.n!==0n)same(fast.div(a,b),reference.div(c,d),'div');
   assert.equal(fast.compare(a,b),reference.compare(c,d));
   assert.equal(fast.compare(a,a),0);
  }
  assert.throws(()=>fast.div(fast.rational(1),new fast.Rational(0n,1n)),/Zero rational denominator/);
 });
 
+const coordinate = (value: number): Pair => [fast.rational(value),reference.rational(value)];
+function checkOrientation(ax: Pair, ay: Pair, bx: Pair, by: Pair, cx: Pair, cy: Pair) {
+ const actual = fast.orient2d(ax[0],ay[0],bx[0],by[0],cx[0],cy[0]);
+ const expected = reference.orient2d(ax[1],ay[1],bx[1],by[1],cx[1],cy[1]);
+ assert.ok(Object.is(actual,expected));
+}
+
 test('orient2d equals the reference, including collinear walls on a rotated grid',()=>{
  const t=58*Math.PI/180;
  for(let i=0;i<60000;i++){
-  const six=[0,0,0,0,0,0].map(pair);
-  assert.ok(Object.is(fast.orient2d(...six.map(p=>p[0]) as [any,any,any,any,any,any]),reference.orient2d(...six.map(p=>p[1]) as [any,any,any,any,any,any])));
-  const x=(real()-.5)*1800,y=(real()-.5)*1800,s=real()*300,q=[x,y,x+200*Math.cos(t),y+200*Math.sin(t),x+s*Math.cos(t),y+s*Math.sin(t)];
-  assert.ok(Object.is(fast.orient2d(...q.map(fast.rational) as [any,any,any,any,any,any]),reference.orient2d(...q.map(reference.rational) as [any,any,any,any,any,any])));
-  const dup=[x,y,x,y,q[4]!,q[5]!];
-  assert.ok(Object.is(fast.orient2d(...dup.map(fast.rational) as [any,any,any,any,any,any]),reference.orient2d(...dup.map(reference.rational) as [any,any,any,any,any,any])));
+  checkOrientation(pair(),pair(),pair(),pair(),pair(),pair());
+  const x=(real()-.5)*1800,y=(real()-.5)*1800,s=real()*300;
+  const ax=coordinate(x),ay=coordinate(y),cx=coordinate(x+s*Math.cos(t)),cy=coordinate(y+s*Math.sin(t));
+  checkOrientation(ax,ay,coordinate(x+200*Math.cos(t)),coordinate(y+200*Math.sin(t)),cx,cy);
+  checkOrientation(ax,ay,ax,ay,cx,cy);
  }
 });
 
@@ -72,7 +84,7 @@ test('a cached approximation never reaches keys, clones or the wire form',()=>{
 });
 
 test('frozen prototype copies of a Rational, as immutable caches make, still compare and orient',()=>{
- const copy=(q:any)=>Object.freeze(Object.assign(Object.create(fast.Rational.prototype),{n:q.n,d:q.d,original:q.original}));
+ const copy=(q: fast.Rational): fast.Rational=>Object.freeze(Object.assign(Object.create(fast.Rational.prototype),{n:q.n,d:q.d,original:q.original}));
  const [a,c]=[new fast.Rational(5n,3n),new reference.Rational(5n,3n)],[b,d]=[new fast.Rational(7n,11n),new reference.Rational(7n,11n)];
  assert.equal(fast.compare(copy(a),copy(b)),reference.compare(c,d));
  assert.ok(Object.is(fast.orient2d(copy(a),copy(b),copy(b),copy(a),a,copy(b)),reference.orient2d(c,d,d,c,c,d)));
